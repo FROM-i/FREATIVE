@@ -17,7 +17,7 @@ win:
     - target: nsis
       arch: [x64]
   icon: build/icon.png
-  artifactName: THEFROM-FREATIVE-Setup-${version}.${ext}
+  artifactName: THEFROM-FREATIVE-${version}-Windows-Setup.${ext}
 
 nsis:
   oneClick: false

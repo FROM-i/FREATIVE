@@ -85,3 +85,18 @@ jobs:
           # 실패 원인을 Actions 주석(annotation)으로 남긴다 — 로그를 열지 않아도 보이게
           grep -E "⨯|Error|error|failed|Cannot|cannot" build.log | tail -n 15 | while IFS= read -r line; do echo "::error::${line:0:900}"; done || true
           echo "::error::$(tail -n 5 build.log | tr '\n' ' ' | cut -c1-900)"
+
+  # 릴리스 설명에 설치 파일 바로 받기 링크를 단다 — 파일이 많아 목록에서 접혀도 바로 찾게
+  notes:
+    needs: [check, build]
+    if: needs.check.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          V: ${{ needs.check.outputs.version }}
+        run: |
+          B="https://github.com/$GITHUB_REPOSITORY/releases/download/v$V"
+          BODY=$(printf '## 설치 파일\n\n| OS | 받기 |\n|---|---|\n| **Windows** | [THEFROM-FREATIVE-%s-Windows-Setup.exe](%s/THEFROM-FREATIVE-%s-Windows-Setup.exe) |\n| **macOS (Apple Silicon · M1~)** | [THEFROM-FREATIVE-%s-arm64.dmg](%s/THEFROM-FREATIVE-%s-arm64.dmg) |\n| **macOS (Intel)** | [THEFROM-FREATIVE-%s-x64.dmg](%s/THEFROM-FREATIVE-%s-x64.dmg) |\n\n이미 설치된 앱은 실행하면 자동으로 업데이트됩니다. 나머지 파일(.yml · .blockmap · .zip)은 자동 업데이트용입니다.\n' "$V" "$B" "$V" "$V" "$B" "$V" "$V" "$B" "$V")
+          ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$V" -q .id)
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$ID" -f body="$BODY" >/dev/null
