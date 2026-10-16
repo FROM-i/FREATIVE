@@ -72,9 +72,10 @@ const builders = {
         assistants: [{ role: '시간 여행자', task: '사조별 원리 채집' }, { role: '레이어 분석가', task: '시장·브랜드·타겟·습관' }],
         example_count: 3,
         model_plan: [
-          { stage: 'airplane', role: 'sub', model: 'gpt-5-mini', effort: 'low', why: '사조 카드 원문이 충분 — 빠른 채집' },
-          { stage: 'concept', role: 'director', model: 'gpt-5', effort: 'high', why: '컨셉은 깊은 판단이 필요' },
-          { stage: 'positioning', role: 'director', model: 'gpt-5-mini', effort: 'medium', why: '터널 결과가 명확해 구조화 위주' },
+          { stage: 'airplane', role: 'sub', model: 'gpt-6.1-sol', effort: 'high', why: '사조를 결과물 매체의 언어로 재해석 — 해석이 필요' },
+          { stage: 'tunnel', role: 'sub', model: 'gpt-6.1-sol', effort: 'medium', why: '레이어 분석 — 비교·종합' },
+          { stage: 'forpop', role: 'sub', model: 'gpt-6.1-sol', effort: 'low', why: '웹 정찰 — 사례 채집' },
+          { stage: 'creative', role: 'image', model: 'gpt-image-2.5-sunburst', why: '가이드 3종 — 최종 비주얼 품질' },
         ],
         note: '좋아, 미션을 받았어. 캔버스부터 펼쳐 보자.',
       },
@@ -426,10 +427,10 @@ async function search({ meta }) {
   return { ...r, citations: [...urls].map((url) => ({ url, title: '목업 출처' })), searches: 2 };
 }
 
-async function image({ size = '1536x1024', meta }) {
+async function image({ size = '1536x1024', model, meta }) {
   await wait(1500, 2500);
   const [w, h] = size.split('x').map((n) => parseInt(n, 10) / 2);
-  return { buffer: svgPlaceholder(meta && meta.example && meta.example.title, w, h), usage: null, model: 'gpt-image-1', quality: 'medium' };
+  return { buffer: svgPlaceholder(meta && meta.example && meta.example.title, w, h), usage: null, model: model || 'gpt-image-2.5-sunburst', quality: 'medium' };
 }
 
 module.exports = { chat, search, image, listModels: async () => ['mock'], test: async () => ({ ok: true, count: 1 }), name: 'mock' };

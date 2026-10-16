@@ -90,6 +90,12 @@ app.whenReady().then(async () => {
     const fpr = run.results.forpop;
     console.log('forpop for', fpr.for.chosen, '| scan', fpr.scan.scopes.map((x) => `${x.scope}:${x.citations.length}`).join(','), '| legend', fpr.compare.legend.axes.length, '| verdicts', fpr.compare.scopes.map((x) => x.verdict).join(','), '| searches', run.usage.searches);
     if (fpr.scan.scopes.length !== 3) fail('웹 정찰 3범위 누락');
+    // 모델 구성 — 추천 구성(models.json): 화가 astra · 브레인 sol(핵심 단계 astra) · 조수 화가 배정 · 이미지 풀
+    const am = (st, key) => run.agents.filter((x) => x.stage === st && x.key === key).map((x) => x.model.replace(/^mock:/, ''));
+    console.log('models painter', am('concept', 'painter')[0], '| brain canvas', am('canvas', 'brain')[0], '| brain forpop', am('forpop', 'brain')[0], '| scout', am('forpop', 'scout-category')[0], '| image', am('creative', 'image')[0]);
+    if (am('concept', 'painter')[0] !== 'gpt-6-astra') fail('화가 모델이 추천 구성이 아님');
+    if (am('forpop', 'brain')[0] !== 'gpt-6-astra' || am('canvas', 'brain')[0] !== 'gpt-6.1-sol') fail('브레인 단계 지정 미적용');
+    if (am('creative', 'image')[0] !== 'gpt-image-2.5-sunburst') fail('이미지 풀 배정 미적용');
     if (!fpr.compare.scopes.every((x) => x.series.every((se) => se.values.length === fpr.compare.legend.axes.length))) fail('공통 범례 축 수 불일치');
     if (!fpr.compare.positioning || !fpr.compare.positioning.sentence) fail('포지셔닝 진술문 없음');
     const r = report.exportProject(p.id);

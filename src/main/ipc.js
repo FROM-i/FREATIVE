@@ -46,6 +46,18 @@ function register(win, { isMock }) {
     try { return { ok: true, models: await providers.get().listModels() }; } catch (e) { return { ok: false, message: e.message }; }
   });
 
+  // 모델 구성 — 추천(지식 저장소) / 직접 지정
+  h('settings:models', async () => { const models = require('./models'); return { following: models.following(), effective: models.effective(), recommended: models.recommended(), pricing: models.pricing() }; });
+  h('settings:modelsMode', async (follow) => {
+    await guard('settings:manage');
+    const models = require('./models');
+    if (follow) return settings.set({ openai: { followRecommended: true } });
+    return settings.set({ openai: { followRecommended: false, ...models.snapshotToCustom() } });
+  });
+  h('settings:discoverModels', async () => {
+    try { const ids = await providers.get().listModels(); return { ok: true, ...require('./models').classify(ids), total: ids.length }; } catch (e) { return { ok: false, message: e.message }; }
+  });
+
   h('knowledge:status', async () => knowledge.status());
   h('knowledge:sync', async () => { const r = await knowledge.sync({ force: false }); return { ...r, status: knowledge.status() }; });
   h('knowledge:types', async () => { const k = knowledge.load(); return k.types; });

@@ -8,13 +8,17 @@ const DEFAULTS = {
   openai: {
     baseUrl: 'https://api.openai.com/v1',
     // 역할별 기본 모델 — 화가(메인·오케스트레이터) / 조수(서브) / 판단 브레인 / 이미지
-    models: { director: 'gpt-5', sub: 'gpt-5-mini', brain: 'gpt-5', image: 'gpt-image-1' },
+    // 추천 구성 따르기 — knowledge/models.json(저장소 동기화)이 역할·풀·단가를 정한다. 끄면 아래 값을 직접 쓴다.
+    followRecommended: true,
+    models: { director: 'gpt-6-astra', sub: 'gpt-6.1-sol', brain: 'gpt-6.1-sol', image: 'gpt-image-2.5-sunburst' },
+    roleEfforts: { director: 'high', brain: 'high', sub: 'low' },
+    imagePool: [],
     // 화가가 단계별로 고를 수 있는 모델 풀 — autoModel이 켜져 있으면 화가가 판단해 바꾼다
     autoModel: true,
     pool: [
-      { id: 'gpt-5', tier: 'deep', note: '판단·컨셉·검증' },
-      { id: 'gpt-5-mini', tier: 'balanced', note: '분석·채집' },
-      { id: 'gpt-5-nano', tier: 'fast', note: '정리·요약' },
+      { id: 'gpt-6-astra', effort: 'high', tier: 'frontier', note: '컨셉·최종 판단' },
+      { id: 'gpt-6.1-sol', effort: 'medium', tier: 'strong', note: '분석·종합' },
+      { id: 'gpt-6-luna', effort: 'low', tier: 'fast', note: '정리·요약' },
     ],
     reasoningEffort: 'medium', // gpt-5·o 계열에만 전달. '' 이면 보내지 않음
     timeoutSec: 240,
@@ -47,7 +51,7 @@ const DEFAULTS = {
     maxParallel: 4,
     brain: 'standard', // standard: 모든 단계 · core: 컨셉·FoR/PoP/PoD·Creative 중심 · off
     brainRetry: 1,     // 브레인이 '재작업' 판정 시 다시 그리는 횟수
-    budgetUsd: 5,      // 미션당 예산 — 넘으면 경고
+    budgetUsd: 10,     // 미션당 예산 — 넘으면 경고
     webSearch: true,   // FoR·PoP·PoD 차별성 검토에서 조수가 웹을 직접 탐색
     generateImages: true,
     imageQuality: 'medium',

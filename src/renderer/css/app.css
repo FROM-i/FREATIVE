@@ -624,3 +624,13 @@ a.src.web { text-decoration: none; border-color: var(--ink-2); color: var(--ink-
 .pos-line .slot b { font-size: 17px; }
 .pos-line .slot:nth-child(7) { background: var(--yellow); }
 @media (max-width: 1100px) { .for-opts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .scope-grid.g3 { grid-template-columns: minmax(0, 1fr); } }
+
+/* 모델 구성 */
+.model-ro { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.model-ro b { font-size: 15px; }
+.model-ro small { width: 100%; }
+.pool-ro { display: flex; flex-direction: column; gap: 6px; }
+.pool-ro > div { display: grid; grid-template-columns: 92px minmax(160px, auto) auto 1fr; gap: 10px; align-items: center; font-size: 13px; border-bottom: var(--line) solid var(--hair); padding-bottom: 6px; }
+.pool-ro > div .tag { justify-self: start; }
+.pool-row { display: grid; grid-template-columns: minmax(0, 1.4fr) 110px 120px minmax(0, 1.4fr) auto; gap: 8px; }
+.pool-row.img { grid-template-columns: minmax(0, 1.4fr) 120px minmax(0, 1.8fr) auto; }

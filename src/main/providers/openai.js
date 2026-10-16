@@ -7,7 +7,17 @@ const settings = require('../settings');
 
 function cfg() {
   const s = settings.get().openai;
-  return { ...s, key: settings.getSecret('openaiKey') };
+  const e = require('../models').effective();
+  return { ...s, models: { ...s.models, ...e.models }, roleEfforts: e.efforts || {}, key: settings.getSecret('openaiKey') };
+}
+
+/** 추론 강도를 모델이 받는 값으로 맞춘다 — gpt-5 이후·o 계열만. GPT-6 계열은 minimal 대신 low */
+const REASONING = /^(gpt-([5-9]|\d{2})|o\d)/;
+function effortFor(model, eff) {
+  if (!eff || !REASONING.test(model)) return '';
+  if (/^gpt-([6-9]|\d{2})/.test(model) && eff === 'minimal') return 'low';
+  if (/^gpt-5(?!\.\d)/.test(model) && (eff === 'max' || eff === 'none')) return eff === 'max' ? 'high' : 'minimal';
+  return eff;
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -38,6 +48,7 @@ async function request(pathname, body, { signal, timeoutSec } = {}) {
       // 지원하지 않는 파라미터는 빼고 다시
       if (r.status === 400 && body && /reasoning_effort|reasoning/i.test(msg) && body.reasoning_effort) { delete body.reasoning_effort; continue; }
       if (r.status === 400 && body && /response_format/i.test(msg) && body.response_format) { delete body.response_format; continue; }
+      if (r.status === 400 && body && /quality/i.test(msg) && body.quality) { delete body.quality; continue; }
       if (r.status === 429 || r.status >= 500) { await sleep(1500 * (attempt + 1) ** 2); continue; }
       throw lastErr;
     } catch (e) {
@@ -80,8 +91,8 @@ async function chat({ role = 'director', model: override, effort, system, conten
     ],
     response_format: { type: 'json_object' },
   };
-  const eff = effort || c.reasoningEffort;
-  if (eff && /^(gpt-5|o\d)/.test(model)) body.reasoning_effort = eff;
+  const eff = effortFor(model, effort || c.roleEfforts[role] || c.reasoningEffort);
+  if (eff) body.reasoning_effort = eff;
   const r = await request('/chat/completions', body, { signal });
   const msg = r.choices && r.choices[0] && r.choices[0].message;
   const json = parseJSON(msg && msg.content);
@@ -132,9 +143,9 @@ async function search({ role = 'sub', model: override, effort, system, content, 
     include: ['web_search_call.action.sources'],
     text: { format: { type: 'json_object' } },
   };
-  let eff = effort || c.reasoningEffort;
-  if (eff === 'minimal') eff = 'low'; // web_search는 minimal 추론을 지원하지 않는다
-  if (eff && /^(gpt-5|o\d)/.test(model)) body.reasoning = { effort: eff };
+  let eff = effortFor(model, effort || c.roleEfforts[role] || c.reasoningEffort);
+  if (eff === 'minimal' || eff === 'none') eff = 'low'; // web_search는 minimal·none 추론을 지원하지 않는다
+  if (eff) body.reasoning = { effort: eff };
   let r;
   for (let attempt = 0; attempt < 4; attempt++) {
     try { r = await request('/responses', body, { signal, timeoutSec: Math.max(300, c.timeoutSec || 0) }); break; } catch (e) {
@@ -154,18 +165,19 @@ async function search({ role = 'sub', model: override, effort, system, content, 
   return { json, model, usage: r.usage || null, citations: out.citations, searches: out.searches };
 }
 
-async function image({ prompt, size = '1536x1024', signal }) {
+async function image({ prompt, size = '1536x1024', model: override, signal }) {
   const c = cfg();
   const q = settings.get().run.imageQuality;
-  const body = { model: c.models.image, prompt, size, n: 1 };
-  if (/gpt-image/.test(c.models.image) && q) body.quality = q;
+  const model = override || c.models.image;
+  const body = { model, prompt, size, n: 1 };
+  if (/gpt-image/.test(model) && q) body.quality = q;
   const r = await request('/images/generations', body, { signal, timeoutSec: 300 });
   const d = r.data && r.data[0];
   let buffer = null;
   if (d && d.b64_json) buffer = Buffer.from(d.b64_json, 'base64');
   else if (d && d.url) { const res = await fetch(d.url); buffer = Buffer.from(await res.arrayBuffer()); }
   if (!buffer) throw new Error('이미지 응답이 비었습니다');
-  return { buffer, usage: r.usage || null, model: c.models.image, quality: q };
+  return { buffer, usage: r.usage || null, model, quality: q };
 }
 
 async function listModels() {

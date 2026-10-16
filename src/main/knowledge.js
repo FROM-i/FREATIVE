@@ -213,7 +213,9 @@ function load() {
     if (/\/knowhow\//.test(k)) for (const r of parseKnowhow(text, src)) { library.push({ kind: 'knowhow', id: r.id, name: r.name, source: src, file: k, desc: r.desc }); if (!disabled.has(r.id)) knowhow.push({ ...r, custom: true }); }
   }
   const brain = JSON.parse(files['brain.json'] || '{"lenses":[],"stages":{},"knowhowGroups":{}}');
-  cache = { dir, manifest, files, types, isms, knowhow, library, brain, disabled: [...disabled], source: dir === BUNDLED ? 'bundled' : 'synced' };
+  let models = null;
+  try { models = files['models.json'] ? JSON.parse(files['models.json']) : null; } catch { models = null; }
+  cache = { dir, manifest, files, types, isms, knowhow, library, brain, models, disabled: [...disabled], source: dir === BUNDLED ? 'bundled' : 'synced' };
   return cache;
 }
 

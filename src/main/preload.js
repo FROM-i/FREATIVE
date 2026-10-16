@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld('api', {
     setSecret: (key, value) => invoke('settings:setSecret', key, value),
     testKey: () => invoke('settings:testKey'),
     listModels: () => invoke('settings:listModels'),
+    models: () => invoke('settings:models'),
+    modelsMode: (follow) => invoke('settings:modelsMode', follow),
+    discoverModels: () => invoke('settings:discoverModels'),
   },
   knowledge: {
     status: () => invoke('knowledge:status'),

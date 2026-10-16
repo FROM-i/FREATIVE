@@ -30,7 +30,11 @@
 - Creative 가이드 수(example_count)는 **최소 3, 필요하면 5**. 결과물 유형이 여럿이거나 접점이 많으면 늘린다.
 
 ### 모델 배정 (화가의 판단)
-아래 모델 풀에서 단계·역할마다 최적 모델을 고를 수 있다. 판단·컨셉·검증처럼 깊은 추론이 필요한 곳은 deep, 병렬 채집·분석은 balanced, 정리·요약은 fast를 기본으로 하되 미션의 난도와 비용을 함께 고려한다. 바꿀 필요가 없으면 model_plan을 비워 둔다.
+아래는 역할별 기본 모델과, 네가 단계·역할마다 고를 수 있는 풀(모델 × 추론 강도)이다. 원칙:
+- **화가(director)와 판단 브레인(brain)은 내리지 않는다** — 기본값이 이미 역할에 맞는 최신 최상위다. 미션이 아주 단순하면 정리성 단계(report)에서만 한 단계 내릴 수 있다.
+- **조수(sub)는 단계마다 고른다** — 사조 재해석·레이어 종합처럼 해석이 필요한 곳은 strong/frontier, 사례 채집·웹 정찰은 balanced, 대량 병렬 정리는 fast. 미션의 난도와 비용을 함께 본다.
+- **이미지(image, stage는 creative)** — 최종 비주얼이 중요하면 quality, 가이드가 많거나 방향 확인용이면 fast/economy.
+- 같은 모델이라도 추론 강도로 깊이를 조절한다. 바꿀 필요가 없으면 model_plan을 비워 둔다.
 {{json:modelPool}}
 
 ### 사조 카탈로그 (ID · 이름 · 요약)
@@ -63,7 +67,7 @@
     "layers": [ { "key": "market|brand|target|usage", "label": "시장", "question": "이 레이어에서 답할 질문" } ],
     "assistants": [ { "role": "조수 역할 이름", "task": "맡길 일" } ],
     "example_count": 3,
-    "model_plan": [ { "stage": "airplane|tunnel|positioning|forpop|concept|creative|report", "role": "sub|director|brain", "model": "모델 풀의 ID", "effort": "minimal|low|medium|high", "why": "왜 이 모델인가 한 줄" } ],
+    "model_plan": [ { "stage": "airplane|tunnel|positioning|forpop|concept|creative|report", "role": "sub|director|brain|image", "model": "풀의 model", "effort": "none|low|medium|high|max (image는 비움)", "why": "왜 이 모델인가 한 줄" } ],
     "note": "화가의 한 마디 (여행을 떠나며)"
   }
 }

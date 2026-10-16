@@ -26,6 +26,7 @@ const store = require('../services/storage');
 const attachments = require('../attachments');
 const providers = require('../providers');
 const cost = require('../cost');
+const models = require('../models');
 const { render } = require('./prompts');
 
 const STAGES = [
@@ -162,12 +163,27 @@ class Controller {
   /* ---------- 모델 배정 — 화가의 판단 ---------- */
   modelFor(stage, role) {
     const o = settings.get().openai;
-    const def = { model: o.models[role] || o.models.director, effort: '', why: '기본 설정' };
+    const e = models.effective();
+    const st = (e.stages[stage] || {})[role];
+    const def = st
+      ? { model: st.model, effort: st.effort || '', why: st.why || '추천 구성 · 단계 지정' }
+      : { model: e.models[role] || e.models.director, effort: e.efforts[role] || '', why: e.source === 'recommended' ? '추천 구성' : '기본 설정' };
     if (!o.autoModel) return def;
-    const pool = new Set((o.pool || []).map((p) => p.id));
+    const pool = new Set((role === 'image' ? e.imagePool : e.pool).map((p) => p.id));
     const plan = (this.run.modelPlan || []).find((p) => p.stage === stage && p.role === role);
-    if (plan && pool.has(plan.model)) return { model: plan.model, effort: plan.effort || '', why: plan.why || '화가 배정' };
+    if (plan && pool.has(plan.model)) return { model: plan.model, effort: plan.effort || def.effort, why: plan.why || '화가 배정' };
     return def;
+  }
+
+  /** 화가에게 보여줄 모델 구성 — 역할 기본값 · 단계 지정 · 고를 수 있는 풀(모델 × 추론 강도) · 이미지 풀 */
+  modelPoolForPainter() {
+    const e = models.effective();
+    return {
+      defaults: Object.fromEntries(Object.entries(e.models).map(([k, v]) => [k, { model: v, effort: e.efforts[k] || '' }])),
+      stage_overrides: e.stages,
+      pool: e.pool.map((p) => ({ model: p.id, effort: p.effort || '', tier: p.tier, use: p.note })),
+      image_pool: e.imagePool.map((p) => ({ model: p.id, tier: p.tier, use: p.note })),
+    };
   }
 
   addCost(stage, usd, entry) {
@@ -380,7 +396,7 @@ class Controller {
     const json = await this.call({
       role: 'director', prompt: '01_brief', stage: 'brief', withMedia: true,
       agent: { key: 'painter', name: '화가', task: '미션 접수 · 브리프 게이트 · 계획' },
-      ctx: { brief: formatBrief(this.brief), attachmentsNote: note, answers, type: this.type, ismIndex: this.ismIndex(), modelPool: o.autoModel ? o.pool : '(자동 배정 꺼짐 — model_plan 비움)' },
+      ctx: { brief: formatBrief(this.brief), attachmentsNote: note, answers, type: this.type, ismIndex: this.ismIndex(), modelPool: o.autoModel ? this.modelPoolForPainter() : '(자동 배정 꺼짐 — model_plan 비움)' },
     });
     const valid = new Set(knowledge.load().isms.map((i) => i.id));
     json.plan = json.plan || {};
@@ -392,8 +408,10 @@ class Controller {
     const layers = (json.plan.layers || []).filter((l) => LAYER_DEFAULTS.find((d) => d.key === l.key));
     json.plan.layers = layers.length >= 3 ? layers : LAYER_DEFAULTS;
     json.plan.example_count = Math.max(3, Math.min(5, parseInt(json.plan.example_count, 10) || 3));
-    const pool = new Set((o.pool || []).map((p) => p.id));
-    this.run.modelPlan = (json.plan.model_plan || []).filter((p) => pool.has(p.model) && ['sub', 'director', 'brain'].includes(p.role));
+    const eff = models.effective();
+    const pool = new Set(eff.pool.map((p) => p.id));
+    const ipool = new Set(eff.imagePool.map((p) => p.id));
+    this.run.modelPlan = (json.plan.model_plan || []).filter((p) => (['sub', 'director', 'brain'].includes(p.role) && pool.has(p.model)) || (p.role === 'image' && ipool.has(p.model)));
     this.run.results.brief = json;
     this.line('화가', json.plan.note || (json.mission && json.mission.one_line), 'brief');
     return json;
@@ -725,24 +743,25 @@ class Controller {
     if (!c || !this.imagesEnabled()) return;
     const list = c.examples.map((e, i) => ({ e, i })).filter(({ e, i }) => e.image_prompt && (only === null || only === i));
     await pLimit(list, 2, async ({ e, i }) => {
-      const a = { id: `creative:image:${i}:${Date.now()}`, stage: 'creative', role: 'image', key: 'image', name: `조수 · 이미지 (${e.title || i + 1})`, task: e.title, model: (providers.isMock() ? 'mock:' : '') + settings.get().openai.models.image, status: 'working', startedAt: now() };
+      const pick = this.modelFor('creative', 'image');
+      const a = { id: `creative:image:${i}:${Date.now()}`, stage: 'creative', role: 'image', key: 'image', name: `조수 · 이미지 (${e.title || i + 1})`, task: e.title, model: (providers.isMock() ? 'mock:' : '') + pick.model, why: pick.why, status: 'working', startedAt: now() };
       this.run.agents.push(a);
       this.send('agent-start', { agent: a });
       try {
         const size = ['1536x1024', '1024x1024', '1024x1536'].includes(e.image_size) ? e.image_size : (this.type.imageSize || '1536x1024');
         const d = e.detail || {};
         const prompt = `${e.image_prompt}\n\nCamera & lighting guide: ${[d.angle, d.view, d.light, d.texture].filter(Boolean).join(' / ')}\nStyle note: concept visual draft for a design review. No text, no letters, no logos, no watermark. Leave clean negative space where the headline will go.`;
-        const r = await this.provider.image({ prompt, size, signal: this.abort.signal, meta: { example: e, index: i } });
+        const r = await this.provider.image({ prompt, size, model: pick.model, signal: this.abort.signal, meta: { example: e, index: i } });
         const buf = r.buffer || r;
         const ext = buf[0] === 0x3c ? 'svg' : 'png';
         const rel = store.writeOutput(this.id, `guide-${i + 1}-${Date.now()}.${ext}`, buf);
         e.image = `ct://project/${this.id}/${rel}`;
         e.imageFile = rel;
         delete e.imageError;
-        const ic = cost.imageCost(r.model || settings.get().openai.models.image, r.usage, size, r.quality || settings.get().run.imageQuality);
+        const ic = cost.imageCost(r.model || pick.model, r.usage, size, r.quality || settings.get().run.imageQuality);
         a.cost = ic.usd;
         this.run.usage.images++;
-        this.addCost('creative', ic.usd, { model: r.model || settings.get().openai.models.image, role: 'image', estimate: !!ic.estimate });
+        this.addCost('creative', ic.usd, { model: r.model || pick.model, role: 'image', estimate: !!ic.estimate });
         a.status = 'done';
       } catch (err) {
         e.imageError = err.message;

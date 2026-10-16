@@ -1,0 +1,39 @@
+{
+  "updated": "2026-10-16",
+  "source": "https://developers.openai.com/api/docs/models · https://developers.openai.com/api/docs/pricing",
+  "note": "추천 모델 구성. OpenAI가 새 모델을 내면 이 파일을 고치고 manifest version을 올린다 — 설치된 앱이 '추천 구성 따르기'로 자동 반영한다. 원칙: 화가는 역할에 가장 맞는 최신 최상위, 판단 브레인은 그와 거의 동급(핵심 판단 단계는 동급), 조수는 넓은 풀에서 화가가 고른다.",
+  "roles": {
+    "director": { "model": "gpt-6-astra", "effort": "high", "why": "화가 — 오케스트레이션·컨셉·가이드. 가장 깊은 판단이 필요한 자리" },
+    "brain": { "model": "gpt-6.1-sol", "effort": "high", "why": "판단 브레인 — near-Astra 성능으로 모든 단계의 방향·검증을 맡는다" },
+    "sub": { "model": "gpt-6.1-sol", "effort": "low", "why": "조수 기본 — 화가가 단계마다 풀에서 바꾼다" },
+    "image": { "model": "gpt-image-2.5-sunburst", "why": "가이드 비주얼 — 최고 품질" }
+  },
+  "stages": {
+    "forpop": { "brain": { "model": "gpt-6-astra", "effort": "high", "why": "FoR·PoP·PoD는 에이전시의 핵심 판단 — 화가와 동급" } },
+    "concept": { "brain": { "model": "gpt-6-astra", "effort": "high", "why": "컨셉 3→1 자체 검증 — 화가와 동급" } }
+  },
+  "pool": [
+    { "id": "gpt-6-astra", "effort": "high", "tier": "frontier", "note": "컨셉·최종 판단·검증 — 가장 깊게" },
+    { "id": "gpt-6-astra", "effort": "medium", "tier": "frontier", "note": "구조화·포지셔닝·전환 — 깊고 빠르게" },
+    { "id": "gpt-6.1-sol", "effort": "high", "tier": "strong", "note": "사조 재해석·레이어 종합 — near-Astra" },
+    { "id": "gpt-6.1-sol", "effort": "medium", "tier": "strong", "note": "분석·비교·웹 정찰 종합" },
+    { "id": "gpt-6.1-sol", "effort": "low", "tier": "balanced", "note": "웹 정찰·사례 채집" },
+    { "id": "gpt-6-luna", "effort": "medium", "tier": "fast", "note": "병렬 채집·초안 — 대량" },
+    { "id": "gpt-6-luna", "effort": "low", "tier": "fast", "note": "정리·요약·포맷" }
+  ],
+  "imagePool": [
+    { "id": "gpt-image-2.5-sunburst", "tier": "quality", "note": "최종 가이드 비주얼 — 최고 품질" },
+    { "id": "gpt-image-2.5-flare", "tier": "fast", "note": "가이드가 많거나 다시 그릴 때 — 빠른 고품질" },
+    { "id": "gpt-image-2", "tier": "economy", "note": "러프·방향 확인 — 절반 단가" }
+  ],
+  "efforts": ["none", "low", "medium", "high", "max"],
+  "pricing": {
+    "gpt-6-astra": { "in": 10, "cached": 1, "out": 50 },
+    "gpt-6.1-sol": { "in": 2, "cached": 0.1, "out": 10 },
+    "gpt-6-luna": { "in": 0.1, "cached": 0.01, "out": 0.5 },
+    "gpt-image-2.5-sunburst": { "in": 5, "cached": 1.25, "out": 30, "imageIn": 8 },
+    "gpt-image-2.5-flare": { "in": 5, "cached": 1.25, "out": 30, "imageIn": 8 },
+    "gpt-image-2": { "in": 2.5, "cached": 0.625, "out": 15, "imageIn": 4 },
+    "webSearch": 0.01
+  }
+}
