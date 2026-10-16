@@ -21,6 +21,11 @@
     "image": {
       "model": "gpt-image-2.5-sunburst",
       "why": "가이드 비주얼 — 최고 품질"
+    },
+    "editor": {
+      "model": "gpt-6.1-sol",
+      "effort": "medium",
+      "why": "교열 — 보고서 문장을 사람이 읽는 한국어로 다듬는다"
     }
   },
   "stages": {

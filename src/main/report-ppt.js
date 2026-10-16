@@ -15,6 +15,7 @@ const INK = '141414', PAPER = 'F4F2EC', PAPER2 = 'ECE9E1', MUTE = '8A867D', HAIR
 const W = 13.333, H = 7.5, M = 0.6;
 const arr = (x) => (Array.isArray(x) ? x : x == null ? [] : [x]);
 const t = (s, n = 200) => String(s ?? '').slice(0, n);
+const POPK = { 카테고리: '기본 조건', 경쟁: '경쟁 대응', 상관: '약점 보완' };
 
 function build(project) {
   const run = project.run || {};
@@ -196,7 +197,7 @@ function build(project) {
     s.addShape(pptx.ShapeType.roundRect, { x: M, y: 1.75, w: W - 2 * M, h: 4.9, rectRadius: 0.15, fill: { color: PAPER }, line: { color: INK, width: 0.75 } });
     s.addText([{ text: 'FoR  ', options: { bold: true, color: MUTE, fontSize: 10 } }, { text: t(f.for && f.for.frame, 70), options: { bold: true, fontSize: 15 } }], { x: M + 0.25, y: 1.85, w: W - 2 * M - 0.5, h: 0.45, fontFace: F, color: INK });
     s.addShape(pptx.ShapeType.roundRect, { x: M + 0.25, y: 2.4, w: W - 2 * M - 0.5, h: 0.6, rectRadius: 0.3, fill: { color: PAPER }, line: { color: INK, width: 0.75 } });
-    s.addText(`PoP  ·  ${arr(f.pop).map((x) => x.item).join('   ·   ')}`, { x: M + 0.4, y: 2.4, w: W - 2 * M - 0.8, h: 0.6, fontFace: F, fontSize: 11, align: 'center', valign: 'middle', color: INK });
+    s.addText(`PoP · 최소한 갖춰야 할 것  ·  ${arr(f.pop).map((x) => x.item).join('   ·   ')}`, { x: M + 0.4, y: 2.4, w: W - 2 * M - 0.8, h: 0.6, fontFace: F, fontSize: 11, align: 'center', valign: 'middle', color: INK });
     const cols = [arr(f.pod_candidates), arr(f.shifts && f.shifts[0] && f.shifts[0].result)];
     const colX = [M + 0.3, M + 4.2];
     cols.forEach((list, ci) => list.slice(0, 5).forEach((c, i) => {
@@ -237,7 +238,7 @@ function build(project) {
       ], { x: x + 0.12, y: 1.85, w: w - 0.24, h: 2.35, fontFace: F, color: INK, valign: 'top' });
     });
     const pops = arr(f.pop).slice(0, 5);
-    s.addText(`PoP  ·  ${pops.map((x) => `${x.kind ? `[${x.kind}] ` : ''}${x.item}`).join('   ·   ')}`, { x: M, y: 4.45, w: W - 2 * M, h: 0.45, fontFace: F, fontSize: 10, color: INK, align: 'center', valign: 'middle', shape: pptx.ShapeType.roundRect, rectRadius: 0.22, line: { color: INK, width: 0.75 } });
+    s.addText(`PoP · 최소한 갖춰야 할 것  ·  ${pops.map((x) => `${x.kind ? `[${POPK[x.kind] || x.kind}] ` : ''}${x.item}`).join('   ·   ')}`, { x: M, y: 4.45, w: W - 2 * M, h: 0.45, fontFace: F, fontSize: 10, color: INK, align: 'center', valign: 'middle', shape: pptx.ShapeType.roundRect, rectRadius: 0.22, line: { color: INK, width: 0.75 } });
     const pos = f.compare && f.compare.positioning;
     if (pos && pos.slots) {
       const S = pos.slots;

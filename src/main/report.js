@@ -1,4 +1,5 @@
 'use strict';
+const POPK = { 카테고리: '기본 조건', 경쟁: '경쟁 대응', 상관: '약점 보완' };
 /** 결과를 .md 보고서와 브리프 .md(thefrom-ux 브리프 양식 호환)로 내보낸다. */
 const fs = require('fs');
 const path = require('path');
@@ -57,7 +58,7 @@ function build(p) {
     const F = f.for || {};
     if (F.target_view) out.push(`\n타겟은 이것을 “${F.target_view}”에 빗대어 본다.`);
     if ((F.options || []).length) out.push('\n**FoR — 네 방식**\n' + table(['방식', '틀', '경쟁 구도', '얻는 것', '치르는 것'], F.options.map((o) => [o.kind + (o.kind === F.chosen ? ' ●' : ''), o.frame, (o.competitors || []).join(', '), o.gain, o.cost])));
-    out.push(`\n**FoR**: ${F.frame || ''}${F.why ? ` — ${F.why}` : ''}\n\n**PoP**\n${list(f.pop, (x) => `${x.kind ? `[${x.kind}] ` : ''}${x.item} — ${x.why}`)}\n\n**PoD 후보 5** (바람직성 · 전달성 · 방어성)\n${list(f.pod_candidates, (x) => `${x.id} ${x.item} — ${x.gain} (${[x.desirable, x.deliverable, x.defensible].map((v) => v ?? '-').join(' · ')})`)}`);
+    out.push(`\n**FoR**: ${F.frame || ''}${F.why ? ` — ${F.why}` : ''}\n\n**PoP — 최소한 무조건 갖춰야 하는 것**\n${list(f.pop, (x) => `${x.kind ? `[${POPK[x.kind] || x.kind}] ` : ''}${x.item} — ${x.why}`)}\n\n**PoD 후보 5** (원하는가 · 보여줄 수 있는가 · 우리만의 것인가)\n${list(f.pod_candidates, (x) => `${x.id} ${x.item} — ${x.gain} (${[x.desirable, x.deliverable, x.defensible].map((v) => v ?? '-').join(' · ')})`)}`);
     const sc = (f.scan && f.scan.scopes) || [];
     if (sc.length) {
       out.push('\n**웹 정찰 — 세 범위** (조수)');

@@ -272,7 +272,7 @@ function seriesStyle(series) { let r = 0; return series.map((se) => (se.kind ===
 function radarSVG({ axes, series, max = 5, size = 280, mini = false, cut = false, ariaLabel = '' }) {
   const n = axes.length;
   if (n < 3) return '';
-  const pad = mini ? 22 : 78;
+  const pad = mini ? 30 : 78;
   const R = size / 2 - pad;
   const cx = size / 2, cy = size / 2 + (n === 3 ? R * 0.18 : R * 0.06);
   const pt = (i, v) => { const a = -Math.PI / 2 + (i * 2 * Math.PI) / n; return [cx + Math.cos(a) * R * v, cy + Math.sin(a) * R * v]; };
@@ -288,12 +288,13 @@ function radarSVG({ axes, series, max = 5, size = 280, mini = false, cut = false
     const anchor = Math.abs(dx) < 6 ? 'middle' : dx > 0 ? 'start' : 'end';
     const ox = Math.abs(dx) < 6 ? 0 : dx > 0 ? 7 : -7; const oy = dy < -6 ? -8 : dy > 6 ? 15 : 4;
     return mini
-      ? `<text x="${(x + ox * 0.6).toFixed(1)}" y="${(y + oy * 0.8).toFixed(1)}" text-anchor="${anchor}" font-size="9" fill="${cut ? '#ABA79D' : '#45433F'}">${esc(a.short || a.name)}</text>`
+      ? `<text x="${Math.max(24, Math.min(size - 24, x)).toFixed(1)}" y="${(dy < -6 ? y - 7 : y + 13).toFixed(1)}" text-anchor="middle" font-size="9" fill="${cut ? '#ABA79D' : '#45433F'}">${esc(a.short || a.name)}</text>`
       : `<text x="${(x + ox).toFixed(1)}" y="${(y + oy).toFixed(1)}" text-anchor="${anchor}" font-size="11" fill="#141414"><tspan font-family="ui-monospace,monospace" font-weight="700">${esc(a.id)}</tspan> ${esc(String(a.name || '').slice(0, 8))}</text>`;
   }).join('');
   return `<svg class="radar" viewBox="0 0 ${size} ${size}" role="img" aria-label="${esc(ariaLabel)}">${grid}${spokes}${shapes}${dots}${labels}</svg>`;
 }
-const POD_AXES = [{ id: 'D', name: '바람직성', short: '바람직' }, { id: 'V', name: '전달성', short: '전달' }, { id: 'F', name: '방어성', short: '방어' }];
+// PoD 세 질문 — 데이터 키는 desirable · deliverable · defensible
+const POD_AXES = [{ id: 'D', name: '원하는가', short: '원하나' }, { id: 'V', name: '보여줄 수 있는가', short: '보여주나' }, { id: 'F', name: '우리만의 것인가', short: '우리만의 것' }];
 const podVals = (c) => [c.desirable, c.deliverable, c.defensible].map((v) => +v || 0);
 function podTriangle(c, { cut = false, size = 132 } = {}) {
   return radarSVG({ axes: POD_AXES, series: [{ name: c.id, kind: 'us', values: podVals(c) }], max: 1, size, mini: true, cut, ariaLabel: `${c.id} PoD 삼각형` });
@@ -372,7 +373,8 @@ function forpop(p, run) {
   const F = f.for || {};
   const cut1 = new Set(arr(arr(f.shifts)[0] && arr(f.shifts)[0].cut).map((c) => c.id));
   const cmp = f.compare;
-  const POP_KIND = { 카테고리: '카테고리 PoP', 경쟁: '경쟁 PoP', 상관: '상관 PoP' };
+  // 예전 결과(카테고리·경쟁·상관)도 새 이름으로 보인다
+  const POP_KIND = { 카테고리: '기본 조건', 경쟁: '경쟁 대응', 상관: '약점 보완', '기본 조건': '기본 조건', '경쟁 대응': '경쟁 대응', '약점 보완': '약점 보완' };
   const pops = [...arr(f.pop), ...arr(cmp && cmp.pop_add).map((x) => ({ ...x, added: true }))];
   return `${head('forpop', 'FoR · PoP · PoD', '앞선 모든 단계를 최종 검증하고, 웹 정찰 3범위와 발상의 전환으로 5 → 3 → 1 — 판단 브레인 공동 추론', f.painter_line)}
   <div class="stack">
@@ -391,9 +393,9 @@ function forpop(p, run) {
     <div class="fpp">
       <span class="fpp-label">FoR · FRAME OF REFERENCE</span>
       <div class="fpp-for"><div><h3 class="h3">${esc(F.frame)}</h3><span class="muted">${esc(F.category)} · 관성의 출처 — ${esc(F.inertia_source)}</span></div><span class="tag">${F.chosen ? `${esc(F.chosen)} · ` : ''}구조는 여기서 지킨다</span></div>
-      <div class="pop-band"><span class="fpp-label">PoP · 반드시 같아야 하는 것 — "충분히 괜찮다"면 된다</span>
+      <div class="pop-band"><span class="fpp-label">PoP · 최소한 무조건 갖춰야 하는 것 — "이 정도면 됐다"면 된다</span>
         ${pops.map((x) => `<div class="pop-item">${x.kind ? `<span class="pop-kind">${esc(POP_KIND[x.kind] || x.kind)}${x.added ? ' · 브레인 추가' : ''}</span>` : ''}<b>${esc(x.item)}</b><small>${x.added ? esc(x.why) : `없으면 ${esc(x.why)}`}</small></div>`).join('')}</div>
-      ${arr(f.pod_candidates).length ? `<div><div class="row" style="justify-content:space-between"><span class="kicker">PoD 후보 5 — 삼각형 공통 범례</span><span class="muted" style="font-size:12px">꼭짓점: 바람직성(타겟에게 의미) · 전달성(3초·실현) · 방어성(브랜드 근거·모방 난이도) · 0~1</span></div>
+      ${arr(f.pod_candidates).length ? `<div><div class="row" style="justify-content:space-between"><span class="kicker">PoD 후보 5 — 삼각형 공통 범례</span><span class="muted" style="font-size:12px">꼭짓점: 원하는가(타겟이 정말 원하나) · 보여줄 수 있는가(3초 안에 알아보게, 실제로 만들 수 있나) · 우리만의 것인가(근거가 있고 남이 쉽게 못 따라 하나) · 0~1</span></div>
         <div class="tri-row">${arr(f.pod_candidates).map((c) => `<div class="tri ${cut1.has(c.id) ? 'cut' : ''}">${podTriangle(c, { cut: cut1.has(c.id) })}<span class="mono">${esc(c.id)}</span><b>${esc(c.item)}</b><small class="muted">${esc(c.from || '')}</small></div>`).join('')}
         ${cmp && cmp.core_triangle ? `<div class="tri core">${podTriangle({ id: 'CORE', ...cmp.core_triangle })}<span class="mono">CORE</span><b>${esc((f.core_pod || {}).item || '')}</b><small class="muted">${esc(cmp.core_triangle.note || '정찰 반영 재평가')}</small></div>` : ''}</div></div>` : ''}
       ${nShift ? forpopFlowSVG(f) : waiting(f.scan ? '판단 브레인이 발상의 전환을 추론하는 중' : '조수들이 웹을 탐색하는 중')}
@@ -555,11 +557,20 @@ function inspireBox(run, stage) {
 
 const BASE = { brief, canvas, airplane, tunnel, positioning, forpop, concept, creative };
 /** 단계 패널 = 단계 결과 + 판단 브레인 카드 + 영감 입력 */
+/** 교열 기록 — 무엇을 어떻게 고쳤는지 감추지 않는다 */
+function polishBox(run, stage) {
+  const keys = stage === 'creative' ? ['creative', 'report'] : [stage];
+  const list = keys.flatMap((k) => arr(run.polish && run.polish[k]));
+  if (!list.length) return '';
+  return `<details class="polish"><summary><span class="kicker">교열 — ${list.length}곳을 사람이 읽는 문장으로 다듬었습니다</span></summary>
+    ${list.map((x) => `<div class="pl"><div class="b"><span class="muted">전</span> ${esc(x.before)}</div><div class="a"><span class="muted">후</span> ${esc(x.after)}</div>${x.issue ? `<small class="muted">${esc(x.issue)}</small>` : ''}</div>`).join('')}</details>`;
+}
+
 export const RENDER = Object.fromEntries(Object.entries(BASE).map(([k, fn]) => [k, (p, run, ctx) => {
   const html = fn(p, run, ctx);
   const m = html.indexOf('<!--/head-->');
   const cut = m >= 0 ? m + 12 : 0;
-  return html.slice(0, cut) + brainCard(run, k, ctx.lensNames || {}) + html.slice(cut) + inspireBox(run, k);
+  return html.slice(0, cut) + brainCard(run, k, ctx.lensNames || {}) + html.slice(cut) + polishBox(run, k) + inspireBox(run, k);
 }]));
 
 /** 하단 게이트 바 */

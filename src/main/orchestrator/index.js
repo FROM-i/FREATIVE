@@ -332,6 +332,46 @@ class Controller {
     }
   }
 
+  /* ---------- 교열 — 사람이 읽는 문장으로 ---------- */
+  /** 단계 결과에서 사람이 읽을 문장을 모아, 고쳐야 할 것만 고친다. 사실·ID·URL·카피는 건드리지 않는다 */
+  async polish(stage, obj, { skip = [] } = {}) {
+    if (!obj || settings.get().run.polish === false) return;
+    const KEYS = new Set(['statement', 'sentence', 'one_line', 'one_liner', 'coherence', 'why', 'reason', 'note', 'gain', 'how', 'summary', 'concept', 'keep', 'change', 'visible', 'task', 'headline', 'subhead', 'exec_summary', 'bullets', 'rationale', 'desc', 'target_view', 'exit_light', 'from_me', 'tension', 'cost', 'what', 'fixes', 'issues']);
+    const SKIP = new Set(['scan', 'rtb', 'citations', 'series', 'image_prompt', 'painter_line', 'line', 'source', 'url', 'id', 'polished', ...skip]);
+    const found = [];
+    const walk = (x, p, key) => {
+      if (found.length >= 90) return;
+      if (typeof x === 'string') {
+        if (KEYS.has(key) && /[가-힣]/.test(x) && x.length >= 18 && x.length <= 420 && !/^https?:/.test(x)) found.push({ id: `S${found.length + 1}`, path: p, text: x });
+        return;
+      }
+      if (Array.isArray(x)) { x.forEach((v, i) => walk(v, [...p, i], key)); return; }
+      if (x && typeof x === 'object') for (const [k, v] of Object.entries(x)) if (!SKIP.has(k)) walk(v, [...p, k], k);
+    };
+    walk(obj, [], '');
+    if (!found.length) return;
+    let res;
+    try {
+      res = await this.call({
+        role: 'editor', prompt: 'p_polish', stage, extras: false,
+        agent: { key: 'editor', name: '조수 · 교열', task: `문장 다듬기 · ${found.length}문장` },
+        ctx: { stageLabel: LABEL[stage] || stage, sentences: found.map(({ id, text }) => ({ id, text })) },
+      });
+    } catch (e) { this.line('시스템', `교열을 건너뜀 — ${e.message}`, stage); return; }
+    const by = Object.fromEntries(found.map((f) => [f.id, f]));
+    const applied = [];
+    for (const ed of arr(res.edits)) {
+      const f = by[ed.id];
+      if (!f || !ed.after || typeof ed.after !== 'string' || ed.after === f.text) continue;
+      if (ed.after.length > f.text.length * 1.6 + 20) continue; // 내용이 불어나면 받지 않는다
+      let t = obj; for (const k of f.path.slice(0, -1)) t = t[k];
+      if (t && t[f.path[f.path.length - 1]] === f.text) { t[f.path[f.path.length - 1]] = ed.after; applied.push({ before: f.text, after: ed.after, issue: ed.issue || '' }); }
+    }
+    this.run.polish = this.run.polish || {};
+    this.run.polish[stage] = applied;
+    if (applied.length) this.line('조수', `교열 — ${found.length}문장 중 ${applied.length}곳을 다듬었어요.`, stage);
+  }
+
   /* ---------- 더프롬 판단 브레인 ---------- */
   brainCfg(stage) { return (knowledge.load().brain.stages || {})[stage]; }
   brainEnabled(stage) {
@@ -598,7 +638,7 @@ class Controller {
       ctx: {
         round: 2, mission: this.mission, frame, candidates: r1.result, previous: r1.shift, scan: scanBrief, inspiration: this.inspirationFor('forpop'), lensTable: this.lensTable(),
         roundRule: '이번은 2차 — 1차와 다른 유형의 전환을 적용해 하나의 코어 PoD로 좁히고, 앞선 모든 단계가 이 코어로 이어지는지 렌즈별로 최종 점검한다.',
-        roundSchema: '{ "round": 2, "shift": { "type": "", "name": "", "question": "", "from": "", "to": "", "reasoning": "", "lenses": [] }, "core": { "id": "CORE", "item": "코어 PoD", "gain": "사람이 얻는 것", "from_ids": ["P?"], "statement": "FoR 안에서, PoP를 지키며, ○○로 다르다 — 한 문장", "why": "" }, "cut": [ { "id": "P?", "reason": "" } ], "rtb": [ { "fact": "", "source": "브리프|첨부:..|웹:<URL>|확인 필요" } ], "final_check": [ { "lens": "렌즈 ID", "ok": true, "note": "" } ], "verdict": "통과|보완", "line": "" }',
+        roundSchema: '{ "round": 2, "shift": { "type": "", "name": "", "question": "", "from": "", "to": "", "reasoning": "", "lenses": [] }, "core": { "id": "CORE", "item": "코어 PoD", "gain": "사람이 얻는 것", "from_ids": ["P?"], "statement": "무엇은 그대로 두고 무엇이 다른지, 사람이 읽는 자연스러운 한두 문장으로. 칸을 이어 붙이지 말고 FoR·PoP 같은 용어도 문장에 넣지 않는다", "why": "" }, "cut": [ { "id": "P?", "reason": "" } ], "rtb": [ { "fact": "", "source": "브리프|첨부:..|웹:<URL>|확인 필요" } ], "final_check": [ { "lens": "렌즈 ID", "ok": true, "note": "" } ], "verdict": "통과|보완", "line": "" }',
       },
       meta: { round: 2 },
     });
@@ -633,6 +673,7 @@ class Controller {
       line: cmp.line || r2.line,
     } };
     this.line('판단 브레인', cmp.line || (fp.compare.positioning && fp.compare.positioning.sentence), 'forpop');
+    await this.polish('forpop', fp);
   }
 
   /** 조수 셋이 웹을 직접 탐색 — 설정에서 끄거나 공급자가 웹 탐색을 못 하면 건너뛴다 */
@@ -750,6 +791,7 @@ class Controller {
     });
     this.run.results.concept = { ...this.run.results.concept, ...kit, final_id: final.id };
     this.line('화가', kit.painter_line, 'concept');
+    await this.polish('concept', this.run.results.concept, { skip: ['theme', 'keywords'] });
   }
 
   async stageCreative() {
@@ -768,6 +810,7 @@ class Controller {
     json.examples = (json.examples || []).slice(0, 5);
     this.run.results.creative = json;
     this.line('화가', json.painter_line, 'creative');
+    await this.polish('creative', json, { skip: ['headline'] });
   }
 
   imagesEnabled() {
@@ -973,6 +1016,7 @@ async function reportCore(projectId, emit, { force = false } = {}) {
       ctx: { digest: c.digest(true) },
     });
     c.run.results.report = json;
+    await c.polish('report', json, { skip: ['title'] });
     c.send('progress', { stage: 'creative' });
     return json;
   } finally { runs.delete(projectId); }

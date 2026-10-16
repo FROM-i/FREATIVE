@@ -298,7 +298,7 @@ async function renderSettings() {
   const catBy = Object.fromEntries(CAT.map((c) => [c.id, c]));
   const USES = E.uses || { text: [], image: [] };
   const found = S.discovered || { text: [], image: [] };
-  const ROLES = [['director', '화가 · 메인', '오케스트레이션 · 컨셉 · 가이드', 'text'], ['brain', '판단 브레인', '방향 제시 · 검증 · 발상의 전환', 'text'], ['sub', '조수 · 서브', '화가가 풀에서 고르지 않은 곳의 기본값', 'text'], ['image', '이미지', '화가가 이미지 풀에서 고르지 않은 곳의 기본값', 'image']];
+  const ROLES = [['director', '화가 · 메인', '오케스트레이션 · 컨셉 · 가이드', 'text'], ['brain', '판단 브레인', '방향 제시 · 검증 · 발상의 전환', 'text'], ['sub', '조수 · 서브', '화가가 풀에서 고르지 않은 곳의 기본값', 'text'], ['editor', '교열', '단계 끝마다 보고서 문장을 사람이 읽는 한국어로 다듬는다', 'text'], ['image', '이미지', '화가가 이미지 풀에서 고르지 않은 곳의 기본값', 'image']];
   const STAGE_KO = { forpop: 'FoR · PoP · PoD', concept: 'Concept · Theme', canvas: '캔버스', airplane: 'Airplane', tunnel: 'Tunnel', positioning: 'Positioning', creative: 'Creative' };
   const modelSel = (kind, value, attrs) => {
     const groups = {};
@@ -373,6 +373,7 @@ async function renderSettings() {
     </div>
 
     <div class="sgroup"><h3>실행</h3>
+      <div class="srow"><div class="lbl">교열<small>FoR·PoP·PoD · 컨셉 · Creative · 리포트가 끝날 때마다 비문·만든 말·번역투를 고친다 (사실·ID·카피는 그대로)</small></div><label class="toggle"><input type="checkbox" data-k="run.polish" ${s.run.polish !== false ? 'checked' : ''}/> 사용</label></div>
       <div class="srow"><div class="lbl">웹 정찰<small>FoR·PoP·PoD에서 조수 셋이 웹을 직접 탐색해 동일 카테고리 · 확장 범주 · 크리에이티브의 유사성/차별점을 확인 (검색 1회당 비용)</small></div><label class="toggle"><input type="checkbox" data-k="run.webSearch" ${s.run.webSearch !== false ? 'checked' : ''}/> 사용</label></div>
       <div class="srow"><div class="lbl">동시 조수 수</div><input class="input box" type="number" min="1" max="8" data-k="run.maxParallel" value="${s.run.maxParallel}" style="max-width:120px"/></div>
       <div class="srow"><div class="lbl">가이드 이미지</div><div class="inline"><label class="toggle"><input type="checkbox" data-k="run.generateImages" ${s.run.generateImages ? 'checked' : ''}/> 생성</label>

@@ -10,8 +10,8 @@ const DEFAULTS = {
     // 역할별 기본 모델 — 화가(메인·오케스트레이터) / 조수(서브) / 판단 브레인 / 이미지
     // 추천 구성 따르기 — knowledge/models.json(저장소 동기화)이 역할·풀·단가를 정한다. 끄면 아래 값을 직접 쓴다.
     followRecommended: true,
-    models: { director: 'gpt-6-astra', sub: 'gpt-6.1-sol', brain: 'gpt-6.1-sol', image: 'gpt-image-2.5-sunburst' },
-    roleEfforts: { director: 'high', brain: 'high', sub: 'low' },
+    models: { director: 'gpt-6-astra', sub: 'gpt-6.1-sol', brain: 'gpt-6.1-sol', editor: 'gpt-6.1-sol', image: 'gpt-image-2.5-sunburst' },
+    roleEfforts: { director: 'high', brain: 'high', sub: 'low', editor: 'medium' },
     imagePool: [],
     // 화가가 단계별로 고를 수 있는 모델 풀 — autoModel이 켜져 있으면 화가가 판단해 바꾼다
     autoModel: true,
@@ -53,6 +53,7 @@ const DEFAULTS = {
     brain: 'standard', // standard: 모든 단계 · core: 컨셉·FoR/PoP/PoD·Creative 중심 · off
     brainRetry: 1,     // 브레인이 '재작업' 판정 시 다시 그리는 횟수
     budgetUsd: 10,     // 미션당 예산 — 넘으면 경고
+    polish: true,      // 교열 — 단계 끝마다 보고서 문장을 다듬는다
     webSearch: true,   // FoR·PoP·PoD 차별성 검토에서 조수가 웹을 직접 탐색
     generateImages: true,
     imageQuality: 'medium',

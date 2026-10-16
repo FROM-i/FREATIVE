@@ -42,7 +42,7 @@ app.whenReady().then(async () => {
       if (n < 100) fail('CRLF 노하우 파싱 실패');
     }
 
-    const prompts = Object.keys(k.files).filter((f) => /^prompts\/(\d+_|b_|lib_|s_).+\.md$/.test(f));
+    const prompts = Object.keys(k.files).filter((f) => /^prompts\/(\d+_|b_|lib_|s_|p_).+\.md$/.test(f));
     for (const f of prompts) {
       const name = f.replace(/^prompts\//, '').replace(/\.md$/, '');
       const r = render(name, { type: {}, mission: {}, lensTable: 'x', stageLenses: 'x', knowhowIndex: 'x', roundSchema: '{}', roundRule: 'x' });
@@ -94,6 +94,8 @@ app.whenReady().then(async () => {
     const fpr = run.results.forpop;
     console.log('forpop for', fpr.for.chosen, '| scan', fpr.scan.scopes.map((x) => `${x.scope}:${x.citations.length}`).join(','), '| legend', fpr.compare.legend.axes.length, '| verdicts', fpr.compare.scopes.map((x) => x.verdict).join(','), '| searches', run.usage.searches);
     if (fpr.scan.scopes.length !== 3) fail('웹 정찰 3범위 누락');
+    console.log('polish', JSON.stringify(Object.fromEntries(Object.entries(run.polish || {}).map(([k, v]) => [k, v.length]))), '| core', fpr.core_pod.statement);
+    if (/로 다르다$/.test(fpr.core_pod.statement || '')) fail('교열이 칸 이어 붙인 문장을 고치지 않음');
     // 모델 구성 — 추천 구성(models.json): 화가 astra · 브레인 sol(핵심 단계 astra) · 조수 화가 배정 · 이미지 풀
     const am = (st, key) => run.agents.filter((x) => x.stage === st && x.key === key).map((x) => x.model.replace(/^mock:/, ''));
     console.log('models painter', am('concept', 'painter')[0], '| brain canvas', am('canvas', 'brain')[0], '| brain forpop', am('forpop', 'brain')[0], '| scout', am('forpop', 'scout-category')[0], '| image', am('creative', 'image')[0]);
