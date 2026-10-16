@@ -54,13 +54,39 @@ function build(p) {
     out.push('\n## 6. FoR · PoP · PoD — 최종 검증 · 발상의 전환');
     out.push('\n**앞선 단계 최종 검증**\n' + table(['단계', '핵심', '판정', '이유', '연결'], (f.audit || []).map((x) => [x.stage, x.core, x.verdict, x.note, x.link])));
     out.push(`\n연결성 — ${f.coherence || ''}`);
-    out.push(`\n**FoR**: ${(f.for || {}).frame || ''}\n\n**PoP**\n${list(f.pop, (x) => `${x.item} — ${x.why}`)}\n\n**PoD 후보 5**\n${list(f.pod_candidates, (x) => `${x.id} ${x.item} — ${x.gain}`)}`);
+    const F = f.for || {};
+    if (F.target_view) out.push(`\n타겟은 이것을 “${F.target_view}”에 빗대어 본다.`);
+    if ((F.options || []).length) out.push('\n**FoR — 네 방식**\n' + table(['방식', '틀', '경쟁 구도', '얻는 것', '치르는 것'], F.options.map((o) => [o.kind + (o.kind === F.chosen ? ' ●' : ''), o.frame, (o.competitors || []).join(', '), o.gain, o.cost])));
+    out.push(`\n**FoR**: ${F.frame || ''}${F.why ? ` — ${F.why}` : ''}\n\n**PoP**\n${list(f.pop, (x) => `${x.kind ? `[${x.kind}] ` : ''}${x.item} — ${x.why}`)}\n\n**PoD 후보 5** (바람직성 · 전달성 · 방어성)\n${list(f.pod_candidates, (x) => `${x.id} ${x.item} — ${x.gain} (${[x.desirable, x.deliverable, x.defensible].map((v) => v ?? '-').join(' · ')})`)}`);
+    const sc = (f.scan && f.scan.scopes) || [];
+    if (sc.length) {
+      out.push('\n**웹 정찰 — 세 범위** (조수)');
+      sc.forEach((x) => {
+        out.push(`\n*${x.title}* — ${x.summary || (x.skipped ? '웹 정찰 꺼짐' : '')}`);
+        if ((x.players || []).length) out.push(list(x.players, (pl) => `${pl.name} — ${pl.what}${pl.url ? ` ([출처](${pl.url}))` : ''}`));
+        if ((x.taken || []).length) out.push('이미 점유: ' + x.taken.map((t) => `${t.item}${t.pod ? `(${t.pod})` : ''}`).join(' · '));
+        if ((x.citations || []).length) out.push('근거: ' + x.citations.slice(0, 8).map((c) => `[${c.title || c.url}](${c.url})`).join(' · '));
+      });
+    }
     (f.shifts || []).forEach((sh, i) => {
       const s2 = sh.shift || {};
       out.push(`\n**발상의 전환 ${i + 1} · ${s2.type || ''} ${s2.name || ''}** (판단 브레인)\n- 질문: ${s2.question || ''}\n- ${s2.from || ''} → ${s2.to || ''}\n- 추론: ${s2.reasoning || ''}`);
       if (sh.result) out.push(list(sh.result, (x) => `${x.id} ${x.item} ← ${(x.from_ids || []).join('+')}`));
     });
     out.push(`\n**코어 PoD**: ${(f.core_pod || {}).item || ''}\n\n> ${(f.core_pod || {}).statement || ''}\n\n**RTB**\n${list(f.rtb, (x) => `${x.fact} (${x.source})`)}`);
+    const cmp = f.compare;
+    if (cmp) {
+      const axes = (cmp.legend && cmp.legend.axes) || [];
+      if (axes.length) {
+        out.push(`\n**차별성 판정 — 공통 범례 (${axes.length === 5 ? '오각형' : '삼각형'} · 0~5)**\n` + list(axes, (a) => `${a.id} ${a.name}${a.from_us ? ' (나로부터)' : ''} — 0 ${a.low} → 5 ${a.high}`));
+        const rows = [];
+        (cmp.scopes || []).forEach((x) => (x.series || []).forEach((se) => rows.push([x.title, se.name + (se.kind === 'us' ? ' ●' : ''), ...se.values.map(String), x.verdict || ''])));
+        out.push(table(['범위', '계열', ...axes.map((a) => a.id), '판정'], rows));
+      }
+      (cmp.scopes || []).forEach((x) => out.push(`\n*${x.title} · ${x.verdict || ''}* — ${x.note || ''}\n- 유사성: ${(x.similar || []).map((y) => y.item).join(' · ')}\n- 차별점: ${(x.different || []).map((y) => y.item).join(' · ')}`));
+      if (cmp.positioning) out.push(`\n**포지셔닝 진술문**\n\n> ${cmp.positioning.sentence || ''}`);
+      if ((cmp.fixes || []).filter(Boolean).length) out.push('\n**보완할 것**\n' + list(cmp.fixes.filter(Boolean), (x) => x));
+    }
   }
   if (r.concept) {
     const c = r.concept;

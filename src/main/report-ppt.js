@@ -217,6 +217,68 @@ function build(project) {
     s.addText(`최종 검증 — ${t(f.coherence, 90)}`, { x: M + 0.25, y: 6.15, w: W - 2 * M - 0.5, h: 0.4, fontFace: F, fontSize: 9, color: MUTE });
   }
 
+  /* 8-2 FoR 네 방식 · 포지셔닝 진술문 */
+  if (R.forpop && R.forpop.for && arr(R.forpop.for.options).length) {
+    const f = R.forpop, FR = f.for;
+    const s = newSlide('FoR — 소비자의 인식 프레임 · 경쟁 구도');
+    headline(s, FR.target_view ? `타겟은 이것을 “${t(FR.target_view, 40)}”에 빗대어 본다` : 'FoR — 어느 판에서 싸울 것인가');
+    const kinds = ['좁히기', '현재', '넓히기', '전환'];
+    const w = (W - 2 * M - 0.2 * 3) / 4;
+    kinds.forEach((k, i) => {
+      const o = arr(FR.options).find((x) => x.kind === k); if (!o) return;
+      const on = FR.chosen === k, x = M + i * (w + 0.2);
+      s.addShape(pptx.ShapeType.rect, { x, y: 1.75, w, h: 2.55, fill: { color: on ? Y : PAPER }, line: { color: on ? INK : HAIR, width: on ? 1.25 : 0.75 } });
+      s.addText([
+        { text: `${k}${on ? '  ● 선택' : ''}\n`, options: { fontSize: 9, bold: true, color: on ? INK : MUTE } },
+        { text: `${t(o.frame, 34)}\n\n`, options: { fontSize: 14, bold: true } },
+        { text: `경쟁 구도 — ${t(arr(o.competitors).join(', '), 60)}\n`, options: { fontSize: 9 } },
+        { text: `+ ${t(o.gain, 40)}\n`, options: { fontSize: 9 } },
+        { text: `− ${t(o.cost, 40)}`, options: { fontSize: 9, color: MUTE } },
+      ], { x: x + 0.12, y: 1.85, w: w - 0.24, h: 2.35, fontFace: F, color: INK, valign: 'top' });
+    });
+    const pops = arr(f.pop).slice(0, 5);
+    s.addText(`PoP  ·  ${pops.map((x) => `${x.kind ? `[${x.kind}] ` : ''}${x.item}`).join('   ·   ')}`, { x: M, y: 4.45, w: W - 2 * M, h: 0.45, fontFace: F, fontSize: 10, color: INK, align: 'center', valign: 'middle', shape: pptx.ShapeType.roundRect, rectRadius: 0.22, line: { color: INK, width: 0.75 } });
+    const pos = f.compare && f.compare.positioning;
+    if (pos && pos.slots) {
+      const S = pos.slots;
+      s.addText('포지셔닝 진술문 — [타겟]을 위해, [브랜드]는 [FoR] 안에서 [PoD]를 제공하는 [제품 유형]이다', { x: M, y: 5.1, w: W - 2 * M, h: 0.3, fontFace: F, fontSize: 9, bold: true, color: MUTE });
+      s.addText([
+        { text: `${t(S.target, 40)}`, options: { bold: true, underline: { style: 'sng' } } }, { text: '을 위해, ' },
+        { text: `${t(S.brand, 30)}`, options: { bold: true, underline: { style: 'sng' } } }, { text: '는 ' },
+        { text: `${t(S.frame, 30)}`, options: { bold: true, underline: { style: 'sng' } } }, { text: ' 안에서 ' },
+        { text: `${t(S.pod, 50)}`, options: { bold: true, highlight: Y } }, { text: '를 제공하는 ' },
+        { text: `${t(S.type, 30)}`, options: { bold: true, underline: { style: 'sng' } } }, { text: '이다.' },
+      ], { x: M, y: 5.4, w: W - 2 * M, h: 0.9, fontFace: F, fontSize: 16, color: INK, valign: 'top' });
+    }
+  }
+
+  /* 8-3 차별성 검토 — 세 범위 · 공통 범례 레이더 */
+  if (R.forpop && R.forpop.compare && arr(R.forpop.compare.legend && R.forpop.compare.legend.axes).length >= 3) {
+    const cmp = R.forpop.compare;
+    const axes = cmp.legend.axes;
+    const s = newSlide(`차별성 검토 — 웹 정찰 3범위 · 공통 범례 ${axes.length === 5 ? '오각형' : '삼각형'}`);
+    headline(s, t(cmp.line || '세 범위에서 같은 축으로 비교한다', 60));
+    s.addText(axes.map((a) => `${a.id} ${a.name}${a.from_us ? '(나로부터)' : ''}`).join('   ·   ') + '   |   0~5 · 노랑 = 우리', { x: M, y: 1.45, w: W - 2 * M, h: 0.3, fontFace: F, fontSize: 9, color: MUTE });
+    const cw = (W - 2 * M - 0.3 * 2) / 3;
+    arr(cmp.scopes).slice(0, 3).forEach((x, i) => {
+      const cx = M + i * (cw + 0.3);
+      const series = arr(x.series);
+      s.addText([{ text: `0${i + 1}  ${t(x.title, 24)}   `, options: { bold: true } }, { text: x.verdict || '', options: { bold: true, highlight: x.verdict === '겹침' ? 'F2C2B8' : x.verdict === '부분' ? Y : undefined } }], { x: cx, y: 1.8, w: cw, h: 0.35, fontFace: F, fontSize: 12, color: INK });
+      if (series.length) {
+        const colors = series.map((se, k) => (se.kind === 'us' ? 'E0B000' : k === 1 ? INK : MUTE));
+        s.addChart(pptx.ChartType.radar, series.map((se) => ({ name: t(se.name, 20), labels: axes.map((a) => `${a.id} ${t(a.name, 8)}`), values: se.values })), {
+          x: cx, y: 2.15, w: cw, h: 2.75, radarStyle: 'marker', chartColors: colors, lineSize: 2,
+          valAxisMinVal: 0, valAxisMaxVal: 5, valAxisMajorUnit: 1, valAxisLabelFontSize: 7, valAxisHidden: true,
+          catAxisLabelFontFace: F, catAxisLabelFontSize: 8, catAxisLabelColor: INK,
+          showLegend: true, legendPos: 'b', legendFontFace: F, legendFontSize: 8,
+        });
+      }
+      const sim = arr(x.similar).slice(0, 2).map((y) => `≈ ${t(y.item, 40)}`);
+      const dif = arr(x.different).slice(0, 2).map((y) => `≠ ${t(y.item, 40)}`);
+      s.addText([...sim, ...dif].map((line) => ({ text: line, options: { breakLine: true, paraSpaceAfter: 3 } })), { x: cx, y: 4.95, w: cw, h: 1.45, fontFace: F, fontSize: 9, color: INK, valign: 'top' });
+    });
+  }
+
   /* 9 Concept 5 → 3 → 1 */
   if (R.concept && R.concept.proposals) {
     const c = R.concept;

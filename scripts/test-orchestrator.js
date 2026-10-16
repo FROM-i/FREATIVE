@@ -28,8 +28,17 @@ app.whenReady().then(async () => {
     console.log('knowledge', k.manifest.version, 'isms', k.isms.length, 'types', k.types.types.length);
     console.log('knowhow index', k.knowhow.length);
     if (k.isms.length !== 16) fail('ISM 16개가 아님: ' + k.isms.length);
+    if (k.knowhow.length < 150) fail('노하우북 항목이 비었음: ' + k.knowhow.length);
+    // Windows 빌드처럼 CRLF가 섞여도 노하우가 읽혀야 한다
+    {
+      const kn = require(path.join(src, 'knowledge'));
+      const md = k.files['skill/references/catalog-form.md'].replace(/\n/g, '\r\n');
+      const n = kn.parseKnowhow(md, 'crlf').length;
+      console.log('knowhow CRLF', n);
+      if (n < 100) fail('CRLF 노하우 파싱 실패');
+    }
 
-    const prompts = Object.keys(k.files).filter((f) => /^prompts\/(\d+_|b_|lib_).+\.md$/.test(f));
+    const prompts = Object.keys(k.files).filter((f) => /^prompts\/(\d+_|b_|lib_|s_).+\.md$/.test(f));
     for (const f of prompts) {
       const name = f.replace(/^prompts\//, '').replace(/\.md$/, '');
       const r = render(name, { type: {}, mission: {}, lensTable: 'x', stageLenses: 'x', knowhowIndex: 'x', roundSchema: '{}', roundRule: 'x' });
@@ -78,6 +87,11 @@ app.whenReady().then(async () => {
     if (imgs < 3) fail('이미지 생성 안 됨');
     if (run.results.creative.examples.length < 3) fail('가이드 3종 미만');
     if (!brainStages.includes('concept') || !brainStages.includes('forpop')) fail('브레인 개입 누락');
+    const fpr = run.results.forpop;
+    console.log('forpop for', fpr.for.chosen, '| scan', fpr.scan.scopes.map((x) => `${x.scope}:${x.citations.length}`).join(','), '| legend', fpr.compare.legend.axes.length, '| verdicts', fpr.compare.scopes.map((x) => x.verdict).join(','), '| searches', run.usage.searches);
+    if (fpr.scan.scopes.length !== 3) fail('웹 정찰 3범위 누락');
+    if (!fpr.compare.scopes.every((x) => x.series.every((se) => se.values.length === fpr.compare.legend.axes.length))) fail('공통 범례 축 수 불일치');
+    if (!fpr.compare.positioning || !fpr.compare.positioning.sentence) fail('포지셔닝 진술문 없음');
     const r = report.exportProject(p.id);
     console.log('report', fs.statSync(r.reportPath).size, 'bytes');
 

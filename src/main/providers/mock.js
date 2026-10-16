@@ -166,8 +166,24 @@ const builders = {
       { stage: 'Positioning', core: '다가가는 그림 (하나만, 체험으로)', verdict: '유지', note: '빈자리 근거 충분', link: 'PoD의 출발점' },
     ],
     coherence: '나로부터(천천히 알아가는 거리) → 유보된 완결 → 거리별 층 → 다가가는 그림으로 하나의 코어가 이어진다',
-    for: { frame: '성수동 주말 팝업 스토어', category: '로컬 F&B 팝업', inertia_source: '멀리서 보이는 이름, 줄, 포토 스팟' },
-    pop: [{ item: '5m에서 읽히는 브랜드명', why: '무엇의 팝업인지 모른다', from: '시장' }, { item: '입구·운영 시간', why: '들어갈 수 없다', from: '사용 습관' }, { item: '시음 가능', why: 'F&B 팝업의 기본 기대', from: '타겟' }],
+    for: {
+      target_view: '주말 성수동에 늘 있는 브랜드 팝업 중 하나',
+      options: [
+        { kind: '좁히기', frame: '로컬 로스터리 시음 팝업', competitors: ['성수 독립 로스터리 팝업(유형)'], gain: '작은 판에서 1등이 쉽다', cost: '지나가는 사람에게는 너무 좁다' },
+        { kind: '현재', frame: '성수동 주말 팝업 스토어', competitors: ['대형 브랜드 팝업(유형)', '패션·뷰티 팝업(유형)'], gain: '설명이 필요 없다', cost: '포토존 경쟁에 휩쓸린다' },
+        { kind: '넓히기', frame: '주말 성수 산책 코스의 한 지점', competitors: ['카페 투어', '전시·갤러리'], gain: '산책 시간 전체가 시장', cost: '카페 전체와 싸운다' },
+        { kind: '전환', frame: '원두가 온 거리를 걷는 짧은 여행', competitors: ['전시·체험형 공간'], gain: '팝업 경쟁에서 빠져나온다', cost: '사인이 "팝업"으로 읽혀야 한다 — 상관 PoP 필요' },
+      ],
+      chosen: '현재',
+      why: '관성(팝업이라는 구조)은 그대로 두고, 해석에서 거리를 바꾼다 — 전환 틀은 PoD 쪽으로 넘긴다',
+      frame: '성수동 주말 팝업 스토어', category: '로컬 F&B 팝업', inertia_source: '멀리서 보이는 이름, 줄, 포토 스팟',
+    },
+    pop: [
+      { item: '5m에서 읽히는 브랜드명', kind: '카테고리', why: '무엇의 팝업인지 모른다', from: '시장' },
+      { item: '입구·운영 시간', kind: '카테고리', why: '들어갈 수 없다', from: '사용 습관' },
+      { item: '시음 가능', kind: '경쟁', why: '주변 F&B 팝업이 모두 시음을 준다', from: '타겟' },
+      { item: '한눈에 읽히는 첫 장면', kind: '상관', why: '"다가가야 완성"이 "멀리선 안 읽힘"으로 오해되지 않게', from: '사용 습관' },
+    ],
     pod_candidates: [
       { id: 'D1', item: '다가가야 완성되는 그래픽', gain: '멈춘 사람만 보는 두 번째 층', from: 'Positioning T2', desirable: 0.8, deliverable: 0.8, defensible: 0.6 },
       { id: 'D2', item: '산지까지의 거리', gain: '원두가 온 길을 안다', from: '브랜드 레이어', desirable: 0.6, deliverable: 0.5, defensible: 0.9 },
@@ -175,7 +191,79 @@ const builders = {
       { id: 'D4', item: '향의 입구', gain: '먼저 맡고 들어간다', from: '타겟 레이어', desirable: 0.6, deliverable: 0.4, defensible: 0.4 },
       { id: 'D5', item: '날씨 추천', gain: '오늘에 맞는 한 잔', from: 'Airplane ISM-KR', desirable: 0.5, deliverable: 0.6, defensible: 0.3 },
     ],
+    scan_plan: {
+      category: { question: '성수 F&B 팝업이 이미 약속하는 것', queries: ['성수동 커피 팝업 2026', '성수 로스터리 팝업스토어 시음'] },
+      expanded: { question: '주말 성수 산책자가 같은 30분을 쓰는 다른 선택지', queries: ['성수동 주말 가볼만한 곳', '성수 전시 체험 공간'] },
+      creative: { question: '커피·원두 광고와 팝업 사인의 표현 관습', queries: ['커피 원두 광고 카피 산지', '팝업스토어 외벽 사인 디자인'] },
+    },
     painter_line: '먼저 지나온 길을 다시 걸어 봤어. 끊긴 데는 없어.',
+  }),
+  s_scout: (ctx) => {
+    const u = (k) => `https://example.com/mock/${ctx.scope}/${k}`;
+    const data = {
+      category: {
+        summary: '성수 커피 팝업은 대부분 "한정 원두 + 포토존 + 굿즈"를 약속한다 (목업)',
+        players: [
+          { name: '대형 커피 브랜드 시즌 팝업 (목업)', what: '시즌 한정 음료와 대형 포토존', similar: ['시음 제공', '큰 브랜드명'], different: ['산지 이야기 없음', '거리에 따른 변화 없음'], url: u('a') },
+          { name: '로컬 로스터리 협업 팝업 (목업)', what: '산지 원두 비교 시음', similar: ['산지 강조 — D2와 겹침'], different: ['외벽은 정보 나열'], url: u('b') },
+        ],
+        conventions: [{ item: '입구 대형 포토존', url: u('a') }, { item: '시음 컵 + 굿즈', url: u('b') }],
+        taken: [{ item: '산지 원두 비교 시음', pod: 'D2', url: u('b') }],
+        open: ['보는 거리에 따라 다른 정보를 주는 사인'],
+        gaps: [],
+      },
+      expanded: {
+        summary: '성수 산책자는 같은 30분을 전시·체험형 공간과 카페 투어에 쓴다 (목업)',
+        players: [
+          { name: '체험형 전시 공간 (목업)', what: '걸으며 완성되는 동선형 전시', similar: ['다가가며 알게 되는 구조 — D1과 일부 겹침'], different: ['커피를 맛볼 수 없다', '입장료·예약'], url: u('c') },
+          { name: '카페 투어 (목업)', what: '공간 자체가 목적지', similar: ['머무는 경험'], different: ['지나가는 3초에는 말하지 않는다'], url: u('d') },
+        ],
+        conventions: [{ item: '예약·입장 대기', url: u('c') }],
+        taken: [{ item: '걸으며 완성되는 동선', pod: 'D1', url: u('c') }],
+        open: ['지나가는 3초와 머무는 3분을 함께 설계한 곳이 없다'],
+        gaps: ['산책 동선 체류 시간 수치 — 확인 필요'],
+      },
+      creative: {
+        summary: '커피 광고는 "산지 사진 + 장인 + 따뜻한 갈색" 문법이 지배적 (목업)',
+        players: [
+          { name: '원두 브랜드 산지 캠페인 (목업)', what: '농장 사진과 생산자 인터뷰', similar: ['산지 서사'], different: ['거리·스케일을 표현 장치로 쓰지 않음'], url: u('e') },
+        ],
+        conventions: [{ item: '크라프트지 · 갈색 톤 · 손글씨', url: u('e') }, { item: '산지 지도 일러스트', url: u('f') }],
+        taken: [{ item: '산지 지도', pod: 'D2', url: u('f') }],
+        open: ['거리(스케일)에 따라 읽히는 층이 바뀌는 그래픽'],
+        gaps: [],
+      },
+    }[ctx.scope] || { summary: '', players: [], conventions: [], taken: [], open: [], gaps: ['목업 범위 없음'] };
+    return { scope: ctx.scope, ...data };
+  },
+  b_compare: () => ({
+    legend: { shape: 'pentagon', axes: [
+      { id: 'A1', name: '거리별 층', low: '한 거리에서만 읽힘', high: '거리마다 다른 층', why: '우리의 관점 — 천천히 알아가는 거리', from_us: true },
+      { id: 'A2', name: '3초 가독성', low: '다가가야만 앎', high: '지나가며 바로 앎', why: '보행 3초의 관성', from_us: false },
+      { id: 'A3', name: '맛볼 수 있음', low: '보기만', high: '바로 시음', why: '타겟이 실제로 저울질', from_us: false },
+      { id: 'A4', name: '산지 근거', low: '근거 없음', high: '원두의 길이 보임', why: '방어성 — RTB', from_us: false },
+      { id: 'A5', name: '표현의 낯섦', low: '관습 그대로', high: '처음 보는 해석', why: '자메뷰 — 구조는 익숙, 해석은 새로움', from_us: true },
+    ] },
+    scopes: [
+      { scope: 'category', title: '동일 카테고리', series: [{ name: '우리', kind: 'us', values: [5, 4, 4, 4, 4] }, { name: '대형 브랜드 팝업', kind: 'ref', values: [1, 5, 4, 1, 2], source: 'https://example.com/mock/category/a' }, { name: '로스터리 협업 팝업', kind: 'ref', values: [1, 3, 5, 4, 2], source: 'https://example.com/mock/category/b' }],
+        similar: [{ item: '시음 · 큰 이름은 모두 갖춘다 — PoP', source: '웹:https://example.com/mock/category/a' }, { item: '산지 강조는 이미 있다', source: '웹:https://example.com/mock/category/b' }],
+        different: [{ item: '보는 거리에 따라 다른 층 — 아무도 안 한다', source: '웹:https://example.com/mock/category/a' }],
+        verdict: '차별', note: '산지는 겹치지만 "거리의 층"으로 해석이 다르다 — JAMAIS' },
+      { scope: 'expanded', title: '확장 범주 · 타겟 관점', series: [{ name: '우리', kind: 'us', values: [5, 4, 4, 4, 4] }, { name: '체험형 전시 공간', kind: 'ref', values: [4, 2, 0, 1, 5], source: 'https://example.com/mock/expanded/c' }],
+        similar: [{ item: '걸으며 완성되는 구조', source: '웹:https://example.com/mock/expanded/c' }],
+        different: [{ item: '지나가는 3초에도 읽힌다 · 맛볼 수 있다', source: '추론' }],
+        verdict: '부분', note: '다가가며 완성되는 구조는 전시에 있다 — 3초 가독성과 시음으로 비켜 간다' },
+      { scope: 'creative', title: '크리에이티브', series: [{ name: '우리', kind: 'us', values: [5, 4, 4, 4, 4] }, { name: '산지 캠페인 문법', kind: 'ref', values: [1, 3, 1, 5, 1], source: 'https://example.com/mock/creative/e' }],
+        similar: [{ item: '산지 서사 자체는 관습', source: '웹:https://example.com/mock/creative/e' }],
+        different: [{ item: '갈색·크라프트 대신 거리(스케일)를 표현 장치로', source: '웹:https://example.com/mock/creative/f' }],
+        verdict: '차별', note: '산지 지도·크라프트 문법을 두고 온다 — N6 코스튬 회피' },
+    ],
+    core_triangle: { desirable: 0.85, deliverable: 0.75, defensible: 0.7, note: '산지 근거가 붙어 방어성이 올라감' },
+    pop_add: [{ item: '시음 컵', kind: '경쟁', why: '동일 카테고리 모두가 준다', source: '웹:https://example.com/mock/category/b' }],
+    positioning: { slots: { target: '주말 오후 성수동을 걷는 20~30대', brand: '제주 로컬 로스터리', frame: '성수 주말 팝업', pod: '다가갈수록 원두가 온 먼 길이 완성되는 그림', type: '겨울 원두 시음 팝업' }, sentence: '주말 오후 성수동을 걷는 20~30대를 위해, 제주 로컬 로스터리는 성수 주말 팝업 안에서 다가갈수록 원두가 온 먼 길이 완성되는 그림을 제공하는 겨울 원두 시음 팝업이다.' },
+    verdict: '통과',
+    fixes: ['확장 범주와 부분 겹침 — 외벽 첫 장면의 3초 가독성을 상관 PoP로 지킬 것'],
+    line: '세 판에서 다 봤어. 겹치는 건 산지, 다른 건 거리.',
   }),
   b_direct: (ctx) => ({
     direction: `${(ctx.stageLabel || '').split(' — ')[0]} — "천천히 알아가는 거리"라는 우리의 시선을 놓치지 말 것. 팝업의 관성(크게·지금)은 구조로 지키고, 해석은 거리에서 만든다.`,
@@ -204,9 +292,9 @@ const builders = {
     round: 1,
     shift: { type: 'SCALE', name: '거리의 스케일', question: '보는 사람과의 거리를 바꾸면 차별점은 무엇이 되나?', from: '차별점을 "무엇을 보여줄까"로 찾았다', to: '차별점을 "얼마나 가까이서 무엇이 보일까"로 본다', reasoning: '자메뷰 — 사인이라는 익숙한 형식은 그대로, 거리에 따라 해석이 바뀐다. 나로부터 — 우리의 관점(천천히 알아가는 거리)과 일치', lenses: ['JAMAIS', 'FROM'] },
     result: [
-      { id: 'P1', item: '거리마다 다른 층의 그래픽', gain: '멈출수록 더 알게 된다', from_ids: ['D1', 'D2'], transformed: true, why: '다가감과 산지 거리를 하나의 원리로' },
-      { id: 'P2', item: '줄 선 3분의 원두 지도', gain: '기다림이 이야기가 된다', from_ids: ['D3'], transformed: true, why: '대기 시간을 0.3~1m 거리의 경험으로' },
-      { id: 'P3', item: '향이 먼저 닿는 거리', gain: '보기 전에 멈춘다', from_ids: ['D4'], transformed: true, why: '감각 거리' },
+      { id: 'P1', item: '거리마다 다른 층의 그래픽', gain: '멈출수록 더 알게 된다', from_ids: ['D1', 'D2'], transformed: true, why: '다가감과 산지 거리를 하나의 원리로', desirable: 0.85, deliverable: 0.75, defensible: 0.7 },
+      { id: 'P2', item: '줄 선 3분의 원두 지도', gain: '기다림이 이야기가 된다', from_ids: ['D3'], transformed: true, why: '대기 시간을 0.3~1m 거리의 경험으로', desirable: 0.7, deliverable: 0.7, defensible: 0.6 },
+      { id: 'P3', item: '향이 먼저 닿는 거리', gain: '보기 전에 멈춘다', from_ids: ['D4'], transformed: true, why: '감각 거리', desirable: 0.6, deliverable: 0.4, defensible: 0.4 },
     ],
     cut: [{ id: 'D5', reason: '브랜드 근거 없음(방어 불가)' }],
     line: '줌을 바꿔 봤어. 다섯이 셋으로 모였어.',
@@ -330,11 +418,19 @@ async function chat({ meta }) {
   return { json: b(meta.ctx || {}), model: 'mock', usage: { prompt_tokens: 3000 + Math.round(Math.random() * 4000), completion_tokens: 600 + Math.round(Math.random() * 900) } };
 }
 
+async function search({ meta }) {
+  const r = await chat({ meta });
+  const urls = new Set();
+  const j = r.json || {};
+  for (const k of ['players', 'conventions', 'taken']) for (const x of j[k] || []) if (x.url) urls.add(x.url);
+  return { ...r, citations: [...urls].map((url) => ({ url, title: '목업 출처' })), searches: 2 };
+}
+
 async function image({ size = '1536x1024', meta }) {
   await wait(1500, 2500);
   const [w, h] = size.split('x').map((n) => parseInt(n, 10) / 2);
   return { buffer: svgPlaceholder(meta && meta.example && meta.example.title, w, h), usage: null, model: 'gpt-image-1', quality: 'medium' };
 }
 
-module.exports = { chat, image, listModels: async () => ['mock'], test: async () => ({ ok: true, count: 1 }), name: 'mock' };
+module.exports = { chat, search, image, listModels: async () => ['mock'], test: async () => ({ ok: true, count: 1 }), name: 'mock' };
 void pick;

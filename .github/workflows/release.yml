@@ -46,6 +46,8 @@ jobs:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
+      # Windows 러너가 줄바꿈을 CRLF로 바꾸지 않게 — 지식 파일 파싱이 LF를 기대한다
+      - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:

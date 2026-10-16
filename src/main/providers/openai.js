@@ -1,6 +1,6 @@
 'use strict';
 /**
- * OpenAI 프로바이더 — Chat Completions(JSON 모드) + Images.
+ * OpenAI 프로바이더 — Chat Completions(JSON 모드) + Responses(웹 탐색) + Images.
  * 다른 모델 공급자를 붙일 때는 같은 메서드(chat, image, listModels, test)를 가진 파일을 providers/에 추가한다.
  */
 const settings = require('../settings');
@@ -88,6 +88,72 @@ async function chat({ role = 'director', model: override, effort, system, conten
   return { json, model, usage: r.usage || null };
 }
 
+/** Responses API 출력에서 본문 · 인용 URL · 검색 횟수를 모은다 */
+function readResponse(r) {
+  let text = '';
+  const citations = [];
+  let searches = 0;
+  for (const item of r.output || []) {
+    if (item.type === 'web_search_call') {
+      searches++;
+      const srcs = (item.action && item.action.sources) || [];
+      for (const s of srcs) if (s && s.url) citations.push({ url: s.url, title: s.title || '', consulted: true });
+    }
+    if (item.type === 'message') {
+      for (const c of item.content || []) {
+        if (c.type !== 'output_text') continue;
+        text += c.text || '';
+        for (const a of c.annotations || []) if (a.type === 'url_citation' && a.url) citations.push({ url: a.url, title: a.title || '' });
+      }
+    }
+  }
+  if (!text && typeof r.output_text === 'string') text = r.output_text;
+  // 같은 URL은 하나로 — 본문 인용을 우선
+  const seen = new Map();
+  for (const c of citations) { const k = c.url.replace(/[#?].*$/, ''); if (!seen.has(k) || (seen.get(k).consulted && !c.consulted)) seen.set(k, c); }
+  return { text, citations: [...seen.values()], searches };
+}
+
+/**
+ * 웹 탐색 — Responses API + web_search 도구. 조수가 웹을 직접 확인하고 JSON으로 정리한다.
+ * 반환: { json, model, usage, citations:[{url,title}], searches }
+ */
+async function search({ role = 'sub', model: override, effort, system, content, signal }) {
+  const c = cfg();
+  const model = override || c.models[role] || c.models.sub || c.models.director;
+  const text = (Array.isArray(content) ? content : [{ type: 'text', text: String(content || '') }]).filter((x) => x.type === 'text').map((x) => x.text).join('\n');
+  const tool = { type: 'web_search', search_context_size: 'medium', user_location: { type: 'approximate', country: 'KR' } };
+  const body = {
+    model,
+    instructions: system,
+    input: [{ role: 'user', content: [{ type: 'input_text', text }] }],
+    tools: [tool],
+    tool_choice: 'auto',
+    include: ['web_search_call.action.sources'],
+    text: { format: { type: 'json_object' } },
+  };
+  let eff = effort || c.reasoningEffort;
+  if (eff === 'minimal') eff = 'low'; // web_search는 minimal 추론을 지원하지 않는다
+  if (eff && /^(gpt-5|o\d)/.test(model)) body.reasoning = { effort: eff };
+  let r;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try { r = await request('/responses', body, { signal, timeoutSec: Math.max(300, c.timeoutSec || 0) }); break; } catch (e) {
+      const msg = String(e.message || '');
+      if (e.status !== 400) throw e;
+      if (/web_search/.test(msg) && tool.type === 'web_search') { tool.type = 'web_search_preview'; delete tool.search_context_size; continue; }
+      if (/include/.test(msg) && body.include) { delete body.include; continue; }
+      if (/text\.format|json_object|response_format/.test(msg) && body.text) { delete body.text; continue; }
+      if (/reasoning/.test(msg) && body.reasoning) { delete body.reasoning; continue; }
+      if (/user_location/.test(msg) && tool.user_location) { delete tool.user_location; continue; }
+      throw e;
+    }
+  }
+  if (!r) throw new Error('웹 탐색 요청 실패');
+  const out = readResponse(r);
+  const json = parseJSON(out.text);
+  return { json, model, usage: r.usage || null, citations: out.citations, searches: out.searches };
+}
+
 async function image({ prompt, size = '1536x1024', signal }) {
   const c = cfg();
   const q = settings.get().run.imageQuality;
@@ -112,4 +178,4 @@ async function test() {
   return { ok: true, count: ids.length };
 }
 
-module.exports = { chat, image, listModels, test, parseJSON, name: 'openai' };
+module.exports = { chat, search, image, listModels, test, parseJSON, name: 'openai' };

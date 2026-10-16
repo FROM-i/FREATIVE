@@ -38,6 +38,8 @@ async function boot() {
   });
   api.run.onEvent(onRunEvent);
   $$('.rail-btn').forEach((b) => b.addEventListener('click', () => go(b.dataset.nav)));
+  // 웹 근거 링크 — 기본 브라우저로 연다
+  document.addEventListener('click', (e) => { const a = e.target.closest('[data-ext]'); if (!a) return; e.preventDefault(); e.stopPropagation(); window.api.app.openExternal(a.dataset.ext); }, true);
   const list = await api.projects.list();
   if (!S.settings.has.openaiKey && !S.info.mock) { go('settings'); toast('먼저 OpenAI API 키를 입력하세요'); }
   else go(list.length ? 'projects' : 'intake');
@@ -247,7 +249,7 @@ async function renderSettings() {
   const usage = await api.usage.summary();
   const s = S.settings, k = S.knowledge, u = S.update;
   const o = s.openai, m = o.models;
-  const pricing = Object.entries(s.pricing || {}).filter(([kk]) => kk !== 'image');
+  const pricing = Object.entries(s.pricing || {}).filter(([kk, v]) => kk !== 'image' && v && typeof v === 'object');
   const months = Object.entries(usage.byMonth || {}).sort().slice(-6);
   const maxM = Math.max(0.0001, ...months.map(([, v]) => v));
   view.innerHTML = `<div class="settings">
@@ -289,10 +291,12 @@ async function renderSettings() {
         <div class="stack" style="gap:6px"><div class="price-row muted"><span>모델</span><span>입력</span><span>캐시 입력</span><span>출력</span></div>
           ${pricing.map(([id, p]) => `<div class="price-row" data-model="${esc(id)}"><span class="mono">${esc(id)}</span><input class="input box" type="number" step="0.001" data-price="in" value="${p.in}"/><input class="input box" type="number" step="0.001" data-price="cached" value="${p.cached ?? ''}"/><input class="input box" type="number" step="0.001" data-price="out" value="${p.out}"/></div>`).join('')}
           <div class="price-row"><span class="muted">이미지 1장 (usage 없을 때)</span>${['low', 'medium', 'high'].map((q) => `<input class="input box" type="number" step="0.001" data-imgprice="${q}" value="${(s.pricing.image || {})[q] ?? ''}" title="${q}"/>`).join('')}</div>
+          <div class="price-row"><span class="muted">웹 검색 1회</span><input class="input box" type="number" step="0.001" data-webprice value="${s.pricing.webSearch ?? 0.01}" title="USD / 1회"/></div>
           <div class="inline"><input class="input box" id="newModel" placeholder="모델 ID 추가 (예: gpt-5.1)"/><button class="btn xs" data-s="priceAdd">추가</button></div></div></div>
     </div>
 
     <div class="sgroup"><h3>실행</h3>
+      <div class="srow"><div class="lbl">웹 정찰<small>FoR·PoP·PoD에서 조수 셋이 웹을 직접 탐색해 동일 카테고리 · 확장 범주 · 크리에이티브의 유사성/차별점을 확인 (검색 1회당 비용)</small></div><label class="toggle"><input type="checkbox" data-k="run.webSearch" ${s.run.webSearch !== false ? 'checked' : ''}/> 사용</label></div>
       <div class="srow"><div class="lbl">동시 조수 수</div><input class="input box" type="number" min="1" max="8" data-k="run.maxParallel" value="${s.run.maxParallel}" style="max-width:120px"/></div>
       <div class="srow"><div class="lbl">가이드 이미지</div><div class="inline"><label class="toggle"><input type="checkbox" data-k="run.generateImages" ${s.run.generateImages ? 'checked' : ''}/> 생성</label>
         <div class="seg" data-seg="run.imageQuality">${['low', 'medium', 'high'].map((v) => `<button data-v="${v}" class="${s.run.imageQuality === v ? 'on' : ''}">${v}</button>`).join('')}</div></div></div>
@@ -331,9 +335,10 @@ async function renderSettings() {
     $$('.price-row[data-model]', view).forEach((r) => { const id = r.dataset.model; pricing[id] = { ...(pricing[id] || {}), in: num(r.querySelector('[data-price=in]')) || 0, cached: num(r.querySelector('[data-price=cached]')), out: num(r.querySelector('[data-price=out]')) || 0 }; });
     pricing.image = { ...(pricing.image || {}) };
     $$('[data-imgprice]', view).forEach((el) => { pricing.image[el.dataset.imgprice] = num(el); });
+    const wp = $('[data-webprice]', view); if (wp) pricing.webSearch = num(wp) ?? 0.01;
     return setPath('pricing', pricing);
   };
-  $$('[data-price],[data-imgprice]', view).forEach((el) => el.addEventListener('change', savePrices));
+  $$('[data-price],[data-imgprice],[data-webprice]', view).forEach((el) => el.addEventListener('change', savePrices));
   view.onclick = async (e) => {
     const b = e.target.closest('[data-s]'); if (!b) return;
     const a = b.dataset.s;

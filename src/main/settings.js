@@ -38,6 +38,7 @@ const DEFAULTS = {
     'gpt-4o': { in: 2.5, cached: 1.25, out: 10 },
     'gpt-image-1': { in: 5, cached: 1.25, out: 40, imageIn: 10 },
     image: { low: 0.016, medium: 0.063, high: 0.25 },
+    webSearch: 0.01, // 웹 검색 1회 (USD) — 검색 결과 토큰은 모델 단가로 따로 계산된다
   },
   krwPerUsd: 1400,
   lastWorker: '',
@@ -47,6 +48,7 @@ const DEFAULTS = {
     brain: 'standard', // standard: 모든 단계 · core: 컨셉·FoR/PoP/PoD·Creative 중심 · off
     brainRetry: 1,     // 브레인이 '재작업' 판정 시 다시 그리는 횟수
     budgetUsd: 5,      // 미션당 예산 — 넘으면 경고
+    webSearch: true,   // FoR·PoP·PoD 차별성 검토에서 조수가 웹을 직접 탐색
     generateImages: true,
     imageQuality: 'medium',
   },

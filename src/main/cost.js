@@ -19,11 +19,17 @@ function pricingFor(model) {
 function chatCost(model, usage) {
   if (!usage) return { usd: 0, input: 0, cached: 0, output: 0 };
   const input = usage.prompt_tokens || usage.input_tokens || 0;
-  const cached = (usage.prompt_tokens_details && usage.prompt_tokens_details.cached_tokens) || 0;
+  const cached = (usage.prompt_tokens_details && usage.prompt_tokens_details.cached_tokens) || (usage.input_tokens_details && usage.input_tokens_details.cached_tokens) || 0;
   const output = usage.completion_tokens || usage.output_tokens || 0;
   const p = pricingFor(model);
   const usd = p ? ((input - cached) * p.in + cached * (p.cached ?? p.in) + output * p.out) / 1e6 : 0;
   return { usd, input, cached, output, priced: !!p };
+}
+
+/** 웹 검색 도구 호출 비용 — 1회 단가(설정 pricing.webSearch) × 횟수 */
+function searchCost(n) {
+  const per = (settings.get().pricing || {}).webSearch ?? 0.01;
+  return { usd: (n || 0) * per, searches: n || 0 };
 }
 
 function imageCost(model, usage, size, quality) {
@@ -66,4 +72,4 @@ function summary() {
   return out;
 }
 
-module.exports = { chatCost, imageCost, record, summary, pricingFor };
+module.exports = { chatCost, imageCost, searchCost, record, summary, pricingFor };

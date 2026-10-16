@@ -15,7 +15,7 @@
  *  airplane    airplane    조수 N → 화가                 방향(사조 계획 조정 가능) · 검증
  *  tunnel      tunnel      조수 N → 화가                 방향 · 검증
  *  positioning exit        화가                          방향 · 검증
- *  forpop      compass     화가(검증·후보5) → 브레인 전환 ×2   방향 · 발상의 전환 · 최종 점검
+ *  forpop      compass     화가(검증·FoR 4방식·후보5) → 조수 웹 정찰 ×3 → 브레인 전환 ×2 → 브레인 차별성 판정   발상의 전환 · 공통 범례 판정
  *  concept     newcanvas   화가 5안·1차 3안 → 브레인 3→1 → 화가 키트   방향 · 자체 검증 → C 게이트(사람)
  *  creative    gallery     화가 + 이미지 조수            방향 · 검증
  */
@@ -49,9 +49,17 @@ const LAYER_DEFAULTS = [
   { key: 'usage', label: '사용 습관', question: '실제로 어떻게 만나고, 그 순간 무엇을 원하는가' },
 ];
 
+// FoR · PoP · PoD 차별성 검토 — 세 범위 (knowledge/method/forpop.md §4)
+const SCOPES = [
+  { id: 'category', title: '동일 카테고리', desc: '같은 FoR 안의 직접 경쟁자 — 그들이 이미 말하는 약속 · 기능 · 경험' },
+  { id: 'expanded', title: '확장 범주 · 타겟 관점', desc: '타겟이 같은 시간·돈·주의를 쓰는 대체재 — 카테고리 밖이지만 타겟에게는 같은 선택지' },
+  { id: 'creative', title: '크리에이티브', desc: '광고·소재 표현 자체 — 카피 · 비주얼 문법 · 매체 사용 · 톤의 관습' },
+];
+
 const runs = new Map(); // projectId → controller
 
 function now() { return new Date().toISOString(); }
+const arr = (x) => (Array.isArray(x) ? x : x == null ? [] : [x]);
 const clone = (x) => JSON.parse(JSON.stringify(x === undefined ? null : x));
 
 function emptyRun() {
@@ -216,7 +224,7 @@ class Controller {
     if (R.airplane && R.airplane.synth) d.airplane = { hybrid: R.airplane.synth.hybrid, suitcase: R.airplane.synth.suitcase, selected: R.airplane.synth.selected };
     if (R.tunnel && R.tunnel.synth) d.tunnel = { narrowed: R.tunnel.synth.narrowed, keep: R.tunnel.synth.keep, change: R.tunnel.synth.change, exit_light: R.tunnel.synth.exit_light };
     if (R.positioning) { const p = R.positioning; const t = (p.territories || []).find((x) => p.final && x.id === p.final.id); d.positioning = { axes: p.axes && { x: p.axes.x && p.axes.x.name, y: p.axes.y && p.axes.y.name }, whitespace: p.whitespace && p.whitespace.label, chosen: t && t.name, reason: p.final && p.final.reason }; }
-    if (R.forpop) d.forpop = { for: R.forpop.for && R.forpop.for.frame, pop: (R.forpop.pop || []).map((x) => x.item), core_pod: R.forpop.core_pod, shifts: (R.forpop.shifts || []).map((s) => s.shift && `${s.shift.type} ${s.shift.name}`), coherence: R.forpop.coherence };
+    if (R.forpop) d.forpop = { for: R.forpop.for && R.forpop.for.frame, for_kind: R.forpop.for && R.forpop.for.chosen, pop: (R.forpop.pop || []).map((x) => x.item), core_pod: R.forpop.core_pod, positioning: R.forpop.compare && R.forpop.compare.positioning && R.forpop.compare.positioning.sentence, differentiation: R.forpop.compare && (R.forpop.compare.scopes || []).map((x) => `${x.title}: ${x.verdict || ''}`), shifts: (R.forpop.shifts || []).map((s) => s.shift && `${s.shift.type} ${s.shift.name}`), coherence: R.forpop.coherence };
     if (R.concept) d.concept = { concept: R.concept.concept, theme: R.concept.theme, keywords: R.concept.keywords, philosophy_core: R.concept.philosophy_core, ...(full ? { proposals: (R.concept.proposals || []).map((p) => ({ id: p.id, theme: p.theme, concept: p.concept })), first_round: R.concept.first_round, brain_select: R.concept.brain_select && R.concept.brain_select.final } : {}) };
     if (R.creative) d.creative = (R.creative.examples || []).map((e) => ({ direction: e.direction, title: e.title, headline: e.headline, one_liner: e.one_liner, ...(full ? { structure: (e.structure || []).map((s) => s.name), detail: e.detail } : {}) }));
     const bv = Object.entries(this.run.brain).filter(([, v]) => v && v.verify).map(([k, v]) => ({ stage: k, verdict: v.verify.verdict, issues: (v.verify.issues || []).slice(0, 2) }));
@@ -227,7 +235,7 @@ class Controller {
   }
 
   /* ---------- 모델 호출 ---------- */
-  async call({ role, prompt, ctx, agent, stage, withMedia = false, meta = {}, extras = true }) {
+  async call({ role, prompt, ctx, agent, stage, withMedia = false, meta = {}, extras = true, search = false }) {
     if (this.abort.signal.aborted) throw new Error('취소됨');
     const { system, user } = render(prompt, ctx);
     const content = [{ type: 'text', text: user + (extras ? this.extras(stage, role) : '') }];
@@ -247,13 +255,21 @@ class Controller {
     this.run.agents.push(a);
     this.send('agent-start', { agent: a });
     try {
-      const r = await this.provider.chat({ role, model: pick.model, effort: pick.effort, system, content, signal: this.abort.signal, meta: { stage, prompt, ...meta, ctx } });
+      const fn = search && this.provider.search ? this.provider.search : this.provider.chat;
+      const r = await fn({ role, model: pick.model, effort: pick.effort, system, content, signal: this.abort.signal, meta: { stage, prompt, ...meta, ctx } });
       a.status = 'done'; a.endedAt = now();
       this.run.usage.calls++;
       if (r.usage) { this.run.usage.prompt += r.usage.prompt_tokens || 0; this.run.usage.completion += r.usage.completion_tokens || 0; }
       const c = cost.chatCost(pick.model, r.usage);
       a.cost = c.usd; a.tokens = { in: c.input, out: c.output };
       this.addCost(stage, c.usd, { model: pick.model, role, input: c.input, output: c.output });
+      if (search) {
+        const sc = cost.searchCost(r.searches);
+        if (sc.usd) { a.cost += sc.usd; this.addCost(stage, sc.usd, { model: 'web_search', role, searches: sc.searches }); }
+        a.searches = r.searches || 0;
+        this.run.usage.searches = (this.run.usage.searches || 0) + (r.searches || 0);
+        return { ...r.json, _citations: r.citations || [], _searches: r.searches || 0 };
+      }
       return r.json;
     } catch (e) {
       a.status = 'error'; a.endedAt = now(); a.error = e.message;
@@ -487,40 +503,48 @@ class Controller {
   }
 
   async stageForpop() {
-    // ① 화가 — 앞선 모든 단계의 최종 검증 + FoR · PoP · PoD 후보 5
+    // ① 화가 — 앞선 모든 단계의 최종 검증 + FoR(네 방식) · PoP · PoD 후보 5 · 정찰 계획
     const base = await this.call({
       role: 'director', prompt: '08_forpop', stage: 'forpop',
-      agent: { key: 'painter', name: '화가', task: '최종 검증 · FoR · PoP · PoD 후보 5' },
+      agent: { key: 'painter', name: '화가', task: '최종 검증 · FoR · PoP · PoD 후보 5 · 정찰 계획' },
       ctx: { mission: this.mission, canvas: this.run.results.canvas, airplane: this.run.results.airplane.synth, tunnel: this.tunnelDigest(), positioning: this.positioningDigest() },
     });
     this.run.results.forpop = { ...base, shifts: [] };
     this.line('화가', base.painter_line, 'forpop');
-    this.setStage('forpop', { progress: 0.4 });
+    this.setStage('forpop', { progress: 0.25 });
     this.send('progress', { stage: 'forpop' });
     const frame = { for: base.for, pop: base.pop, coherence: base.coherence };
-    // ② 브레인 — 발상의 전환 1 (5 → 3)
+
+    // ② 조수 ×3 — 웹 정찰: 동일 카테고리 · 확장 범주 · 크리에이티브
+    const scan = await this.scoutScopes(base, frame);
+    this.run.results.forpop.scan = scan;
+    this.setStage('forpop', { progress: 0.45 });
+    this.send('progress', { stage: 'forpop' });
+    const scanBrief = this.scanDigest(scan);
+
+    // ③ 브레인 — 발상의 전환 1 (5 → 3)
     const r1 = await this.call({
       role: 'brain', prompt: 'b_shift', stage: 'forpop', extras: false,
       agent: { key: 'brain', name: '판단 브레인', task: '발상의 전환 1 · PoD 5 → 3' },
       ctx: {
-        round: 1, mission: this.mission, frame, candidates: base.pod_candidates, previous: null, inspiration: this.inspirationFor('forpop'), lensTable: this.lensTable(),
+        round: 1, mission: this.mission, frame, candidates: base.pod_candidates, previous: null, scan: scanBrief, inspiration: this.inspirationFor('forpop'), lensTable: this.lensTable(),
         roundRule: '이번은 1차 — 5개를 전환된 시선으로 다시 보고 3개로 좁힌다(합치거나 변형 가능). id는 P1~P3.',
-        roundSchema: '{ "round": 1, "shift": { "type": "INVERT|VIEW|SCALE|TIME|SENSE|COMBINE|SUBTRACT|CONTEXT", "name": "전환 이름", "question": "전환 질문", "from": "기존 사고", "to": "전환된 사고", "reasoning": "브레인의 추론 — 렌즈 근거", "lenses": ["렌즈 ID"] }, "result": [ { "id": "P1", "item": "", "gain": "", "from_ids": ["D?"], "transformed": true, "why": "" } ], "cut": [ { "id": "D?", "reason": "" } ], "line": "" }',
+        roundSchema: '{ "round": 1, "shift": { "type": "INVERT|VIEW|SCALE|TIME|SENSE|COMBINE|SUBTRACT|CONTEXT", "name": "전환 이름", "question": "전환 질문", "from": "기존 사고", "to": "전환된 사고", "reasoning": "브레인의 추론 — 렌즈 근거", "lenses": ["렌즈 ID"] }, "result": [ { "id": "P1", "item": "", "gain": "", "from_ids": ["D?"], "transformed": true, "why": "", "desirable": 0.0, "deliverable": 0.0, "defensible": 0.0 } ], "cut": [ { "id": "D?", "reason": "" } ], "line": "" }',
       },
       meta: { round: 1 },
     });
     this.run.results.forpop.shifts.push(r1);
     this.line('판단 브레인', r1.line || (r1.shift && r1.shift.to), 'forpop');
-    this.setStage('forpop', { progress: 0.65 });
+    this.setStage('forpop', { progress: 0.62 });
     this.send('progress', { stage: 'forpop' });
-    // ③ 브레인 — 발상의 전환 2 (3 → 1) + 최종 점검
+    // ④ 브레인 — 발상의 전환 2 (3 → 1) + 최종 점검
     const r2 = await this.call({
       role: 'brain', prompt: 'b_shift', stage: 'forpop', extras: false,
       agent: { key: 'brain', name: '판단 브레인', task: '발상의 전환 2 · PoD 3 → 1 · 최종 점검' },
       ctx: {
-        round: 2, mission: this.mission, frame, candidates: r1.result, previous: r1.shift, inspiration: this.inspirationFor('forpop'), lensTable: this.lensTable(),
+        round: 2, mission: this.mission, frame, candidates: r1.result, previous: r1.shift, scan: scanBrief, inspiration: this.inspirationFor('forpop'), lensTable: this.lensTable(),
         roundRule: '이번은 2차 — 1차와 다른 유형의 전환을 적용해 하나의 코어 PoD로 좁히고, 앞선 모든 단계가 이 코어로 이어지는지 렌즈별로 최종 점검한다.',
-        roundSchema: '{ "round": 2, "shift": { "type": "", "name": "", "question": "", "from": "", "to": "", "reasoning": "", "lenses": [] }, "core": { "id": "CORE", "item": "코어 PoD", "gain": "사람이 얻는 것", "from_ids": ["P?"], "statement": "FoR 안에서, PoP를 지키며, ○○로 다르다 — 한 문장", "why": "" }, "cut": [ { "id": "P?", "reason": "" } ], "rtb": [ { "fact": "", "source": "브리프|첨부:..|확인 필요" } ], "final_check": [ { "lens": "렌즈 ID", "ok": true, "note": "" } ], "verdict": "통과|보완", "line": "" }',
+        roundSchema: '{ "round": 2, "shift": { "type": "", "name": "", "question": "", "from": "", "to": "", "reasoning": "", "lenses": [] }, "core": { "id": "CORE", "item": "코어 PoD", "gain": "사람이 얻는 것", "from_ids": ["P?"], "statement": "FoR 안에서, PoP를 지키며, ○○로 다르다 — 한 문장", "why": "" }, "cut": [ { "id": "P?", "reason": "" } ], "rtb": [ { "fact": "", "source": "브리프|첨부:..|웹:<URL>|확인 필요" } ], "final_check": [ { "lens": "렌즈 ID", "ok": true, "note": "" } ], "verdict": "통과|보완", "line": "" }',
       },
       meta: { round: 2 },
     });
@@ -530,15 +554,112 @@ class Controller {
     fp.rtb = r2.rtb || [];
     fp.final_check = r2.final_check || [];
     fp.verdict = r2.verdict;
-    this.run.brain.forpop = { ...(this.run.brain.forpop || {}), verify: { verdict: r2.verdict === '통과' ? '통과' : '보완', scores: (r2.final_check || []).map((c) => ({ lens: c.lens, score: c.ok ? 4 : 2, note: c.note })), issues: (r2.final_check || []).filter((c) => !c.ok).map((c) => c.note), fixes: [], line: r2.line } };
     this.line('판단 브레인', r2.line || (fp.core_pod && fp.core_pod.statement), 'forpop');
+    this.setStage('forpop', { progress: 0.8 });
+    this.send('progress', { stage: 'forpop' });
+
+    // ⑤ 브레인 — 세 범위 차별성 판정 · 공통 범례 · 포지셔닝 진술문
+    const cmp = await this.call({
+      role: 'brain', prompt: 'b_compare', stage: 'forpop', extras: false,
+      agent: { key: 'brain', name: '판단 브레인', task: '차별성 판정 · 세 범위 · 공통 범례' },
+      ctx: {
+        mission: this.mission, frame, scan: scanBrief, inspiration: this.inspirationFor('forpop'), lensTable: this.lensTable(),
+        pod: { core: fp.core_pod, candidates: base.pod_candidates, shifted: r1.result },
+      },
+    });
+    fp.compare = this.normalizeCompare(cmp, scan);
+    const cmpOk = fp.compare.verdict !== '보완';
+    const verdict = r2.verdict === '통과' && cmpOk ? '통과' : '보완';
+    fp.verdict = verdict;
+    this.run.brain.forpop = { ...(this.run.brain.forpop || {}), verify: {
+      verdict,
+      scores: (r2.final_check || []).map((c) => ({ lens: c.lens, score: c.ok ? 4 : 2, note: c.note })),
+      issues: [...(r2.final_check || []).filter((c) => !c.ok).map((c) => c.note), ...fp.compare.scopes.filter((x) => x.verdict === '겹침').map((x) => `${x.title} — ${x.note || '이미 점유된 해석과 겹침'}`)],
+      fixes: arr(cmp.fixes).filter(Boolean),
+      line: cmp.line || r2.line,
+    } };
+    this.line('판단 브레인', cmp.line || (fp.compare.positioning && fp.compare.positioning.sentence), 'forpop');
+  }
+
+  /** 조수 셋이 웹을 직접 탐색 — 설정에서 끄거나 공급자가 웹 탐색을 못 하면 건너뛴다 */
+  async scoutScopes(base, frame) {
+    const plan = base.scan_plan || {};
+    const on = settings.get().run.webSearch !== false && !!this.provider.search;
+    if (!on) {
+      this.line('시스템', '웹 정찰이 꺼져 있어 차별성은 브리프·일반 관찰로만 판정합니다 (설정 › 실행 › 웹 정찰).', 'forpop');
+      return { enabled: false, scopes: SCOPES.map((sc) => ({ scope: sc.id, title: sc.title, skipped: true, players: [], conventions: [], taken: [], open: [], gaps: ['웹 정찰 꺼짐'], citations: [] })) };
+    }
+    const candidates = arr(base.pod_candidates).map((c) => ({ id: c.id, item: c.item, gain: c.gain }));
+    const results = await pLimit(SCOPES, settings.get().run.maxParallel || 3, async (sc) => {
+      const p = plan[sc.id] || {};
+      try {
+        const j = await this.call({
+          role: 'sub', prompt: 's_scout', stage: 'forpop', extras: false, search: true,
+          agent: { key: `scout-${sc.id}`, name: '조수', task: `웹 정찰 · ${sc.title}` },
+          ctx: {
+            scope: sc.id, scopeName: sc.title, scopeDesc: sc.desc, question: p.question || sc.desc,
+            queries: arr(p.queries).join(' / ') || '(화가가 검색어를 주지 않았다 — 미션에서 정한다)',
+            mission: this.mission, frame, candidates,
+          },
+          meta: { scope: sc.id },
+        });
+        const out = { ...j, scope: sc.id, title: sc.title, citations: j._citations || [], searches: j._searches || 0 };
+        delete out._citations; delete out._searches;
+        // 모델이 적은 URL 중 실제 검색 결과에 없는 것은 표시만 한다 (지우지 않는다 — 사람이 확인)
+        const known = new Set(out.citations.map((c) => c.url.replace(/[#?].*$/, '')));
+        const mark = (x) => (x && x.url ? { ...x, verified: known.has(String(x.url).replace(/[#?].*$/, '')) } : x);
+        out.players = arr(out.players).map(mark);
+        out.conventions = arr(out.conventions).map(mark);
+        out.taken = arr(out.taken).map(mark);
+        this.line('조수', `${sc.title} — ${out.summary || '정찰 완료'}`, 'forpop');
+        return out;
+      } catch (e) {
+        this.line('시스템', `${sc.title} 웹 정찰 실패 — ${e.message}`, 'forpop');
+        return { scope: sc.id, title: sc.title, error: e.message, players: [], conventions: [], taken: [], open: [], gaps: [`정찰 실패: ${e.message}`], citations: [] };
+      }
+    });
+    return { enabled: true, scopes: results };
+  }
+
+  /** 브레인에게 넘길 정찰 요약 — 원문 그대로, URL 포함 */
+  scanDigest(scan) {
+    if (!scan) return null;
+    return {
+      enabled: scan.enabled,
+      scopes: arr(scan.scopes).map((x) => ({
+        scope: x.scope, title: x.title, summary: x.summary || '', skipped: !!x.skipped,
+        players: arr(x.players).slice(0, 6).map((p) => ({ name: p.name, what: p.what, similar: p.similar, different: p.different, url: p.url })),
+        conventions: arr(x.conventions).slice(0, 6), taken: arr(x.taken).slice(0, 6), open: arr(x.open).slice(0, 6), gaps: arr(x.gaps),
+        sources: arr(x.citations).slice(0, 10).map((c) => c.url),
+      })),
+    };
+  }
+
+  /** 범례·값 정리 — 세 범위가 같은 축 수를 쓰도록 맞춘다 */
+  normalizeCompare(cmp, scan) {
+    const legend = cmp.legend || {};
+    let axes = arr(legend.axes).slice(0, 5);
+    if (axes.length !== 3 && axes.length !== 5) axes = axes.slice(0, axes.length >= 5 ? 5 : 3);
+    const n = axes.length;
+    const clamp = (v) => Math.max(0, Math.min(5, Math.round(+v || 0)));
+    const scopes = SCOPES.map((sc) => {
+      const x = arr(cmp.scopes).find((y) => y.scope === sc.id) || { scope: sc.id };
+      const series = arr(x.series).slice(0, 3).map((se) => {
+        const vals = arr(se.values).slice(0, n).map(clamp);
+        while (vals.length < n) vals.push(0);
+        return { ...se, kind: se.kind === 'us' ? 'us' : 'ref', values: vals };
+      });
+      const s0 = (scan && arr(scan.scopes).find((y) => y.scope === sc.id)) || {};
+      return { ...x, title: x.title || sc.title, series, evidence: s0.skipped ? '웹 정찰 꺼짐' : arr(s0.citations).length ? `웹 ${arr(s0.citations).length}건` : '확인 필요' };
+    });
+    return { ...cmp, legend: { shape: n === 5 ? 'pentagon' : 'triangle', axes }, scopes };
   }
 
   async stageConcept() {
     const hist = this.run.gates.C.history.filter((h) => h.decision === 'revise');
     const feedback = hist.length ? hist.map((h, i) => `${i + 1}차 수정 의견: ${h.note || '(의견 없음)'}`).join('\n') : '(없음 — 첫 판정)';
     const fp = this.run.results.forpop;
-    const forpop = { for: fp.for, pop: fp.pop, core_pod: fp.core_pod };
+    const forpop = { for: fp.for, pop: fp.pop, core_pod: fp.core_pod, positioning: fp.compare && fp.compare.positioning, differentiation: fp.compare && arr(fp.compare.scopes).map((x) => ({ scope: x.title, verdict: x.verdict, different: arr(x.different).map((d) => d.item) })) };
     // ① 화가 — 5안 → 1차 3안
     const c1 = await this.call({
       role: 'director', prompt: '09_concepts', stage: 'concept',
@@ -588,7 +709,7 @@ class Controller {
     const json = await this.call({
       role: 'director', prompt: '10_creative', stage: 'creative',
       agent: { key: 'painter', name: '화가', task: `Creative 가이드 ${n}종` },
-      ctx: { mission: b.mission, concept, forpop: { for: fp.for, pop: fp.pop, core_pod: fp.core_pod }, tunnel: this.tunnelDigest(), feedback, type: this.type, exampleCount: n },
+      ctx: { mission: b.mission, concept, forpop: { for: fp.for, pop: fp.pop, core_pod: fp.core_pod, positioning: fp.compare && fp.compare.positioning }, tunnel: this.tunnelDigest(), feedback, type: this.type, exampleCount: n },
     });
     json.examples = (json.examples || []).slice(0, 5);
     this.run.results.creative = json;

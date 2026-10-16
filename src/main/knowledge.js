@@ -162,7 +162,7 @@ function section(md, heading) {
 /** 노하우북 표 행 `| \`ID\` | 이름 | 설명 … |` → { id, name, desc } */
 function parseKnowhow(md, source) {
   const out = [];
-  for (const line of String(md || '').split('\n')) {
+  for (const line of String(md || '').split(/\r?\n/)) {
     const m = line.match(/^\|\s*`([A-Z]+-[A-Z0-9-]+)`\s*\|([^|]*)\|(.*)$/);
     if (!m || m[1].startsWith('ISM-')) continue;
     const cells = m[3].split('|').map((c) => c.replace(/`/g, '').trim()).filter(Boolean);
@@ -176,7 +176,7 @@ function libraryDir(kind) { return path.join(app.getPath('userData'), 'library',
 function readLib(dirAbs, prefix) {
   const out = {};
   if (!fs.existsSync(dirAbs)) return out;
-  for (const f of fs.readdirSync(dirAbs)) if (/\.md$/.test(f)) out[`${prefix}/${f}`] = fs.readFileSync(path.join(dirAbs, f), 'utf8');
+  for (const f of fs.readdirSync(dirAbs)) if (/\.md$/.test(f)) out[`${prefix}/${f}`] = fs.readFileSync(path.join(dirAbs, f), 'utf8').replace(/\r\n?/g, '\n');
   return out;
 }
 
@@ -189,7 +189,7 @@ function load() {
     for (const f of fs.readdirSync(d, { withFileTypes: true })) {
       const r = rel ? `${rel}/${f.name}` : f.name;
       if (f.isDirectory()) walk(path.join(d, f.name), r);
-      else if (/\.(md|json|txt)$/.test(f.name)) files[r] = fs.readFileSync(path.join(d, f.name), 'utf8');
+      else if (/\.(md|json|txt)$/.test(f.name)) files[r] = fs.readFileSync(path.join(d, f.name), 'utf8').replace(/\r\n?/g, '\n'); // Windows 빌드의 CRLF 정규화
     }
   };
   walk(dir);

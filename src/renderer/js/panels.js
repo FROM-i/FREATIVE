@@ -266,25 +266,145 @@ function shiftCard(sh, n) {
     ${arr(sh.cut).length ? `<div style="font-size:12px" class="muted">제외 — ${arr(sh.cut).map((c) => `${esc(c.id)} ${esc(c.reason)}`).join(' · ')}</div>` : ''}</div>`;
 }
 
+/* 레이더 — 삼각형 · 오각형 공통. 같은 범례(축 순서 · 척도 · 계열 스타일)를 모든 도형에 쓴다 */
+const SERIES_STYLE = { us: { fill: '#FFD23C', op: 0.6, dash: '', w: 1.5 }, ref: [{ fill: 'none', op: 0, dash: '', w: 1.25 }, { fill: 'none', op: 0, dash: '5 4', w: 1.25 }] };
+function seriesStyle(series) { let r = 0; return series.map((se) => (se.kind === 'us' ? SERIES_STYLE.us : SERIES_STYLE.ref[Math.min(r++, 1)])); }
+function radarSVG({ axes, series, max = 5, size = 280, mini = false, cut = false, ariaLabel = '' }) {
+  const n = axes.length;
+  if (n < 3) return '';
+  const pad = mini ? 22 : 78;
+  const R = size / 2 - pad;
+  const cx = size / 2, cy = size / 2 + (n === 3 ? R * 0.18 : R * 0.06);
+  const pt = (i, v) => { const a = -Math.PI / 2 + (i * 2 * Math.PI) / n; return [cx + Math.cos(a) * R * v, cy + Math.sin(a) * R * v]; };
+  const poly = (vals) => vals.map((v, i) => pt(i, Math.max(0, Math.min(1, (+v || 0) / max))).map((k) => k.toFixed(1)).join(',')).join(' ');
+  const levels = max === 5 ? [1, 2, 3, 4, 5] : [0.25, 0.5, 0.75, 1];
+  const grid = levels.map((l) => `<polygon points="${poly(axes.map(() => l))}" fill="none" stroke="#141414" stroke-opacity="${l === max ? 0.55 : 0.12}"/>`).join('');
+  const spokes = axes.map((_, i) => { const [x, y] = pt(i, 1); return `<path d="M${cx},${cy} L${x.toFixed(1)},${y.toFixed(1)}" stroke="#141414" stroke-opacity=".12"/>`; }).join('');
+  const st = seriesStyle(series);
+  const shapes = series.map((se, k) => `<polygon points="${poly(se.values)}" fill="${cut ? 'none' : st[k].fill}" fill-opacity="${st[k].op}" stroke="${cut ? '#ABA79D' : '#141414'}" stroke-width="${st[k].w}" ${st[k].dash || cut ? `stroke-dasharray="${st[k].dash || '3 3'}"` : ''}/>`).join('');
+  const dots = series.map((se, k) => se.values.map((v, i) => { const [x, y] = pt(i, Math.max(0, Math.min(1, (+v || 0) / max))); return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${mini ? 2 : 2.6}" fill="${st[k].fill !== 'none' && !cut ? '#141414' : '#F4F2EC'}" stroke="${cut ? '#ABA79D' : '#141414'}"/>`; }).join('')).join('');
+  const labels = axes.map((a, i) => {
+    const [x, y] = pt(i, 1); const dx = x - cx, dy = y - cy;
+    const anchor = Math.abs(dx) < 6 ? 'middle' : dx > 0 ? 'start' : 'end';
+    const ox = Math.abs(dx) < 6 ? 0 : dx > 0 ? 7 : -7; const oy = dy < -6 ? -8 : dy > 6 ? 15 : 4;
+    return mini
+      ? `<text x="${(x + ox * 0.6).toFixed(1)}" y="${(y + oy * 0.8).toFixed(1)}" text-anchor="${anchor}" font-size="9" fill="${cut ? '#ABA79D' : '#45433F'}">${esc(a.short || a.name)}</text>`
+      : `<text x="${(x + ox).toFixed(1)}" y="${(y + oy).toFixed(1)}" text-anchor="${anchor}" font-size="11" fill="#141414"><tspan font-family="ui-monospace,monospace" font-weight="700">${esc(a.id)}</tspan> ${esc(String(a.name || '').slice(0, 8))}</text>`;
+  }).join('');
+  return `<svg class="radar" viewBox="0 0 ${size} ${size}" role="img" aria-label="${esc(ariaLabel)}">${grid}${spokes}${shapes}${dots}${labels}</svg>`;
+}
+const POD_AXES = [{ id: 'D', name: '바람직성', short: '바람직' }, { id: 'V', name: '전달성', short: '전달' }, { id: 'F', name: '방어성', short: '방어' }];
+const podVals = (c) => [c.desirable, c.deliverable, c.defensible].map((v) => +v || 0);
+function podTriangle(c, { cut = false, size = 132 } = {}) {
+  return radarSVG({ axes: POD_AXES, series: [{ name: c.id, kind: 'us', values: podVals(c) }], max: 1, size, mini: true, cut, ariaLabel: `${c.id} PoD 삼각형` });
+}
+function legendSwatch(kind, i = 0) {
+  const st = kind === 'us' ? SERIES_STYLE.us : SERIES_STYLE.ref[i];
+  return `<svg width="22" height="12" aria-hidden="true"><rect x="1" y="2" width="20" height="8" fill="${st.fill}" fill-opacity="${st.op}" stroke="#141414" ${st.dash ? `stroke-dasharray="${st.dash}"` : ''}/></svg>`;
+}
+const urlOf = (src) => { const m = String(src || '').match(/https?:\/\/[^\s)]+/); return m ? m[0] : ''; };
+const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
+const srcLink = (src) => { const u = urlOf(src); return u ? `<a class="src web" data-ext="${esc(u)}" href="#" title="${esc(u)}">${esc(host(u))} ↗</a>` : src ? src_(src) : ''; };
+const src_ = (s) => `<span class="src ${/확인 필요|없음/.test(s || '') ? 'need' : ''}">${esc(s)}</span>`;
+
+const FOR_KINDS = ['좁히기', '현재', '넓히기', '전환'];
+function forOptions(F) {
+  const opts = arr(F.options);
+  if (!opts.length) return '';
+  const by = Object.fromEntries(opts.map((o) => [o.kind, o]));
+  return `<div class="for-opts">${FOR_KINDS.map((k) => { const o = by[k]; if (!o) return `<div class="for-opt empty"><span class="tag">${k}</span><span class="muted">—</span></div>`; const on = F.chosen === k; return `<div class="for-opt ${on ? 'on' : ''}">
+      <div class="row"><span class="tag ${on ? 'ink' : ''}">${esc(k)}</span>${on ? '<span class="kicker">선택</span>' : ''}</div>
+      <b>${esc(o.frame)}</b>
+      <div class="vs"><span class="muted">경쟁 구도</span> ${arr(o.competitors).map((c) => `<span class="chip-s">${esc(c)}</span>`).join('')}</div>
+      <div class="gc"><span>＋ ${esc(o.gain)}</span><span class="muted">－ ${esc(o.cost)}</span></div></div>`; }).join('')}</div>`;
+}
+
+function scanSection(f) {
+  const cmp = f.compare;
+  const scan = f.scan;
+  if (!scan && !cmp) return '';
+  const scopes = cmp ? arr(cmp.scopes) : arr(scan && scan.scopes);
+  const axes = cmp ? arr(cmp.legend && cmp.legend.axes) : [];
+  const scanBy = Object.fromEntries(arr(scan && scan.scopes).map((x) => [x.scope, x]));
+  const shapeName = axes.length === 5 ? '오각형' : '삼각형';
+  const legend = axes.length ? `<div class="radar-legend">
+      <div class="rl-head"><span class="kicker">공통 범례 — 세 범위 모두 같은 ${shapeName} · 같은 축 순서 · 0~5</span>
+        <span class="row" style="gap:12px;font-size:12px"><span class="row" style="gap:4px">${legendSwatch('us')}우리 (코어 PoD 적용)</span><span class="row" style="gap:4px">${legendSwatch('ref', 0)}비교 ①</span><span class="row" style="gap:4px">${legendSwatch('ref', 1)}비교 ②</span></span></div>
+      <div class="rl-axes">${axes.map((a) => `<div><b class="mono">${esc(a.id)}</b> <b>${esc(a.name)}</b>${a.from_us ? ' <span class="tag y">나로부터</span>' : ''}<small>0 ${esc(a.low)} → 5 ${esc(a.high)}</small></div>`).join('')}</div></div>` : '';
+  const verdictTag = (v) => `<span class="tag ${v === '겹침' ? 'warn' : v === '부분' ? 'y' : 'ink'}">${esc(v || '판정 전')}</span>`;
+  const cards = scopes.map((x, i) => {
+    const sc = scanBy[x.scope] || {};
+    const refs = arr(x.series).filter((se) => se.kind !== 'us');
+    const cites = arr(sc.citations).slice(0, 6);
+    return `<div class="scope-card">
+      <div class="row" style="justify-content:space-between"><span><span class="mono muted">0${i + 1}</span> <b>${esc(x.title || sc.title)}</b></span>${cmp ? verdictTag(x.verdict) : sc.skipped ? '<span class="tag">정찰 꺼짐</span>' : '<span class="tag">정찰 완료</span>'}</div>
+      ${cmp && axes.length ? radarSVG({ axes, series: arr(x.series), max: 5, size: 340, ariaLabel: `${x.title} 비교 ${shapeName}` }) : ''}
+      ${refs.length ? `<div class="refs">${refs.map((r, k) => `<span class="row" style="gap:4px">${legendSwatch('ref', Math.min(k, 1))}${esc(r.name)} ${srcLink(r.source)}</span>`).join('')}</div>` : ''}
+      ${x.note ? `<div style="font-size:13px">${esc(x.note)}</div>` : sc.summary ? `<div style="font-size:13px">${esc(sc.summary)}</div>` : ''}
+      ${arr(x.similar).length ? `<div><span class="kicker">유사성 — 이미 점유 · PoP 후보</span><ul class="ul">${arr(x.similar).map((y) => `<li><span>${esc(y.item)} ${srcLink(y.source)}</span></li>`).join('')}</ul></div>` : ''}
+      ${arr(x.different).length ? `<div><span class="kicker">차별점</span><ul class="ul plus">${arr(x.different).map((y) => `<li><span>${esc(y.item)} ${srcLink(y.source)}</span></li>`).join('')}</ul></div>` : ''}
+      ${!cmp && arr(sc.players).length ? `<ul class="ul">${arr(sc.players).map((pl) => `<li><span><b>${esc(pl.name)}</b> — ${esc(pl.what)} ${srcLink(pl.url)}</span></li>`).join('')}</ul>` : ''}
+      ${arr(sc.taken).length ? `<div class="taken"><span class="kicker">이미 점유된 해석</span>${arr(sc.taken).map((t) => `<span>${esc(t.item)}${t.pod ? ` <span class="tag">${esc(t.pod)}</span>` : ''} ${srcLink(t.url)}</span>`).join('')}</div>` : ''}
+      ${cites.length ? `<div class="cites"><span class="kicker">웹 근거 ${arr(sc.citations).length}건${sc.searches ? ` · 검색 ${sc.searches}회` : ''}</span>${cites.map((c) => `<a data-ext="${esc(c.url)}" href="#" title="${esc(c.title || c.url)}">${esc(host(c.url))}</a>`).join('')}</div>` : sc.skipped ? '<div class="muted" style="font-size:12px">웹 정찰 꺼짐 — 브리프·일반 관찰로 판정</div>' : arr(sc.gaps).length ? `<div class="muted" style="font-size:12px">${esc(arr(sc.gaps).join(' · '))}</div>` : ''}
+    </div>`;
+  }).join('');
+  return `<div class="stack">
+    <div><span class="kicker">차별성 검토 — 조수 웹 정찰 3범위 → 판단 브레인 판정</span>
+      <div class="muted" style="font-size:13px;margin-top:4px">① 동일 카테고리 내 차별점/유사성 · ② 확장 범주에서 타겟 관점의 차별점/유사성 · ③ 광고 소재 자체의 크리에이티브 차별점/유사성</div></div>
+    ${legend}
+    <div class="grid g3 scope-grid">${cards || waiting('조수들이 웹을 탐색하는 중')}</div>
+  </div>`;
+}
+
+function positioningStatement(cmp) {
+  const p = cmp && cmp.positioning;
+  if (!p || !p.slots) return '';
+  const S = p.slots;
+  const slot = (label, v) => `<span class="slot"><small>${label}</small><b>${esc(v || '—')}</b></span>`;
+  return `<div class="pos-stmt"><span class="kicker">포지셔닝 진술문 — [타겟]을 위해, [브랜드]는 [FoR] 안에서 [PoD]를 제공하는 [제품 유형]이다</span>
+    <div class="pos-line">${slot('타겟', S.target)}<span>을 위해,</span>${slot('브랜드', S.brand)}<span>는</span>${slot('FoR', S.frame)}<span>안에서</span>${slot('PoD', S.pod)}<span>를 제공하는</span>${slot('제품 유형', S.type)}<span>이다.</span></div></div>`;
+}
+
 function forpop(p, run) {
   const f = run.results.forpop;
-  if (!f) return head('forpop', 'FoR · PoP · PoD', '앞선 모든 단계의 최종 검증 · 발상의 전환 5 → 3 → 1') + waiting('지나온 길을 다시 걷는 중');
+  if (!f) return head('forpop', 'FoR · PoP · PoD', '앞선 모든 단계의 최종 검증 · 웹 정찰 · 발상의 전환 5 → 3 → 1') + waiting('지나온 길을 다시 걷는 중');
   const nShift = arr(f.shifts).length;
-  return `${head('forpop', 'FoR · PoP · PoD', '앞선 모든 단계를 최종 검증하고, 발상의 전환으로 5 → 3 → 1 — 판단 브레인 공동 추론', f.painter_line)}
+  const F = f.for || {};
+  const cut1 = new Set(arr(arr(f.shifts)[0] && arr(f.shifts)[0].cut).map((c) => c.id));
+  const cmp = f.compare;
+  const POP_KIND = { 카테고리: '카테고리 PoP', 경쟁: '경쟁 PoP', 상관: '상관 PoP' };
+  const pops = [...arr(f.pop), ...arr(cmp && cmp.pop_add).map((x) => ({ ...x, added: true }))];
+  return `${head('forpop', 'FoR · PoP · PoD', '앞선 모든 단계를 최종 검증하고, 웹 정찰 3범위와 발상의 전환으로 5 → 3 → 1 — 판단 브레인 공동 추론', f.painter_line)}
   <div class="stack">
     <div><span class="kicker">AUDIT — 앞선 모든 단계 최종 검증</span>
       <table class="tbl" style="margin-top:8px"><thead><tr><th>단계</th><th>핵심</th><th>판정</th><th>이유</th><th>다음으로 이어지는 방식</th></tr></thead><tbody>
       ${arr(f.audit).map((a) => `<tr><td><b>${esc(a.stage)}</b></td><td>${esc(a.core)}</td><td><span class="tag ${a.verdict === '유지' ? '' : 'y'}">${esc(a.verdict)}</span></td><td>${esc(a.note)}</td><td class="muted">${esc(a.link)}</td></tr>`).join('')}</tbody></table>
       <div class="statement" style="margin-top:12px;font-size:16px">${esc(f.coherence || '')}</div></div>
+
+    <div class="stack" style="gap:12px">
+      <div><span class="kicker">FoR — 소비자의 인식 프레임 · 경쟁 구도</span>
+        ${F.target_view ? `<div style="margin-top:6px;font-size:15px">타겟은 이것을 <b>“${esc(F.target_view)}”</b>에 빗대어 본다.</div>` : ''}</div>
+      ${forOptions(F)}
+      ${F.why ? `<div class="muted" style="font-size:13px">선택 이유 — ${esc(F.why)}</div>` : ''}
+    </div>
+
     <div class="fpp">
       <span class="fpp-label">FoR · FRAME OF REFERENCE</span>
-      <div class="fpp-for"><div><h3 class="h3">${esc((f.for || {}).frame)}</h3><span class="muted">${esc((f.for || {}).category)} · 관성의 출처 — ${esc((f.for || {}).inertia_source)}</span></div><span class="tag">구조는 여기서 지킨다</span></div>
-      <div class="pop-band"><span class="fpp-label">PoP · 반드시 같아야 하는 것</span>
-        ${arr(f.pop).map((x) => `<div class="pop-item"><b>${esc(x.item)}</b><small>없으면 ${esc(x.why)}</small></div>`).join('')}</div>
-      ${nShift ? forpopFlowSVG(f) : waiting('판단 브레인이 발상의 전환을 추론하는 중')}
+      <div class="fpp-for"><div><h3 class="h3">${esc(F.frame)}</h3><span class="muted">${esc(F.category)} · 관성의 출처 — ${esc(F.inertia_source)}</span></div><span class="tag">${F.chosen ? `${esc(F.chosen)} · ` : ''}구조는 여기서 지킨다</span></div>
+      <div class="pop-band"><span class="fpp-label">PoP · 반드시 같아야 하는 것 — "충분히 괜찮다"면 된다</span>
+        ${pops.map((x) => `<div class="pop-item">${x.kind ? `<span class="pop-kind">${esc(POP_KIND[x.kind] || x.kind)}${x.added ? ' · 브레인 추가' : ''}</span>` : ''}<b>${esc(x.item)}</b><small>${x.added ? esc(x.why) : `없으면 ${esc(x.why)}`}</small></div>`).join('')}</div>
+      ${arr(f.pod_candidates).length ? `<div><div class="row" style="justify-content:space-between"><span class="kicker">PoD 후보 5 — 삼각형 공통 범례</span><span class="muted" style="font-size:12px">꼭짓점: 바람직성(타겟에게 의미) · 전달성(3초·실현) · 방어성(브랜드 근거·모방 난이도) · 0~1</span></div>
+        <div class="tri-row">${arr(f.pod_candidates).map((c) => `<div class="tri ${cut1.has(c.id) ? 'cut' : ''}">${podTriangle(c, { cut: cut1.has(c.id) })}<span class="mono">${esc(c.id)}</span><b>${esc(c.item)}</b><small class="muted">${esc(c.from || '')}</small></div>`).join('')}
+        ${cmp && cmp.core_triangle ? `<div class="tri core">${podTriangle({ id: 'CORE', ...cmp.core_triangle })}<span class="mono">CORE</span><b>${esc((f.core_pod || {}).item || '')}</b><small class="muted">${esc(cmp.core_triangle.note || '정찰 반영 재평가')}</small></div>` : ''}</div></div>` : ''}
+      ${nShift ? forpopFlowSVG(f) : waiting(f.scan ? '판단 브레인이 발상의 전환을 추론하는 중' : '조수들이 웹을 탐색하는 중')}
       ${f.core_pod && f.core_pod.statement ? `<div class="statement">${esc(f.core_pod.statement)}</div>` : ''}
-      ${arr(f.rtb).length ? `<div class="row" style="font-size:12px"><span class="kicker">RTB · 믿을 이유</span>${arr(f.rtb).map((x) => `<span>${esc(x.fact)} ${src(x.source)}</span>`).join('<span class="muted">·</span>')}</div>` : ''}
+      ${arr(f.rtb).length ? `<div class="row" style="font-size:12px"><span class="kicker">RTB · 믿을 이유</span>${arr(f.rtb).map((x) => `<span>${esc(x.fact)} ${srcLink(x.source)}</span>`).join('<span class="muted">·</span>')}</div>` : ''}
     </div>
+
+    ${scanSection(f)}
+    ${positioningStatement(cmp)}
+    ${cmp && arr(cmp.fixes).filter(Boolean).length ? `<div class="card soft"><span class="kicker">판단 브레인 · 보완할 것 (${esc(cmp.verdict || '')})</span>${ul(cmp.fixes)}</div>` : ''}
+
     <div class="grid g2">${shiftCard(arr(f.shifts)[0], 1)}${shiftCard(arr(f.shifts)[1], 2)}</div>
     ${arr(f.final_check).length ? `<div><span class="kicker">최종 점검 — 판단 브레인 · ${esc(f.verdict || '')}</span><div class="row" style="margin-top:8px">${arr(f.final_check).map((c) => `<span class="check ${c.ok ? 'ok' : ''}" title="${esc(c.note)}">${c.ok ? '✓' : '△'} ${esc(c.lens)} <span class="muted">${esc(c.note)}</span></span>`).join('')}</div></div>` : ''}
   </div>`;
