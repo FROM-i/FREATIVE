@@ -60,15 +60,21 @@ jobs:
         env:
           SKILL_DIR: .skill
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CSC_LINK != '' }}
+          # 서명 시크릿 — 비어 있으면 넘기지 않는다 (빈 CSC_LINK는 빌드를 멈춘다)
+          S_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          S_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          S_APPLE_ID: ${{ secrets.APPLE_ID }}
+          S_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          S_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         shell: bash
         run: |
           set -o pipefail
+          if [ "$RUNNER_OS" = "macOS" ] && [ -n "$S_CSC_LINK" ]; then
+            export CSC_LINK="$S_CSC_LINK" CSC_KEY_PASSWORD="$S_CSC_KEY_PASSWORD"
+            [ -n "$S_APPLE_ID" ] && export APPLE_ID="$S_APPLE_ID" APPLE_APP_SPECIFIC_PASSWORD="$S_APPLE_APP_SPECIFIC_PASSWORD" APPLE_TEAM_ID="$S_APPLE_TEAM_ID"
+          else
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
           npm run release 2>&1 | tee build.log
       - name: Report failure
         if: failure()
