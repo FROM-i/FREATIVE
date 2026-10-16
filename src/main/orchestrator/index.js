@@ -336,26 +336,26 @@ class Controller {
   /** 단계 결과에서 사람이 읽을 문장을 모아, 고쳐야 할 것만 고친다. 사실·ID·URL·카피는 건드리지 않는다 */
   async polish(stage, obj, { skip = [] } = {}) {
     if (!obj || settings.get().run.polish === false) return;
-    const KEYS = new Set(['statement', 'sentence', 'one_line', 'one_liner', 'coherence', 'why', 'reason', 'note', 'gain', 'how', 'summary', 'concept', 'keep', 'change', 'visible', 'task', 'headline', 'subhead', 'exec_summary', 'bullets', 'rationale', 'desc', 'target_view', 'exit_light', 'from_me', 'tension', 'cost', 'what', 'fixes', 'issues']);
+    const KEYS = new Set(['theme', 'statement', 'sentence', 'one_line', 'one_liner', 'coherence', 'why', 'reason', 'note', 'gain', 'how', 'summary', 'concept', 'keep', 'change', 'visible', 'task', 'headline', 'subhead', 'exec_summary', 'bullets', 'rationale', 'desc', 'target_view', 'exit_light', 'from_me', 'tension', 'cost', 'what', 'fixes', 'issues']);
     const SKIP = new Set(['scan', 'rtb', 'citations', 'series', 'image_prompt', 'painter_line', 'line', 'source', 'url', 'id', 'polished', ...skip]);
     const found = [];
-    const walk = (x, p, key) => {
+    const walk = (x, p, key, parent) => {
       if (found.length >= 90) return;
       if (typeof x === 'string') {
-        if (KEYS.has(key) && /[가-힣]/.test(x) && x.length >= 18 && x.length <= 420 && !/^https?:/.test(x)) found.push({ id: `S${found.length + 1}`, path: p, text: x });
+        if (KEYS.has(key) && /[가-힣]/.test(x) && x.length >= (key === 'theme' ? 6 : 18) && x.length <= 420 && !/^https?:/.test(x)) found.push({ id: `S${found.length + 1}`, path: p, text: x, ctx: parent && !Array.isArray(parent) ? Object.entries(parent).filter(([k, v]) => k !== key && typeof v === 'string' && !SKIP.has(k)).map(([k, v]) => `${k}: ${v}`).join(' / ').slice(0, 300) : '' });
         return;
       }
-      if (Array.isArray(x)) { x.forEach((v, i) => walk(v, [...p, i], key)); return; }
-      if (x && typeof x === 'object') for (const [k, v] of Object.entries(x)) if (!SKIP.has(k)) walk(v, [...p, k], k);
+      if (Array.isArray(x)) { x.forEach((v, i) => walk(v, [...p, i], key, parent)); return; }
+      if (x && typeof x === 'object') for (const [k, v] of Object.entries(x)) if (!SKIP.has(k)) walk(v, [...p, k], k, x);
     };
-    walk(obj, [], '');
+    walk(obj, [], '', null);
     if (!found.length) return;
     let res;
     try {
       res = await this.call({
         role: 'editor', prompt: 'p_polish', stage, extras: false,
         agent: { key: 'editor', name: '조수 · 교열', task: `문장 다듬기 · ${found.length}문장` },
-        ctx: { stageLabel: LABEL[stage] || stage, sentences: found.map(({ id, text }) => ({ id, text })) },
+        ctx: { stageLabel: LABEL[stage] || stage, mission: this.mission && { deliverable: this.mission.deliverable, product: this.mission.product, target: this.mission.target, channel: this.mission.channel }, sentences: found.map(({ id, text, ctx }) => ({ id, text, context: ctx || undefined })) },
       });
     } catch (e) { this.line('시스템', `교열을 건너뜀 — ${e.message}`, stage); return; }
     const by = Object.fromEntries(found.map((f) => [f.id, f]));
@@ -363,7 +363,7 @@ class Controller {
     for (const ed of arr(res.edits)) {
       const f = by[ed.id];
       if (!f || !ed.after || typeof ed.after !== 'string' || ed.after === f.text) continue;
-      if (ed.after.length > f.text.length * 1.6 + 20) continue; // 내용이 불어나면 받지 않는다
+      if (ed.after.length > f.text.length * 2.2 + 30) continue; // 내용이 지나치게 불어나면 받지 않는다
       let t = obj; for (const k of f.path.slice(0, -1)) t = t[k];
       if (t && t[f.path[f.path.length - 1]] === f.text) { t[f.path[f.path.length - 1]] = ed.after; applied.push({ before: f.text, after: ed.after, issue: ed.issue || '' }); }
     }
@@ -791,7 +791,7 @@ class Controller {
     });
     this.run.results.concept = { ...this.run.results.concept, ...kit, final_id: final.id };
     this.line('화가', kit.painter_line, 'concept');
-    await this.polish('concept', this.run.results.concept, { skip: ['theme', 'keywords'] });
+    await this.polish('concept', this.run.results.concept, { skip: ['keywords'] });
   }
 
   async stageCreative() {

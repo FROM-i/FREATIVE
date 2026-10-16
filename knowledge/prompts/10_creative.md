@@ -58,6 +58,9 @@ C 게이트를 통과한 컨셉으로 **Creative 가이드**를 만든다. 가�
   "painter_line": "갤러리에 그림을 걸며 화가가 하는 한 마디"
 }
 `examples`는 {{exampleCount}}개.
+### 헤드라인과 한 줄 설명 (headline · one_liner)
+{{include:method/writing.md#5. 형식 — 헤드라인과 설명문}}
+- headline은 카피다 — 이 단계에서는 여운을 써도 되지만, **의미가 먼저 읽혀야** 한다. 은유만으로 된 헤드라인은 쓰지 않는다.
 <<<USER>>>
 ## 미션
 {{json:mission}}

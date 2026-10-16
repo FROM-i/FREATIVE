@@ -1,6 +1,6 @@
 {
   "name": "thefrom-freative-knowledge",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "methodVersion": "0.7",
   "updated": "2026-10-16",
   "note": "이 파일의 version을 올려야 설치된 앱들이 지식을 다시 내려받는다. files: 앱 안 경로 → 저장소 경로. @skill/ 은 스킬 저장소(thefrom_design_Skill)의 원본 — 앱 저장소에 복사하지 않는다.",
@@ -8,6 +8,7 @@
   "files": {
     "brain.json": "knowledge/brain.json",
     "method/forpop.md": "knowledge/method/forpop.md",
+    "method/writing.md": "knowledge/method/writing.md",
     "models.json": "knowledge/models.json",
     "skill/SKILL.md": "@skill/plugins/thefrom-ux/skills/thefrom-ux/SKILL.md",
     "skill/assets/brief-template.md": "@skill/plugins/thefrom-ux/skills/thefrom-ux/assets/brief-template.md",
@@ -38,8 +39,8 @@
     "prompts/b_verify.md": "knowledge/prompts/b_verify.md",
     "prompts/lib_ism.md": "knowledge/prompts/lib_ism.md",
     "prompts/lib_knowhow.md": "knowledge/prompts/lib_knowhow.md",
-    "prompts/s_scout.md": "knowledge/prompts/s_scout.md",
-    "prompts/p_polish.md": "knowledge/prompts/p_polish.md"
+    "prompts/p_polish.md": "knowledge/prompts/p_polish.md",
+    "prompts/s_scout.md": "knowledge/prompts/s_scout.md"
   },
   "skillVersion": "0.4.2",
   "dirs": {

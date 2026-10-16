@@ -267,7 +267,11 @@ const builders = {
     line: '세 판에서 다 봤어. 겹치는 건 산지, 다른 건 거리.',
   }),
   p_polish: (ctx) => ({
-    edits: (ctx.sentences || []).filter((x) => /로 다르다$|안에서, .*지키며/.test(x.text)).map((x) => ({ id: x.id, after: '이름·입구·시음 같은 팝업의 기본은 그대로 둔다. 다른 점은 하나다 — 가까이 다가갈수록 그림이 완성된다.', issue: '칸을 이어 붙인 문장 — 주어가 없음' })),
+    edits: (ctx.sentences || []).flatMap((x) => {
+      if (/로 다르다$|안에서, .*지키며/.test(x.text)) return [{ id: x.id, after: '이름·입구·시음 같은 팝업의 기본은 그대로 둡니다. 다른 점은 하나입니다 — 가까이 다가갈수록 그림이 완성됩니다.', issue: '칸을 이어 붙인 문장 · 주어 없음' }];
+      if (/느끼게 한다$/.test(x.text)) return [{ id: x.id, after: x.text.replace(/느끼게 한다$/, '느끼게 됩니다'), issue: '지문체 · 어미 섞임' }];
+      return [];
+    }),
   }),
   b_direct: (ctx) => ({
     direction: `${(ctx.stageLabel || '').split(' — ')[0]} — "천천히 알아가는 거리"라는 우리의 시선을 놓치지 말 것. 팝업의 관성(크게·지금)은 구조로 지키고, 해석은 거리에서 만든다.`,

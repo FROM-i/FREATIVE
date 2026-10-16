@@ -22,8 +22,8 @@
 
 ## 출력 JSON 형식
 {
-  "concept": "최종 컨셉 한 문장",
-  "theme": "최종 테마 한 줄",
+  "concept": "최종 컨셉 — 설명 두 문장 (수단·할 수 있는 것 / 달라지는 것, 합니다체)",
+  "theme": "최종 테마 — 헤드 한 줄 (의미가 먼저 읽히게)",
   "keywords": ["키워드 3~5"],
   "metaphor": { "metaphor": "", "source": "", "tone": "" },
   "philosophy_core": [ { "lens": "나로부터|자메뷰|관성·해석|1U|노랑", "how": "이 컨셉에서 어떻게 작동하는가" } ],
@@ -39,6 +39,8 @@
   "revision_note": "",
   "painter_line": ""
 }
+### 헤드라인과 설명문 (theme · concept · 해석표의 문장)
+{{include:method/writing.md#5. 형식 — 헤드라인과 설명문}}
 <<<USER>>>
 ## 미션
 {{json:mission}}
