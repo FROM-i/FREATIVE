@@ -101,6 +101,8 @@ function get() {
 function set(patch) {
   if (patch && patch.secrets) delete patch.secrets;
   data = deepMerge(data, patch || {});
+  // 단계 지정은 통째로 바꾼다 (지운 항목이 병합으로 남지 않게)
+  if (patch && patch.openai && patch.openai.stages) data.openai.stages = patch.openai.stages;
   save();
   return get();
 }

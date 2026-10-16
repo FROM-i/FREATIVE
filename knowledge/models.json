@@ -3,37 +3,366 @@
   "source": "https://developers.openai.com/api/docs/models · https://developers.openai.com/api/docs/pricing",
   "note": "추천 모델 구성. OpenAI가 새 모델을 내면 이 파일을 고치고 manifest version을 올린다 — 설치된 앱이 '추천 구성 따르기'로 자동 반영한다. 원칙: 화가는 역할에 가장 맞는 최신 최상위, 판단 브레인은 그와 거의 동급(핵심 판단 단계는 동급), 조수는 넓은 풀에서 화가가 고른다.",
   "roles": {
-    "director": { "model": "gpt-6-astra", "effort": "high", "why": "화가 — 오케스트레이션·컨셉·가이드. 가장 깊은 판단이 필요한 자리" },
-    "brain": { "model": "gpt-6.1-sol", "effort": "high", "why": "판단 브레인 — near-Astra 성능으로 모든 단계의 방향·검증을 맡는다" },
-    "sub": { "model": "gpt-6.1-sol", "effort": "low", "why": "조수 기본 — 화가가 단계마다 풀에서 바꾼다" },
-    "image": { "model": "gpt-image-2.5-sunburst", "why": "가이드 비주얼 — 최고 품질" }
+    "director": {
+      "model": "gpt-6-astra",
+      "effort": "high",
+      "why": "화가 — 오케스트레이션·컨셉·가이드. 가장 깊은 판단이 필요한 자리"
+    },
+    "brain": {
+      "model": "gpt-6.1-sol",
+      "effort": "high",
+      "why": "판단 브레인 — near-Astra 성능으로 모든 단계의 방향·검증을 맡는다"
+    },
+    "sub": {
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "why": "조수 기본 — 화가가 단계마다 풀에서 바꾼다"
+    },
+    "image": {
+      "model": "gpt-image-2.5-sunburst",
+      "why": "가이드 비주얼 — 최고 품질"
+    }
   },
   "stages": {
-    "forpop": { "brain": { "model": "gpt-6-astra", "effort": "high", "why": "FoR·PoP·PoD는 에이전시의 핵심 판단 — 화가와 동급" } },
-    "concept": { "brain": { "model": "gpt-6-astra", "effort": "high", "why": "컨셉 3→1 자체 검증 — 화가와 동급" } }
+    "forpop": {
+      "brain": {
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "why": "FoR·PoP·PoD는 에이전시의 핵심 판단 — 화가와 동급"
+      }
+    },
+    "concept": {
+      "brain": {
+        "model": "gpt-6-astra",
+        "effort": "high",
+        "why": "컨셉 3→1 자체 검증 — 화가와 동급"
+      }
+    }
   },
   "pool": [
-    { "id": "gpt-6-astra", "effort": "high", "tier": "frontier", "note": "컨셉·최종 판단·검증 — 가장 깊게" },
-    { "id": "gpt-6-astra", "effort": "medium", "tier": "frontier", "note": "구조화·포지셔닝·전환 — 깊고 빠르게" },
-    { "id": "gpt-6.1-sol", "effort": "high", "tier": "strong", "note": "사조 재해석·레이어 종합 — near-Astra" },
-    { "id": "gpt-6.1-sol", "effort": "medium", "tier": "strong", "note": "분석·비교·웹 정찰 종합" },
-    { "id": "gpt-6.1-sol", "effort": "low", "tier": "balanced", "note": "웹 정찰·사례 채집" },
-    { "id": "gpt-6-luna", "effort": "medium", "tier": "fast", "note": "병렬 채집·초안 — 대량" },
-    { "id": "gpt-6-luna", "effort": "low", "tier": "fast", "note": "정리·요약·포맷" }
+    {
+      "id": "gpt-6-astra",
+      "effort": "high",
+      "tier": "frontier",
+      "note": "컨셉·최종 판단·검증 — 가장 깊게",
+      "use": "judge"
+    },
+    {
+      "id": "gpt-6-astra",
+      "effort": "medium",
+      "tier": "frontier",
+      "note": "구조화·포지셔닝·전환 — 깊고 빠르게",
+      "use": "structure"
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "effort": "high",
+      "tier": "strong",
+      "note": "사조 재해석·레이어 종합 — near-Astra",
+      "use": "interpret"
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "effort": "medium",
+      "tier": "strong",
+      "note": "분석·비교·웹 정찰 종합",
+      "use": "analyze"
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "effort": "low",
+      "tier": "balanced",
+      "note": "웹 정찰·사례 채집",
+      "use": "collect"
+    },
+    {
+      "id": "gpt-6-luna",
+      "effort": "medium",
+      "tier": "fast",
+      "note": "병렬 채집·초안 — 대량",
+      "use": "bulk"
+    },
+    {
+      "id": "gpt-6-luna",
+      "effort": "low",
+      "tier": "fast",
+      "note": "정리·요약·포맷",
+      "use": "tidy"
+    }
   ],
   "imagePool": [
-    { "id": "gpt-image-2.5-sunburst", "tier": "quality", "note": "최종 가이드 비주얼 — 최고 품질" },
-    { "id": "gpt-image-2.5-flare", "tier": "fast", "note": "가이드가 많거나 다시 그릴 때 — 빠른 고품질" },
-    { "id": "gpt-image-2", "tier": "economy", "note": "러프·방향 확인 — 절반 단가" }
+    {
+      "id": "gpt-image-2.5-sunburst",
+      "tier": "quality",
+      "note": "최종 가이드 비주얼 — 최고 품질",
+      "use": "final"
+    },
+    {
+      "id": "gpt-image-2.5-flare",
+      "tier": "fast",
+      "note": "가이드가 많거나 다시 그릴 때 — 빠른 고품질",
+      "use": "iterate"
+    },
+    {
+      "id": "gpt-image-2",
+      "tier": "economy",
+      "note": "러프·방향 확인 — 절반 단가",
+      "use": "rough"
+    }
   ],
-  "efforts": ["none", "low", "medium", "high", "max"],
+  "efforts": [
+    "none",
+    "low",
+    "medium",
+    "high",
+    "max"
+  ],
   "pricing": {
-    "gpt-6-astra": { "in": 10, "cached": 1, "out": 50 },
-    "gpt-6.1-sol": { "in": 2, "cached": 0.1, "out": 10 },
-    "gpt-6-luna": { "in": 0.1, "cached": 0.01, "out": 0.5 },
-    "gpt-image-2.5-sunburst": { "in": 5, "cached": 1.25, "out": 30, "imageIn": 8 },
-    "gpt-image-2.5-flare": { "in": 5, "cached": 1.25, "out": 30, "imageIn": 8 },
-    "gpt-image-2": { "in": 2.5, "cached": 0.625, "out": 15, "imageIn": 4 },
+    "gpt-6-astra": {
+      "in": 10,
+      "cached": 1,
+      "out": 50
+    },
+    "gpt-6.1-sol": {
+      "in": 2,
+      "cached": 0.1,
+      "out": 10
+    },
+    "gpt-6-luna": {
+      "in": 0.1,
+      "cached": 0.01,
+      "out": 0.5
+    },
+    "gpt-image-2.5-sunburst": {
+      "in": 5,
+      "cached": 1.25,
+      "out": 30,
+      "imageIn": 8
+    },
+    "gpt-image-2.5-flare": {
+      "in": 5,
+      "cached": 1.25,
+      "out": 30,
+      "imageIn": 8
+    },
+    "gpt-image-2": {
+      "in": 2.5,
+      "cached": 0.625,
+      "out": 15,
+      "imageIn": 4
+    },
     "webSearch": 0.01
+  },
+  "catalog": [
+    {
+      "id": "gpt-6-astra",
+      "kind": "text",
+      "gen": "GPT-6 · 최신",
+      "tier": "frontier",
+      "summary": "OpenAI의 가장 강한 모델 — 가장 어려운 판단용",
+      "pros": [
+        "가장 깊은 추론 — 컨셉·최종 판단·검증에 가장 믿을 만함",
+        "컨텍스트 1.05M — 앞 단계 결과·첨부를 통째로 넣어도 됨",
+        "추론 강도 low~max"
+      ],
+      "cons": [
+        "가장 비쌈 — 입력 $10 · 출력 $50 (1M 토큰), Sol의 5배",
+        "high·max 강도에서 응답이 몇 분 걸릴 수 있음"
+      ],
+      "price": "$10 / $50"
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "kind": "text",
+      "gen": "GPT-6 · 최신",
+      "tier": "strong",
+      "summary": "Astra에 가까운 성능 · 균형형",
+      "pros": [
+        "OpenAI 설명상 복잡한 작업에서 Astra에 가까운 성능",
+        "Astra의 1/5 가격 — 입력 $2 · 출력 $10",
+        "캐시 입력이 특히 쌈($0.10) — 반복 호출에 유리"
+      ],
+      "cons": [
+        "가장 어려운 판단에서는 Astra보다 한 단계 아래",
+        "Luna보다 20배 비쌈 — 단순 정리에 쓰면 낭비"
+      ],
+      "price": "$2 / $10"
+    },
+    {
+      "id": "gpt-6-luna",
+      "kind": "text",
+      "gen": "GPT-6 · 최신",
+      "tier": "fast",
+      "summary": "가장 효율적인 대량 처리용",
+      "pros": [
+        "가장 쌈 — 입력 $0.10 · 출력 $0.50",
+        "빠름 · 추론 강도 none까지 지원 — 정리·요약·포맷에 적합",
+        "병렬 조수를 많이 돌려도 비용 부담이 적음"
+      ],
+      "cons": [
+        "깊은 해석·판단에는 약함 — 화가·판단 브레인에는 권하지 않음",
+        "사조 재해석처럼 미묘한 작업은 결과가 평이해질 수 있음"
+      ],
+      "price": "$0.10 / $0.50"
+    },
+    {
+      "id": "gpt-5",
+      "kind": "text",
+      "gen": "이전 세대",
+      "tier": "strong",
+      "summary": "GPT-5 — 이전 세대 주력",
+      "pros": [
+        "이전 버전(0.2.x)에서 쓰던 기본값 — 결과 비교용",
+        "가격 $1.25 / $10"
+      ],
+      "cons": [
+        "GPT-6 세대보다 판단 품질이 낮음",
+        "계정에 따라 더 이상 제공되지 않을 수 있음"
+      ],
+      "price": "$1.25 / $10"
+    },
+    {
+      "id": "gpt-5-mini",
+      "kind": "text",
+      "gen": "이전 세대",
+      "tier": "balanced",
+      "summary": "GPT-5 mini",
+      "pros": [
+        "싸고 빠름 — $0.25 / $2"
+      ],
+      "cons": [
+        "Luna보다 비싸고 이전 세대",
+        "계정에 따라 제공되지 않을 수 있음"
+      ],
+      "price": "$0.25 / $2"
+    },
+    {
+      "id": "gpt-5-nano",
+      "kind": "text",
+      "gen": "이전 세대",
+      "tier": "fast",
+      "summary": "GPT-5 nano",
+      "pros": [
+        "매우 쌈 — $0.05 / $0.40"
+      ],
+      "cons": [
+        "품질이 가장 낮음 — 정리 외에는 비권장",
+        "계정에 따라 제공되지 않을 수 있음"
+      ],
+      "price": "$0.05 / $0.40"
+    },
+    {
+      "id": "gpt-image-2.5-sunburst",
+      "kind": "image",
+      "gen": "이미지 · 최신",
+      "tier": "quality",
+      "summary": "가장 높은 품질의 이미지 생성·편집",
+      "pros": [
+        "OpenAI 이미지 모델 중 최고 품질 — 최종 가이드 비주얼에",
+        "편집(이미지 입력)까지 가장 정교함"
+      ],
+      "cons": [
+        "Flare와 토큰 단가는 같지만(출력 $30/1M) 품질을 높이면 장당 비용이 큼",
+        "Flare보다 생성이 느릴 수 있음"
+      ],
+      "price": "출력 $30 / 1M"
+    },
+    {
+      "id": "gpt-image-2.5-flare",
+      "kind": "image",
+      "gen": "이미지 · 최신",
+      "tier": "fast",
+      "summary": "빠른 고품질 일상 생성",
+      "pros": [
+        "빠르고 품질이 높음 — 가이드가 많거나 다시 그릴 때",
+        "단가는 Sunburst와 같음"
+      ],
+      "cons": [
+        "최종 비주얼의 디테일은 Sunburst보다 한 단계 아래"
+      ],
+      "price": "출력 $30 / 1M"
+    },
+    {
+      "id": "gpt-image-2",
+      "kind": "image",
+      "gen": "이미지 · 이전 세대",
+      "tier": "economy",
+      "summary": "이전 세대 — 절반 단가",
+      "pros": [
+        "2.5 세대의 절반 단가 — 출력 $15 / 1M",
+        "러프·방향 확인용으로 충분"
+      ],
+      "cons": [
+        "품질·글자 표현이 2.5 세대보다 낮음"
+      ],
+      "price": "출력 $15 / 1M"
+    },
+    {
+      "id": "gpt-image-1",
+      "kind": "image",
+      "gen": "이미지 · 이전 세대",
+      "tier": "economy",
+      "summary": "gpt-image-1 — 0.2.x 기본값",
+      "pros": [
+        "이전 결과와 비교할 때"
+      ],
+      "cons": [
+        "가장 오래된 세대 · 계정에 따라 제공되지 않을 수 있음"
+      ],
+      "price": "출력 $40 / 1M"
+    }
+  ],
+  "uses": {
+    "text": [
+      {
+        "id": "judge",
+        "label": "판단·컨셉·검증"
+      },
+      {
+        "id": "structure",
+        "label": "구조화·포지셔닝·전환"
+      },
+      {
+        "id": "interpret",
+        "label": "사조 재해석·레이어 종합"
+      },
+      {
+        "id": "analyze",
+        "label": "분석·비교·정찰 종합"
+      },
+      {
+        "id": "collect",
+        "label": "웹 정찰·사례 채집"
+      },
+      {
+        "id": "bulk",
+        "label": "병렬 채집·초안"
+      },
+      {
+        "id": "tidy",
+        "label": "정리·요약·포맷"
+      }
+    ],
+    "image": [
+      {
+        "id": "final",
+        "label": "최종 가이드 비주얼"
+      },
+      {
+        "id": "iterate",
+        "label": "가이드가 많을 때·다시 그리기"
+      },
+      {
+        "id": "rough",
+        "label": "러프·방향 확인"
+      }
+    ]
+  },
+  "effortGuide": {
+    "none": "추론 없음 — 가장 빠름·쌈 (Luna)",
+    "low": "빠름·저렴 — 채집·정리",
+    "medium": "균형 — 분석·종합",
+    "high": "깊게 — 판단·컨셉 (느려짐)",
+    "max": "가장 깊게 — 비용·시간 최대"
   }
 }

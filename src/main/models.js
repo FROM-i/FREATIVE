@@ -29,6 +29,7 @@ function effective() {
       imagePool: r.imagePool || [],
       stages: r.stages || {},
       effortsList: r.efforts,
+      catalog: r.catalog || [], uses: r.uses || {}, effortGuide: r.effortGuide || {},
       source: 'recommended',
       updated: r.updated,
     };
@@ -38,7 +39,8 @@ function effective() {
     efforts: { ...(o.roleEfforts || {}) },
     pool: o.pool || [],
     imagePool: o.imagePool && o.imagePool.length ? o.imagePool : (r && r.imagePool) || [],
-    stages: {},
+    stages: o.stages || {},
+    catalog: (r && r.catalog) || [], uses: (r && r.uses) || {}, effortGuide: (r && r.effortGuide) || {},
     source: 'custom',
     updated: r && r.updated,
   };
@@ -59,7 +61,7 @@ function pricing() {
 /** 추천 구성을 사용자 설정으로 복사 — '직접 지정'으로 바꿀 때 지금 값에서 출발하도록 */
 function snapshotToCustom() {
   const e = effective();
-  return { models: e.models, roleEfforts: e.efforts, pool: e.pool, imagePool: e.imagePool };
+  return { models: e.models, roleEfforts: e.efforts, pool: e.pool, imagePool: e.imagePool, stages: e.stages };
 }
 
 /** 계정에서 쓸 수 있는 모델 목록에서 새 모델을 찾아 등급을 추정한다 */

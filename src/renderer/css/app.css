@@ -646,3 +646,23 @@ a.src.web { text-decoration: none; border-color: var(--ink-2); color: var(--ink-
 .agent.stale { border-color: var(--warn); }
 .agent.stale .live { color: var(--warn); }
 .agent.stale .av { background: var(--paper) !important; box-shadow: inset 0 0 0 1px var(--warn); }
+
+/* 모델 설정 — 드롭다운 · 장단점 */
+.mline { display: grid; gap: 8px; align-items: center; }
+.mline.text { grid-template-columns: minmax(0, 1fr) 230px; }
+.mline.image { grid-template-columns: minmax(0, 1fr); }
+.mline.stage { grid-template-columns: 170px minmax(0, 1fr) 210px auto; font-size: 12px; }
+.mline.pool { grid-template-columns: 190px minmax(0, 1fr) 200px 30px; }
+.mline.ipool { grid-template-columns: 190px minmax(0, 1fr) 30px; }
+.mline.head { font-size: 11px; color: var(--mute); font-weight: 600; letter-spacing: .04em; }
+.mline select, .mline input { min-width: 0; width: 100%; }
+.minfo { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 4px 10px; font-size: 12px; border-left: 2px solid var(--hair-2); padding: 4px 0 4px 10px; }
+.minfo .mprice { font-family: ui-monospace, monospace; font-size: 11px; font-weight: 700; }
+.minfo .pc { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; }
+.minfo .pros, .minfo .cons { display: flex; flex-direction: column; gap: 2px; }
+.minfo .cons { color: var(--ink-2); }
+.minfo .cons span { color: #8B3B2E; }
+.minfo.compact { font-size: 11px; padding-top: 2px; padding-bottom: 2px; }
+.minfo.none { display: block; color: var(--mute); }
+.prow, .irow { display: flex; flex-direction: column; gap: 4px; padding-bottom: 8px; border-bottom: var(--line) solid var(--hair); }
+@media (max-width: 1100px) { .minfo .pc { grid-template-columns: 1fr; } .mline.pool { grid-template-columns: 1fr 1fr; } .mline.text { grid-template-columns: 1fr; } }

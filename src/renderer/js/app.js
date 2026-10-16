@@ -293,21 +293,37 @@ async function renderSettings() {
   const pricing = Object.entries(S.models.pricing || s.pricing || {}).filter(([kk, v]) => kk !== 'image' && v && typeof v === 'object');
   const MI = S.models, E = MI.effective, follow = MI.following;
   const EFF = (MI.recommended && MI.recommended.efforts) || ['none', 'low', 'medium', 'high', 'max'];
-  const ROLES = [['director', '화가 · 메인', '오케스트레이션 · 컨셉 · 가이드 — 역할에 가장 맞는 최신 최상위'], ['brain', '판단 브레인', '방향 제시 · 검증 · 발상의 전환 — 화가와 거의 동급'], ['sub', '조수 · 서브', '기본값 — 화가가 단계마다 풀에서 고른다'], ['image', '이미지', '가이드 비주얼 — 화가가 이미지 풀에서 고른다']];
-  const TIERS = ['frontier', 'strong', 'balanced', 'fast'];
-  const effSel = (attr, v, withDefault = true) => `<select class="input box" ${attr}>${(withDefault ? [''] : []).concat(EFF).map((x) => `<option value="${x}" ${x === (v || '') ? 'selected' : ''}>${x || '기본'}</option>`).join('')}</select>`;
-  const roleRows = ROLES.map(([k, label, sub]) => {
-    const st = Object.entries(E.stages || {}).filter(([, v]) => v[k]).map(([stg, v]) => `${stg} → ${v[k].model}${v[k].effort ? '·' + v[k].effort : ''}`);
-    return follow
-      ? `<div class="srow"><div class="lbl">${label}<small>${sub}</small></div><div class="model-ro"><b class="mono">${esc(E.models[k] || '')}</b>${E.efforts[k] ? `<span class="tag">${esc(E.efforts[k])}</span>` : ''}${st.length ? `<span class="muted">단계 지정 — ${esc(st.join(' · '))}</span>` : ''}<small class="muted">${esc(((MI.recommended.roles || {})[k] || {}).why || '')}</small></div></div>`
-      : `<div class="srow"><div class="lbl">${label}<small>${sub}</small></div><div class="inline"><input class="input box" data-k="openai.models.${k}" value="${esc(E.models[k] || '')}" list="modelList"/>${k === 'image' ? '' : effSel(`data-roleeff="${k}"`, E.efforts[k])}</div></div>`;
-  }).join('');
-  const poolRows = follow
-    ? `<div class="pool-ro">${E.pool.map((p) => `<div><span class="tag ${p.tier === 'frontier' ? 'ink' : ''}">${esc(p.tier)}</span><b class="mono">${esc(p.id)}</b><span class="tag">${esc(p.effort || '기본')}</span><span class="muted">${esc(p.note || '')}</span></div>`).join('')}</div>`
-    : `<div class="stack" style="gap:6px" id="pool">${E.pool.map((p, i) => `<div class="pool-row" data-i="${i}"><input class="input box" data-pool="id" value="${esc(p.id)}" list="modelList"/>${effSel('data-pool="effort"', p.effort)}<select class="input box" data-pool="tier">${TIERS.map((t) => `<option ${p.tier === t ? 'selected' : ''}>${t}</option>`).join('')}</select><input class="input box" data-pool="note" value="${esc(p.note || '')}" placeholder="용도"/><button class="btn xs ghost" data-s="poolDel" data-i="${i}">×</button></div>`).join('')}<div><button class="btn xs" data-s="poolAdd">+ 모델 추가</button></div></div>`;
-  const ipoolRows = follow
-    ? `<div class="pool-ro">${E.imagePool.map((p) => `<div><span class="tag">${esc(p.tier)}</span><b class="mono">${esc(p.id)}</b><span></span><span class="muted">${esc(p.note || '')}</span></div>`).join('')}</div>`
-    : `<div class="stack" style="gap:6px" id="ipool">${E.imagePool.map((p, i) => `<div class="pool-row img" data-i="${i}"><input class="input box" data-ipool="id" value="${esc(p.id)}" list="modelList"/><select class="input box" data-ipool="tier">${['quality', 'fast', 'economy'].map((t) => `<option ${p.tier === t ? 'selected' : ''}>${t}</option>`).join('')}</select><input class="input box" data-ipool="note" value="${esc(p.note || '')}" placeholder="용도"/><button class="btn xs ghost" data-s="ipoolDel" data-i="${i}">×</button></div>`).join('')}<div><button class="btn xs" data-s="ipoolAdd">+ 이미지 모델 추가</button></div></div>`;
+  const EG = E.effortGuide || {};
+  const CAT = E.catalog || [];
+  const catBy = Object.fromEntries(CAT.map((c) => [c.id, c]));
+  const USES = E.uses || { text: [], image: [] };
+  const found = S.discovered || { text: [], image: [] };
+  const ROLES = [['director', '화가 · 메인', '오케스트레이션 · 컨셉 · 가이드', 'text'], ['brain', '판단 브레인', '방향 제시 · 검증 · 발상의 전환', 'text'], ['sub', '조수 · 서브', '화가가 풀에서 고르지 않은 곳의 기본값', 'text'], ['image', '이미지', '화가가 이미지 풀에서 고르지 않은 곳의 기본값', 'image']];
+  const STAGE_KO = { forpop: 'FoR · PoP · PoD', concept: 'Concept · Theme', canvas: '캔버스', airplane: 'Airplane', tunnel: 'Tunnel', positioning: 'Positioning', creative: 'Creative' };
+  const modelSel = (kind, value, attrs) => {
+    const groups = {};
+    CAT.filter((c) => c.kind === kind).forEach((c) => { (groups[c.gen] = groups[c.gen] || []).push(c); });
+    const extra = (found[kind] || []).filter((f) => !catBy[f.id]);
+    const known = new Set([...CAT.map((c) => c.id), ...extra.map((f) => f.id)]);
+    return `<select class="input box msel" ${attrs}>${Object.entries(groups).map(([g, list]) => `<optgroup label="${esc(g)}">${list.map((c) => `<option value="${esc(c.id)}" ${c.id === value ? 'selected' : ''}>${esc(c.id)} — ${esc(c.summary)} · ${esc(c.price)}</option>`).join('')}</optgroup>`).join('')}${extra.length ? `<optgroup label="계정에서 찾은 모델 (정보 없음)">${extra.map((f) => `<option value="${esc(f.id)}" ${f.id === value ? 'selected' : ''}>${esc(f.id)}</option>`).join('')}</optgroup>` : ''}${value && !known.has(value) ? `<optgroup label="현재 값"><option value="${esc(value)}" selected>${esc(value)}</option></optgroup>` : ''}<optgroup label="—"><option value="__custom">직접 입력…</option></optgroup></select>`;
+  };
+  const effSel = (value, attrs) => `<select class="input box esel" ${attrs}><option value="" ${!value ? 'selected' : ''}>강도 기본</option>${EFF.map((x) => `<option value="${x}" ${x === value ? 'selected' : ''}>${x} — ${esc(EG[x] || '')}</option>`).join('')}</select>`;
+  const useSel = (kind, value, attrs) => {
+    const list = USES[kind] || [];
+    const has = list.find((u) => u.id === value);
+    return `<select class="input box usel" ${attrs}>${list.map((u) => `<option value="${u.id}" ${u.id === value ? 'selected' : ''}>${esc(u.label)}</option>`).join('')}${!has && value ? `<option value="${esc(value)}" selected>${esc(value)}</option>` : ''}</select>`;
+  };
+  const info = (id, compact = false) => {
+    const c = catBy[id];
+    if (!c) return `<div class="minfo none">정보 없음 — 계정에서 찾았거나 직접 입력한 모델입니다. 단가는 아래 'API 비용'에서 확인·입력하세요.</div>`;
+    const pros = compact ? c.pros.slice(0, 1) : c.pros, cons = compact ? c.cons.slice(0, 1) : c.cons;
+    return `<div class="minfo ${compact ? 'compact' : ''}"><span class="mprice">${esc(c.price)}</span><div class="pc"><div class="pros">${pros.map((x) => `<span>＋ ${esc(x)}</span>`).join('')}</div><div class="cons">${cons.map((x) => `<span>－ ${esc(x)}</span>`).join('')}</div></div></div>`;
+  };
+  const roleRows = ROLES.map(([k, label, sub, kind]) => `<div class="srow mrow" data-role="${k}"><div class="lbl">${label}<small>${sub}</small></div>
+    <div class="stack" style="gap:6px"><div class="mline ${kind}">${modelSel(kind, E.models[k], `data-rm="${k}"`)}${kind === 'text' ? effSel(E.efforts[k] || '', `data-re="${k}"`) : ''}</div>${info(E.models[k])}</div></div>`).join('');
+  const stageRows = Object.entries(E.stages || {}).flatMap(([stg, v]) => Object.entries(v).map(([role, x]) => `<div class="mline text stage" data-stg="${stg}" data-srole="${role}"><span class="mono">${esc(STAGE_KO[stg] || stg)} · ${role === 'brain' ? '판단 브레인' : role === 'director' ? '화가' : role}</span>${modelSel('text', x.model, 'data-sm')}${effSel(x.effort || '', 'data-se')}<button class="btn xs ghost" data-s="stageDel" data-stg="${stg}" data-srole="${role}">×</button></div>`)).join('');
+  const poolRows = E.pool.map((p, i) => `<div class="prow" data-i="${i}"><div class="mline pool">${useSel('text', p.use || '', 'data-pu')}${modelSel('text', p.id, 'data-pm')}${effSel(p.effort || '', 'data-pe')}<button class="btn xs ghost" data-s="poolDel" data-i="${i}" title="빼기">×</button></div>${info(p.id, true)}</div>`).join('');
+  const ipoolRows = E.imagePool.map((p, i) => `<div class="irow" data-i="${i}"><div class="mline ipool">${useSel('image', p.use || '', 'data-iu')}${modelSel('image', p.id, 'data-im')}<button class="btn xs ghost" data-s="ipoolDel" data-i="${i}" title="빼기">×</button></div>${info(p.id, true)}</div>`).join('');
   const months = Object.entries(usage.byMonth || {}).sort().slice(-6);
   const maxM = Math.max(0.0001, ...months.map(([, v]) => v));
   view.innerHTML = `<div class="settings">
@@ -319,18 +335,20 @@ async function renderSettings() {
       <div class="srow"><div class="lbl">API 주소<small>프록시·게이트웨이 사용 시</small></div><input class="input box" data-k="openai.baseUrl" value="${esc(o.baseUrl)}"/></div>
     </div>
 
-    <div class="sgroup"><h3>모델 — 역할 · 풀 · 화가의 자율 배정</h3>
-      <div class="srow"><div class="lbl">구성<small>추천 구성은 지식 저장소(models.json)에서 자동 갱신 — OpenAI가 새 모델을 내면 재설치 없이 따라간다</small></div>
+    <div class="sgroup" id="models"><h3>모델 — 역할 · 풀 · 화가의 자율 배정</h3>
+      <div class="srow"><div class="lbl">구성<small>추천 구성은 지식 저장소(models.json)에서 자동 갱신 — 아래 어느 칸이든 바꾸면 '직접 지정'으로 바뀐다</small></div>
         <div class="inline"><div class="seg" id="modelsMode"><button data-v="1" class="${follow ? 'on' : ''}">추천 구성 따르기</button><button data-v="0" class="${follow ? '' : 'on'}">직접 지정</button></div>
         <span class="muted" style="font-size:12px">${MI.recommended ? `추천 기준 ${esc(MI.recommended.updated || '')}` : '추천 구성 없음 — 지식 동기화 필요'}</span></div></div>
       ${roleRows}
-      <datalist id="modelList"></datalist>
-      <div class="srow"><div class="lbl">화가의 모델 자율 선택<small>미션을 보고 단계·역할마다 아래 풀에서 고른다</small></div><label class="toggle"><input type="checkbox" data-k="openai.autoModel" ${o.autoModel ? 'checked' : ''}/> 켜기 — 역할 기본값은 화가가 배정하지 않은 곳에만 쓰인다</label></div>
-      <div class="srow" style="align-items:start"><div class="lbl">모델 풀 · ${E.pool.length}<small>화가가 조수에게 고를 수 있는 모델 × 추론 강도</small></div>${poolRows}</div>
-      <div class="srow" style="align-items:start"><div class="lbl">이미지 풀 · ${E.imagePool.length}<small>화가가 가이드 비주얼마다 고른다</small></div>${ipoolRows}</div>
-      <div class="srow" style="align-items:start"><div class="lbl">새 모델 확인<small>이 API 키로 쓸 수 있는 모델 중 풀에 없는 것을 찾는다</small></div>
+      ${stageRows ? `<div class="srow" style="align-items:start"><div class="lbl">단계 지정<small>특정 단계에서만 역할 모델을 바꾼다 — 핵심 판단 단계의 브레인을 화가와 동급으로</small></div><div class="stack" style="gap:6px">${stageRows}</div></div>` : ''}
+      <div class="srow"><div class="lbl">화가의 모델 자율 선택<small>미션을 보고 단계·역할마다 아래 풀에서 고른다</small></div><label class="toggle"><input type="checkbox" data-k="openai.autoModel" ${o.autoModel ? 'checked' : ''}/> 켜기 — 위 역할 기본값은 화가가 배정하지 않은 곳에만 쓰인다</label></div>
+      <div class="srow" style="align-items:start"><div class="lbl">조수 풀 · ${E.pool.length}<small>용도 · 모델 · 추론 강도 — 화가가 단계마다 고른다</small></div>
+        <div class="stack" style="gap:10px"><div class="mline pool head"><span>용도</span><span>모델</span><span>추론 강도</span><span></span></div>${poolRows}<div><button class="btn xs" data-s="poolAdd">+ 풀에 추가</button></div></div></div>
+      <div class="srow" style="align-items:start"><div class="lbl">이미지 풀 · ${E.imagePool.length}<small>화가가 가이드 비주얼마다 고른다</small></div>
+        <div class="stack" style="gap:10px"><div class="mline ipool head"><span>용도</span><span>모델</span><span></span></div>${ipoolRows}<div><button class="btn xs" data-s="ipoolAdd">+ 이미지 모델 추가</button></div></div></div>
+      <div class="srow" style="align-items:start"><div class="lbl">새 모델 확인<small>이 API 키로 쓸 수 있는 모델 중 목록에 없는 것을 찾아 드롭다운에 넣는다</small></div>
         <div class="stack" style="gap:8px"><div><button class="btn xs" data-s="discover">OpenAI에서 확인</button></div><div id="discover"></div></div></div>
-      <div class="srow"><div class="lbl">추론 강도 기본값<small>역할·풀에 강도가 없을 때만 · gpt-5 이후 · o 계열</small></div><div class="seg" data-seg="openai.reasoningEffort">${[''].concat(EFF).map((v) => `<button data-v="${v}" class="${o.reasoningEffort === v ? 'on' : ''}">${v || '기본'}</button>`).join('')}</div></div>
+      <div class="srow"><div class="lbl">추론 강도 기본값<small>역할·풀에 강도가 없을 때만</small></div><div class="seg" data-seg="openai.reasoningEffort">${[''].concat(EFF).map((v) => `<button data-v="${v}" class="${o.reasoningEffort === v ? 'on' : ''}" title="${esc(EG[v] || '')}">${v || '기본'}</button>`).join('')}</div></div>
     </div>
 
     <div class="sgroup"><h3>더프롬 판단 브레인</h3>
@@ -384,17 +402,40 @@ async function renderSettings() {
   const num = (el) => (el.value === '' ? null : +el.value);
   $$('[data-k]', view).forEach((el) => el.addEventListener('change', () => setPath(el.dataset.k, el.type === 'checkbox' ? el.checked : el.type === 'number' ? (el.dataset.k === 'run.maxParallel' ? Math.max(1, Math.min(8, +el.value || 4)) : num(el)) : el.value.trim())));
   $$('[data-seg]', view).forEach((g) => g.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; $$('button', g).forEach((x) => x.classList.toggle('on', x === b)); setPath(g.dataset.seg, /^\d+$/.test(b.dataset.v) ? +b.dataset.v : b.dataset.v); }));
-  const savePool = () => {
-    const pool = $$('.pool-row:not(.img)', view).map((r) => ({ id: r.querySelector('[data-pool=id]').value.trim(), effort: r.querySelector('[data-pool=effort]').value, tier: r.querySelector('[data-pool=tier]').value, note: r.querySelector('[data-pool=note]').value.trim() })).filter((p) => p.id);
-    return setPath('openai.pool', pool);
+  // 모델 구성 — 화면의 모든 드롭다운을 읽어 한 번에 저장한다 (추천 구성을 따르던 중이면 직접 지정으로 바꾼다)
+  const useLabel = (kind, id) => ((USES[kind] || []).find((u) => u.id === id) || {}).label || id;
+  const tierOf = (id, kind) => (catBy[id] && catBy[id].tier) || (kind === 'image' ? 'quality' : 'balanced');
+  const readModels = () => {
+    const val = (el) => (el ? el.value.trim() : '');
+    const models = {}, roleEfforts = {};
+    $$('[data-rm]', view).forEach((el) => { models[el.dataset.rm] = val(el); });
+    $$('[data-re]', view).forEach((el) => { roleEfforts[el.dataset.re] = el.value; });
+    const stages = {};
+    $$('.mline.stage', view).forEach((r) => { (stages[r.dataset.stg] = stages[r.dataset.stg] || {})[r.dataset.srole] = { model: val(r.querySelector('[data-sm]')), effort: r.querySelector('[data-se]').value, why: '단계 지정' }; });
+    const pool = $$('.prow', view).map((r) => { const id = val(r.querySelector('[data-pm]')); const use = r.querySelector('[data-pu]').value; return { id, effort: r.querySelector('[data-pe]').value, use, note: useLabel('text', use), tier: tierOf(id, 'text') }; }).filter((p) => p.id && p.id !== '__custom');
+    const imagePool = $$('.irow', view).map((r) => { const id = val(r.querySelector('[data-im]')); const use = r.querySelector('[data-iu]').value; return { id, use, note: useLabel('image', use), tier: tierOf(id, 'image') }; }).filter((p) => p.id && p.id !== '__custom');
+    return { models, roleEfforts, stages, pool, imagePool };
   };
-  const saveIpool = () => {
-    const pool = $$('.pool-row.img', view).map((r) => ({ id: r.querySelector('[data-ipool=id]').value.trim(), tier: r.querySelector('[data-ipool=tier]').value, note: r.querySelector('[data-ipool=note]').value.trim() })).filter((p) => p.id);
-    return setPath('openai.imagePool', pool);
+  const saveModels = async (mutate) => {
+    const cfg = readModels();
+    if (mutate) mutate(cfg);
+    const wasFollow = S.models.following;
+    S.settings = await api.settings.set({ openai: { followRecommended: false, ...cfg } });
+    if (wasFollow) toast('직접 지정으로 바꿨습니다 — 추천 구성으로 돌아가려면 위에서 "추천 구성 따르기"');
+    renderSettings();
   };
-  if ($('#pool')) $('#pool').addEventListener('change', savePool);
-  if ($('#ipool')) $('#ipool').addEventListener('change', saveIpool);
-  $$('[data-roleeff]', view).forEach((el) => el.addEventListener('change', () => setPath(`openai.roleEfforts.${el.dataset.roleeff}`, el.value)));
+  $('#models').addEventListener('change', async (e) => {
+    const el = e.target;
+    if (!el.matches('.msel, .esel, .usel, .mcustom')) return;
+    if (el.value === '__custom') {
+      const inp = document.createElement('input');
+      inp.className = 'input box mcustom'; inp.placeholder = '모델 ID 입력 후 Enter (예: gpt-6.2-sol)';
+      for (const a of el.attributes) if (a.name.startsWith('data-')) inp.setAttribute(a.name, a.value);
+      el.replaceWith(inp); inp.focus();
+      return;
+    }
+    await saveModels();
+  });
   $('#modelsMode').addEventListener('click', async (e) => { const b = e.target.closest('button'); if (!b) return; S.settings = await api.settings.modelsMode(b.dataset.v === '1'); renderSettings(); });
   const savePrices = () => {
     const pricing = { ...(S.settings.pricing || {}) };
@@ -412,26 +453,20 @@ async function renderSettings() {
     if (a === 'saveGh') { S.settings = await api.settings.setSecret('githubToken', $('#gh').value.trim()); toast('저장했습니다'); renderSettings(); }
     if (a === 'test') { b.disabled = true; const r = await api.settings.testKey(); toast(r.ok ? `연결됨 — 모델 ${r.count}개` : `실패 — ${r.message}`, 5000); b.disabled = false;
       const l = await api.settings.listModels(); if (l.ok) $('#modelList').innerHTML = l.models.filter((x) => /gpt|o\d|image|dall/.test(x)).map((x) => `<option value="${esc(x)}">`).join(''); }
-    if (a === 'poolAdd') { await setPath('openai.pool', [...(S.settings.openai.pool || []), { id: '', effort: 'medium', tier: 'balanced', note: '' }]); renderSettings(); }
-    if (a === 'ipoolAdd') { await setPath('openai.imagePool', [...(S.models.effective.imagePool || []), { id: '', tier: 'fast', note: '' }]); renderSettings(); }
-    if (a === 'ipoolDel') { const pool = [...(S.models.effective.imagePool || [])]; pool.splice(+b.dataset.i, 1); await setPath('openai.imagePool', pool); renderSettings(); }
+    if (a === 'poolAdd') await saveModels((c) => c.pool.push({ id: 'gpt-6.1-sol', effort: 'medium', use: 'analyze', note: useLabel('text', 'analyze'), tier: 'strong' }));
+    if (a === 'poolDel') await saveModels((c) => c.pool.splice(+b.dataset.i, 1));
+    if (a === 'ipoolAdd') await saveModels((c) => c.imagePool.push({ id: 'gpt-image-2.5-flare', use: 'iterate', note: useLabel('image', 'iterate'), tier: 'fast' }));
+    if (a === 'ipoolDel') await saveModels((c) => c.imagePool.splice(+b.dataset.i, 1));
+    if (a === 'stageDel') await saveModels((c) => { delete (c.stages[b.dataset.stg] || {})[b.dataset.srole]; });
     if (a === 'discover') {
       b.disabled = true; $('#discover').innerHTML = '<span class="muted">확인 중…</span>';
       const r = await api.settings.discoverModels(); b.disabled = false;
       if (!r.ok) { $('#discover').innerHTML = `<span class="src need">${esc(r.message)}</span>`; return; }
-      const items = [...r.text.map((x) => ({ ...x, kind: 'text' })), ...r.image.map((x) => ({ ...x, kind: 'image' }))];
-      $('#discover').innerHTML = items.length
-        ? `<div class="pool-ro">${items.map((x) => `<div><span class="tag">${esc(x.kind === 'image' ? '이미지 · ' + x.tier : x.tier)}</span><b class="mono">${esc(x.id)}</b><button class="btn xs" data-s="addFound" data-id="${esc(x.id)}" data-kind="${x.kind}" data-tier="${esc(x.tier)}">풀에 추가</button></div>`).join('')}</div><small class="muted">계정 모델 ${r.total}개 중 풀에 없는 것 · 추가하면 '직접 지정'으로 바뀝니다 · 단가는 아래 API 비용에서 확인</small>`
-        : `<span class="muted">계정 모델 ${r.total}개 — 풀에 없는 새 모델이 없습니다.</span>`;
+      S.discovered = { text: r.text, image: r.image };
+      const n = r.text.length + r.image.length;
+      toast(n ? `새 모델 ${n}개를 드롭다운의 '계정에서 찾은 모델'에 넣었습니다` : `계정 모델 ${r.total}개 — 목록에 없는 새 모델이 없습니다`, 5000);
+      renderSettings();
     }
-    if (a === 'addFound') {
-      if (S.models.following) { S.settings = await api.settings.modelsMode(false); S.models = await api.settings.models(); }
-      const E2 = S.models.effective;
-      if (b.dataset.kind === 'image') await setPath('openai.imagePool', [...E2.imagePool, { id: b.dataset.id, tier: b.dataset.tier, note: '새 모델' }]);
-      else await setPath('openai.pool', [...E2.pool, { id: b.dataset.id, effort: 'medium', tier: b.dataset.tier, note: '새 모델' }]);
-      toast(`${b.dataset.id}를 풀에 추가했습니다`); renderSettings();
-    }
-    if (a === 'poolDel') { const pool = [...(S.models.effective.pool || [])]; pool.splice(+b.dataset.i, 1); await setPath('openai.pool', pool); renderSettings(); }
     if (a === 'priceAdd') { const id = $('#newModel').value.trim(); if (!id) return; await setPath('pricing', { ...(S.settings.pricing || {}), [id]: { in: 0, cached: 0, out: 0 } }); renderSettings(); }
     if (a === 'sync') { b.disabled = true; const r = await api.knowledge.sync(); toast(r.message, 5000); S.types = await api.knowledge.types(); await loadCatalog(); S.knowledge = r.status; renderTop(); renderSettings(); }
     if (a === 'upd') { const r = await api.updater.check(); toast(r.message || (r.version ? `최신 v${r.version}` : '확인했습니다')); }
