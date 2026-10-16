@@ -225,10 +225,38 @@ class Controller {
     if (b && b.fixPending && b.fixPending.length) parts.push(`## 브레인의 재작업 지시 — 반드시 반영\n${b.fixPending.map((f) => `- ${f}`).join('\n')}`);
     const prev = ORDER[ORDER.indexOf(stage) - 1];
     const pv = prev && this.run.brain[prev] && this.run.brain[prev].verify;
-    if (pv && pv.verdict === '보완' && (pv.fixes || []).length) parts.push(`## 앞 단계 검증에서 넘어온 보완점\n${pv.fixes.map((f) => `- ${f}`).join('\n')}`);
+    if (pv && (pv.fixes || []).length) parts.push(pv.verdict === '보완' ? `## 앞 단계 검증에서 넘어온 보완점 — 반드시 반영\n${pv.fixes.map((f) => `- ${f}`).join('\n')}` : `## 앞 단계 검증에서 나온 고칠 점 — 참고해 반영\n${pv.fixes.map((f) => `- ${f}`).join('\n')}`);
     const insp = this.inspirationFor(stage);
     if (insp !== '(없음)') parts.push(`## 디자이너의 영감 — 판단의 출발점(나로부터)으로 존중하라\n${insp}`);
     return parts.length ? `\n\n---\n${parts.join('\n\n')}` : '';
+  }
+
+  /** 계보 — 앞선 모든 단계의 코어. 뒤 단계가 무엇에서 출발하는지 잃지 않도록 컨셉·Creative에 함께 넘긴다 */
+  lineage() {
+    const R = this.run.results;
+    const s = R.airplane && R.airplane.synth;
+    const t = R.tunnel && R.tunnel.synth;
+    const p = R.positioning;
+    const chosen = p && arr(p.territories).find((x) => p.final && x.id === p.final.id);
+    return {
+      canvas: R.canvas && { from_me: R.canvas.from_me, tension: R.canvas.tension, inertia: R.canvas.inertia, concept_draft: R.canvas.concept_draft },
+      airplane: s && { hybrid: s.hybrid, suitcase: s.suitcase, leave: s.leave_together, selected: s.selected },
+      tunnel: t && { exit_light: t.exit_light, keep: t.keep, change: t.change, conflicts: t.conflicts },
+      positioning: p && { whitespace: p.whitespace, chosen, reason: p.final && p.final.reason },
+    };
+  }
+
+  /** FoR · PoP · PoD 결과 — 뒤 단계로 넘기는 형태 (차별성 판정 · 보완점 · RTB 포함) */
+  forpopHandoff() {
+    const fp = this.run.results.forpop || {};
+    const cmp = fp.compare || {};
+    return {
+      for: fp.for, pop: [...arr(fp.pop), ...arr(cmp.pop_add)], core_pod: fp.core_pod, rtb: fp.rtb, coherence: fp.coherence,
+      positioning: cmp.positioning,
+      differentiation: arr(cmp.scopes).map((x) => ({ scope: x.title, verdict: x.verdict, similar: arr(x.similar).map((d) => d.item), different: arr(x.different).map((d) => d.item), note: x.note })),
+      core_triangle: cmp.core_triangle,
+      brain_fixes: arr(cmp.fixes).filter(Boolean),
+    };
   }
 
   /** 지금까지의 판단 요약 — 브레인·리포트용 */
@@ -241,12 +269,14 @@ class Controller {
     if (R.tunnel && R.tunnel.synth) d.tunnel = { narrowed: R.tunnel.synth.narrowed, keep: R.tunnel.synth.keep, change: R.tunnel.synth.change, exit_light: R.tunnel.synth.exit_light };
     if (R.positioning) { const p = R.positioning; const t = (p.territories || []).find((x) => p.final && x.id === p.final.id); d.positioning = { axes: p.axes && { x: p.axes.x && p.axes.x.name, y: p.axes.y && p.axes.y.name }, whitespace: p.whitespace && p.whitespace.label, chosen: t && t.name, reason: p.final && p.final.reason }; }
     if (R.forpop) d.forpop = { for: R.forpop.for && R.forpop.for.frame, for_kind: R.forpop.for && R.forpop.for.chosen, pop: (R.forpop.pop || []).map((x) => x.item), core_pod: R.forpop.core_pod, positioning: R.forpop.compare && R.forpop.compare.positioning && R.forpop.compare.positioning.sentence, differentiation: R.forpop.compare && (R.forpop.compare.scopes || []).map((x) => `${x.title}: ${x.verdict || ''}`), shifts: (R.forpop.shifts || []).map((s) => s.shift && `${s.shift.type} ${s.shift.name}`), coherence: R.forpop.coherence };
-    if (R.concept) d.concept = { concept: R.concept.concept, theme: R.concept.theme, keywords: R.concept.keywords, philosophy_core: R.concept.philosophy_core, ...(full ? { proposals: (R.concept.proposals || []).map((p) => ({ id: p.id, theme: p.theme, concept: p.concept })), first_round: R.concept.first_round, brain_select: R.concept.brain_select && R.concept.brain_select.final } : {}) };
+    if (R.concept) d.concept = { concept: R.concept.concept, theme: R.concept.theme, keywords: R.concept.keywords, philosophy_core: R.concept.philosophy_core, ...(full ? { metaphor: R.concept.metaphor, tone_manner: R.concept.tone_manner, interpretation: R.concept.interpretation, benefit: R.concept.benefit, proposals: (R.concept.proposals || []).map((p) => ({ id: p.id, theme: p.theme, concept: p.concept })), first_round: R.concept.first_round, brain_select: R.concept.brain_select && R.concept.brain_select.final } : {}) };
     if (R.creative) d.creative = (R.creative.examples || []).map((e) => ({ direction: e.direction, title: e.title, headline: e.headline, one_liner: e.one_liner, ...(full ? { structure: (e.structure || []).map((s) => s.name), detail: e.detail } : {}) }));
     const bv = Object.entries(this.run.brain).filter(([, v]) => v && v.verify).map(([k, v]) => ({ stage: k, verdict: v.verify.verdict, issues: (v.verify.issues || []).slice(0, 2) }));
     if (bv.length) d.brain = bv;
     if (this.run.inspirations.length) d.inspirations = this.run.inspirations.map((i) => ({ stage: i.stage, text: i.text }));
     if (full && R.creative && R.creative.selection) d.selection = R.creative.selection;
+    if (full && R.creative) { d.prelim_review = R.creative.prelim_review; d.human_todo = R.creative.human_todo; }
+    if (full && R.forpop) { d.forpop.rtb = R.forpop.rtb; d.forpop.audit = R.forpop.audit; d.forpop.coherence = R.forpop.coherence; }
     return d;
   }
 
@@ -517,7 +547,7 @@ class Controller {
 
   positioningDigest() {
     const p = this.run.results.positioning;
-    return { axes: p.axes, whitespace: p.whitespace, chosen: (p.territories || []).find((t) => p.final && t.id === p.final.id), final: p.final, rounds: p.rounds };
+    return { axes: p.axes, players: p.players, whitespace: p.whitespace, chosen: (p.territories || []).find((t) => p.final && t.id === p.final.id), territories: arr(p.territories).map((t) => ({ id: t.id, name: t.name })), final: p.final, rounds: p.rounds };
   }
 
   async stageForpop() {
@@ -582,7 +612,7 @@ class Controller {
       agent: { key: 'brain', name: '판단 브레인', task: '차별성 판정 · 세 범위 · 공통 범례' },
       ctx: {
         mission: this.mission, frame, scan: scanBrief, inspiration: this.inspirationFor('forpop'), lensTable: this.lensTable(),
-        pod: { core: fp.core_pod, candidates: base.pod_candidates, shifted: r1.result },
+        pod: { core: fp.core_pod, rtb: fp.rtb, candidates: base.pod_candidates, shifted: r1.result, shifts: fp.shifts.map((x) => ({ shift: x.shift, cut: x.cut })), final_check: fp.final_check },
       },
     });
     fp.compare = this.normalizeCompare(cmp, scan);
@@ -677,7 +707,7 @@ class Controller {
     const hist = this.run.gates.C.history.filter((h) => h.decision === 'revise');
     const feedback = hist.length ? hist.map((h, i) => `${i + 1}차 수정 의견: ${h.note || '(의견 없음)'}`).join('\n') : '(없음 — 첫 판정)';
     const fp = this.run.results.forpop;
-    const forpop = { for: fp.for, pop: fp.pop, core_pod: fp.core_pod, positioning: fp.compare && fp.compare.positioning, differentiation: fp.compare && arr(fp.compare.scopes).map((x) => ({ scope: x.title, verdict: x.verdict, different: arr(x.different).map((d) => d.item) })) };
+    const forpop = this.forpopHandoff();
     // ① 화가 — 5안 → 1차 3안
     const c1 = await this.call({
       role: 'director', prompt: '09_concepts', stage: 'concept',
@@ -697,7 +727,7 @@ class Controller {
     const sel = await this.call({
       role: 'brain', prompt: 'b_concept', stage: 'concept', extras: false,
       agent: { key: 'brain', name: '판단 브레인', task: 'Concept 자체 검증 · 3 → 1' },
-      ctx: { mission: this.mission, picked, core: fp.core_pod, lensTable: this.lensTable(), stageLenses: this.stageLenses('concept') },
+      ctx: { mission: this.mission, picked, core: fp.core_pod, forpop, lineage: this.lineage(), lensTable: this.lensTable(), stageLenses: this.stageLenses('concept') },
     });
     if (!sel.final || !picked.find((p) => p.id === sel.final.id)) sel.final = { id: picked[0].id, why: '브레인 선택 누락 — 1차 첫 안', refine: [] };
     this.run.results.concept.brain_select = sel;
@@ -710,7 +740,7 @@ class Controller {
     const kit = await this.call({
       role: 'director', prompt: '09_concept_kit', stage: 'concept',
       agent: { key: 'painter', name: '화가', task: '최종 컨셉 키트 · C 게이트' },
-      ctx: { mission: this.mission, final, refine: sel.final.refine || [], forpop, feedback, type: this.type },
+      ctx: { mission: this.mission, final, refine: sel.final.refine || [], evaluation: (sel.evaluations || []).find((e) => e.id === final.id) || null, why: sel.final.why, forpop, lineage: this.lineage(), feedback, type: this.type },
     });
     this.run.results.concept = { ...this.run.results.concept, ...kit, final_id: final.id };
     this.line('화가', kit.painter_line, 'concept');
@@ -727,7 +757,7 @@ class Controller {
     const json = await this.call({
       role: 'director', prompt: '10_creative', stage: 'creative',
       agent: { key: 'painter', name: '화가', task: `Creative 가이드 ${n}종` },
-      ctx: { mission: b.mission, concept, forpop: { for: fp.for, pop: fp.pop, core_pod: fp.core_pod, positioning: fp.compare && fp.compare.positioning }, tunnel: this.tunnelDigest(), feedback, type: this.type, exampleCount: n },
+      ctx: { mission: b.mission, concept, forpop: this.forpopHandoff(), lineage: this.lineage(), tunnel: this.tunnelDigest(), feedback, type: this.type, exampleCount: n },
     });
     json.examples = (json.examples || []).slice(0, 5);
     this.run.results.creative = json;

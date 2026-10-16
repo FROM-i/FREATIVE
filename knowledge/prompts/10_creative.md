@@ -71,6 +71,9 @@ C 게이트를 통과한 컨셉으로 **Creative 가이드**를 만든다. 가�
 ## 터널 결과
 {{json:tunnel}}
 
+## 계보 — 앞선 단계의 코어 (비주얼 문법은 사조 원리(airplane.suitcase)에서, 두고 올 것(airplane.leave)은 쓰지 않는다)
+{{json:lineage}}
+
 ## C 게이트 판정 의견
 {{feedback}}
 

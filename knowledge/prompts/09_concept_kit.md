@@ -49,6 +49,13 @@
 ## 브레인의 다듬기 지시
 {{json:refine}}
 
+## 브레인이 이 안을 고른 이유와 검증 (점수 · 위험)
+{{why}}
+{{json:evaluation}}
+
+## 계보 — 앞선 단계의 코어 (톤앤매너는 사조 원리(airplane)에서, 해석표는 터널의 지킬 것/바꿀 것에서 출발한다)
+{{json:lineage}}
+
 ## FoR · PoP · 코어 PoD
 {{json:forpop}}
 

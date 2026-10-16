@@ -28,6 +28,12 @@
 ## 1차 제안 3안
 {{json:picked}}
 
+## FoR · PoP · PoD — 차별성 판정 포함
+{{json:forpop}}
+
+## 계보 — 앞선 단계의 코어
+{{json:lineage}}
+
 ## 코어 PoD
 {{json:core}}
 

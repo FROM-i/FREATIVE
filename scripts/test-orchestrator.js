@@ -21,6 +21,10 @@ app.whenReady().then(async () => {
     const knowledge = require(path.join(src, 'knowledge')); knowledge.init();
     const { render } = require(path.join(src, 'orchestrator/prompts'));
     const providers = require(path.join(src, 'providers')); providers.setMock(true);
+    // 모든 호출의 실제 프롬프트를 기록 — 앞 단계 결과가 다음 단계의 단초로 들어가는지 검사한다
+    const CALLS = [];
+    { const mock = require(path.join(src, 'providers/mock'));
+      for (const fn of ['chat', 'search']) { const orig = mock[fn]; mock[fn] = async (o) => { CALLS.push({ prompt: o.meta.prompt, stage: o.meta.stage, text: (o.system || '') + '\n' + (o.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n') }); return orig(o); }; } }
     const orch = require(path.join(src, 'orchestrator'));
     const report = require(path.join(src, 'report'));
 
@@ -98,6 +102,33 @@ app.whenReady().then(async () => {
     if (am('creative', 'image')[0] !== 'gpt-image-2.5-sunburst') fail('이미지 풀 배정 미적용');
     if (!fpr.compare.scopes.every((x) => x.series.every((se) => se.values.length === fpr.compare.legend.axes.length))) fail('공통 범례 축 수 불일치');
     if (!fpr.compare.positioning || !fpr.compare.positioning.sentence) fail('포지셔닝 진술문 없음');
+    // ── 단계 간 전달(계보) 검사 ──
+    {
+      const R = run.results;
+      const norm = (x) => String(x || '').replace(/\\"/g, '').replace(/"/g, '').replace(/\\n/g, ' ').replace(/\s+/g, ' ');
+      global.__reaches = (value, prompt) => reaches(value, prompt);
+      const reaches = (value, prompt) => { const v = norm(value); return v.length >= 4 && CALLS.some((c) => c.prompt === prompt && norm(c.text).includes(v)); };
+      const LINKS = [
+        ['캔버스 · 나로부터', R.canvas.from_me, ['03_ism', '05_layer', '07_positioning', '09_concepts', '09_concept_kit', '10_creative']],
+        ['Airplane · 하이브리드', R.airplane.synth.hybrid && (R.airplane.synth.hybrid.name || R.airplane.synth.hybrid.principle || JSON.stringify(R.airplane.synth.hybrid).slice(2, 30)), ['05_layer', '07_positioning', '08_forpop', '09_concept_kit', '10_creative']],
+        ['Tunnel · 출구', R.tunnel.synth.exit_light, ['07_positioning', '08_forpop', '09_concept_kit', '10_creative']],
+        ['Positioning · 빈자리', R.positioning.whitespace.label, ['08_forpop', '09_concept_kit', '10_creative']],
+        ['Positioning · 통상적 해석', (R.positioning.players || [])[0] && R.positioning.players[0].label, ['08_forpop']],
+        ['웹 정찰 · 플레이어', R.forpop.scan.scopes[0].players[0].name, ['b_shift', 'b_compare']],
+        ['FoR·PoP·PoD · 코어 PoD', R.forpop.core_pod.item, ['b_compare', '09_concepts', 'b_concept', '09_concept_kit', '10_creative']],
+        ['FoR·PoP·PoD · RTB', R.forpop.rtb[0].fact, ['b_compare', '09_concepts', '10_creative']],
+        ['FoR·PoP·PoD · 진술문', R.forpop.compare.positioning.sentence, ['09_concepts', 'b_concept', '09_concept_kit', '10_creative']],
+        ['FoR·PoP·PoD · 브레인 보완점', R.forpop.compare.fixes[0], ['09_concepts', '09_concept_kit', '10_creative']],
+        ['Concept · 테마', R.concept.theme, ['10_creative']],
+        ['Concept · 톤앤매너', R.concept.tone_manner && R.concept.tone_manner.mood && R.concept.tone_manner.mood.desc, ['10_creative']],
+        ['C 게이트 · 수정 의견', '테마를 더 짧게', ['09_concepts', '09_concept_kit']],
+        ['브레인 방향 · 캔버스', run.brain.canvas && run.brain.canvas.direct && run.brain.canvas.direct.direction, ['02_canvas']],
+      ];
+      const miss = [];
+      for (const [name, v, targets] of LINKS) for (const t of targets) if (!reaches(v, t)) miss.push(`${name} → ${t}`);
+      console.log('handoff', LINKS.reduce((n, l) => n + l[2].length, 0) - miss.length, '/', LINKS.reduce((n, l) => n + l[2].length, 0));
+      if (miss.length) fail('단계 간 전달 누락: ' + miss.join(' · '));
+    }
     const r = report.exportProject(p.id);
     console.log('report', fs.statSync(r.reportPath).size, 'bytes');
 
@@ -113,6 +144,8 @@ app.whenReady().then(async () => {
     // PPT
     await orch.reportCore(p.id, emit);
     const ppt = await require(path.join(src, 'report-ppt')).exportPpt(p.id);
+    { const R3 = store.get(p.id).run.results; const tm = R3.concept.tone_manner && R3.concept.tone_manner.mood && R3.concept.tone_manner.mood.desc;
+      if (!global.__reaches(R3.concept.theme, '11_report') || !global.__reaches(tm, '11_report')) fail('리포트에 컨셉·톤앤매너 누락'); console.log('handoff report ok'); }
     console.log('ppt', ppt.exists, fs.statSync(ppt.file).size, 'bytes');
 
     // 라이브러리 — 사조 추가
