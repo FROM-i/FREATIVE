@@ -1,0 +1,112 @@
+'use strict';
+/** IPC — 렌더러 요청은 모두 여기서 권한(auth.can)을 거친다. */
+const { ipcMain, dialog, shell, app } = require('electron');
+const settings = require('./settings');
+const knowledge = require('./knowledge');
+const store = require('./services/storage');
+const auth = require('./services/auth');
+const attachments = require('./attachments');
+const providers = require('./providers');
+const orchestrator = require('./orchestrator');
+const report = require('./report');
+const updater = require('./updater');
+const library = require('./library');
+const cost = require('./cost');
+const reportPpt = require('./report-ppt');
+
+function register(win, { isMock }) {
+  providers.setMock(isMock);
+  orchestrator.markInterrupted();
+  const emit = orchestrator.emitterFor(win);
+
+  const guard = async (action, resource) => {
+    const user = await auth.current();
+    if (!auth.can(user, action, resource)) throw new Error('권한이 없습니다');
+    return user;
+  };
+  const meta = (id) => { const p = store.get(id); if (!p) throw new Error('프로젝트를 찾을 수 없습니다'); return p; };
+  const h = (ch, fn) => ipcMain.handle(ch, async (_e, ...args) => fn(...args));
+
+  h('app:info', async () => ({
+    version: app.getVersion(), platform: process.platform, mock: isMock, packaged: app.isPackaged,
+    stages: orchestrator.STAGES, userData: app.getPath('userData'),
+  }));
+  h('app:openPath', async (p) => shell.openPath(p));
+  h('app:openExternal', async (u) => { if (/^https?:\/\//.test(u)) await shell.openExternal(u); });
+
+  h('auth:current', async () => auth.current());
+
+  h('settings:get', async () => settings.get());
+  h('settings:set', async (patch) => { await guard('settings:manage'); return settings.set(patch); });
+  h('settings:setSecret', async (k, v) => { await guard('settings:manage'); return settings.setSecret(k, v); });
+  h('settings:testKey', async () => {
+    try { return await providers.get().test(); } catch (e) { return { ok: false, message: e.message }; }
+  });
+  h('settings:listModels', async () => {
+    try { return { ok: true, models: await providers.get().listModels() }; } catch (e) { return { ok: false, message: e.message }; }
+  });
+
+  h('knowledge:status', async () => knowledge.status());
+  h('knowledge:sync', async () => { const r = await knowledge.sync({ force: false }); return { ...r, status: knowledge.status() }; });
+  h('knowledge:types', async () => { const k = knowledge.load(); return k.types; });
+  h('knowledge:isms', async () => knowledge.load().isms.map(({ body, ...rest }) => rest));
+
+  h('files:pick', async () => {
+    const r = await dialog.showOpenDialog(win, {
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: '권장 — 마크다운·이미지', extensions: ['md', 'markdown', 'png', 'jpg', 'jpeg', 'webp'] },
+        { name: '모든 지원 형식', extensions: ['md', 'markdown', 'txt', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'pdf', 'pptx', 'docx', 'csv', 'json'] },
+      ],
+    });
+    return r.canceled ? [] : attachments.inspect(r.filePaths);
+  });
+  h('files:inspect', async (paths) => attachments.inspect(paths || []));
+
+  h('projects:list', async () => {
+    const user = await guard('project:read');
+    return store.list().filter((p) => auth.can(user, 'project:read', p));
+  });
+  h('projects:get', async (id) => { const p = meta(id); await guard('project:read', p); return p; });
+  h('projects:create', async (brief, files) => {
+    const user = await guard('project:create');
+    if (brief && brief.worker) settings.set({ lastWorker: brief.worker });
+    return store.create(user, brief, files || []);
+  });
+  h('projects:exportPpt', async (id, force) => {
+    const p = meta(id); await guard('project:read', p);
+    await orchestrator.reportCore(id, emit, { force: !!force });
+    const r = await reportPpt.exportPpt(id);
+    shell.showItemInFolder(r.file);
+    return r;
+  });
+  h('projects:remove', async (id) => { const p = meta(id); await guard('project:delete', p); orchestrator.cancel(id); return store.remove(id); });
+  h('projects:duplicate', async (id) => { const p = meta(id); const user = await guard('project:create', p); return store.duplicate(user, id); });
+  h('projects:export', async (id) => {
+    const p = meta(id); await guard('project:read', p);
+    const r = report.exportProject(id);
+    shell.showItemInFolder(r.reportPath);
+    return r;
+  });
+
+  h('run:start', async (id) => { const p = meta(id); await guard('run:execute', p); return orchestrator.start(id, emit); });
+  h('run:answerBrief', async (id, answers) => { const p = meta(id); await guard('run:execute', p); return orchestrator.answerBrief(id, answers, emit); });
+  h('run:gate', async (id, decision, note) => { const p = meta(id); await guard('run:execute', p); return orchestrator.gate(id, decision, note, emit); });
+  h('run:cancel', async (id) => orchestrator.cancel(id));
+  h('run:inspire', async (id, stage, text) => { const p = meta(id); await guard('run:execute', p); return orchestrator.inspire(id, stage, text, emit); });
+
+  h('library:list', async () => library.list());
+  h('library:extract', async (kind, paths) => { await guard('settings:manage'); return library.extract(kind, paths || []); });
+  h('library:save', async (kind, items, title) => { await guard('settings:manage'); return library.save(kind, items, title); });
+  h('library:toggle', async (id, on) => { await guard('settings:manage'); return library.toggle(id, on); });
+  h('library:remove', async (id) => { await guard('settings:manage'); return library.remove(id); });
+  h('library:open', async () => shell.openPath(library.dir()));
+  h('library:catalog', async () => { const k = knowledge.load(); return { isms: k.isms.map(({ body, ...r }) => r), knowhow: k.knowhow, brain: k.brain }; });
+  h('usage:summary', async () => cost.summary());
+  h('run:regenerateImage', async (id, idx) => { const p = meta(id); await guard('run:execute', p); return orchestrator.regenerateImage(id, idx, emit); });
+
+  h('updater:check', async () => updater.check());
+  h('updater:install', async () => updater.install());
+}
+
+module.exports = { register };

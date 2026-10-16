@@ -1,0 +1,36 @@
+{
+  "name": "thefrom-freative",
+  "productName": "THE FROM FREATIVE",
+  "version": "0.2.2",
+  "description": "THE FROM FREATIVE — 더프롬 방법론(Airplane·Tunnel)으로 크리에이티브 컨셉을 도출하는 데스크톱 툴",
+  "author": "THE FROM",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "src/main/main.js",
+  "homepage": "https://github.com/FROM-i/FREATIVE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FROM-i/FREATIVE.git"
+  },
+  "scripts": {
+    "start": "npm run bundle:knowledge && electron .",
+    "dev": "electron . --dev",
+    "mock": "electron . --mock",
+    "bundle:knowledge": "node scripts/bundle-knowledge.js",
+    "test": "node scripts/test-orchestrator.js",
+    "dist": "npm run bundle:knowledge && electron-builder",
+    "dist:win": "npm run bundle:knowledge && electron-builder --win",
+    "dist:mac": "npm run bundle:knowledge && electron-builder --mac",
+    "release": "npm run bundle:knowledge && electron-builder --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "6.3.9",
+    "jszip": "3.10.1",
+    "pptxgenjs": "3.12.0"
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "electron-builder": "26.0.12",
+    "pretendard": "1.3.9"
+  }
+}

@@ -1,0 +1,51 @@
+# THE FROM FREATIVE — 설치 파일 빌드 설정
+appId: kr.thefrom.freative
+productName: THE FROM FREATIVE
+copyright: © THE FROM
+directories:
+  output: dist
+  buildResources: build
+files:
+  - src/**
+  - knowledge/**
+  - build/icon.png
+  - package.json
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+  artifactName: THEFROM-FREATIVE-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: FREATIVE
+  uninstallDisplayName: THE FROM FREATIVE
+
+mac:
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip          # 자동 업데이트는 zip을 쓴다
+      arch: [arm64, x64]
+  icon: build/icon.png
+  category: public.app-category.graphics-design
+  artifactName: THEFROM-FREATIVE-${version}-${arch}.${ext}
+  hardenedRuntime: true
+  gatekeeperAssess: false
+
+dmg:
+  title: FREATIVE ${version}
+
+# 앱 본체 업데이트 — GitHub Releases. (방법론·프롬프트는 앱이 저장소에서 따로 동기화한다)
+publish:
+  provider: github
+  owner: FROM-i
+  repo: FREATIVE
+  releaseType: release
