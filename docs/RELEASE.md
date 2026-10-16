@@ -19,10 +19,9 @@
 
 ## B. 앱 코드를 바꿀 때
 
-1. `package.json`의 `version`을 올린다 (예: `0.2.1` → `0.3.0`).
-2. 커밋·push 후 태그: `git tag v0.2.0 && git push origin v0.2.0`
-3. GitHub Actions(`.github/workflows/release.yml`)가 스킬 저장소를 함께 체크아웃해 Windows·macOS 설치 파일을 빌드하고 이 저장소 Release에 올린다.
-   - 워크플로 파일은 workflow 권한이 있는 계정으로 push해야 한다.
+1. `package.json`의 `version`을 올린다 (예: `0.2.2` → `0.3.0`).
+2. main에 push.
+3. GitHub Actions(`.github/workflows/release.yml`)가 같은 버전의 Release가 없으면 스킬 저장소를 함께 체크아웃해 Windows · macOS 설치 파일을 빌드하고 Release `v<버전>`을 만든다. (태그 `v*` push나 Actions 화면의 수동 실행으로도 돌릴 수 있다)
 4. 설치된 앱이 실행 중 새 버전을 내려받고, `설정 → 설치 후 재시작` 또는 종료 시 설치한다.
 
 ### 로컬에서 직접 빌드
