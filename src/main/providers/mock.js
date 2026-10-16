@@ -411,16 +411,23 @@ function svgPlaceholder(title, w, h) {
   return Buffer.from(s, 'utf8');
 }
 
-async function chat({ meta }) {
+async function chat({ meta, onProgress }) {
   const name = meta.prompt;
-  await wait(name.startsWith('b_') ? 700 : name === '03_ism' || name === '05_layer' ? 1400 : 900, name === '10_creative' ? 3200 : 2200);
+  // 스트리밍 흉내 — 대기열 → 생각 → 작성(글자 수 증가). 실제 공급자와 같은 신호 형태
+  const total = (name.startsWith('b_') ? 700 : name === '03_ism' || name === '05_layer' ? 1400 : 900) + Math.random() * (name === '10_creative' ? 2300 : 1300);
+  const steps = 6;
+  for (let i = 0; i < steps; i++) {
+    if (onProgress) onProgress(i < 1 ? { phase: 'queued', chars: 0 } : i < 3 ? { phase: 'reasoning', chars: 0, reasoningChars: i * 120, summary: '목업 — 앞 단계 결과를 다시 읽고 방향을 고르는 중' } : { phase: 'writing', chars: (i - 2) * 400 });
+    await sleep((total / steps) * speed);
+  }
   const b = builders[name];
   if (!b) throw new Error('mock: unknown prompt ' + name);
   return { json: b(meta.ctx || {}), model: 'mock', usage: { prompt_tokens: 3000 + Math.round(Math.random() * 4000), completion_tokens: 600 + Math.round(Math.random() * 900) } };
 }
 
-async function search({ meta }) {
-  const r = await chat({ meta });
+async function search({ meta, onProgress }) {
+  if (onProgress) onProgress({ phase: 'searching', searches: 2, chars: 0 });
+  const r = await chat({ meta, onProgress });
   const urls = new Set();
   const j = r.json || {};
   for (const k of ['players', 'conventions', 'taken']) for (const x of j[k] || []) if (x.url) urls.add(x.url);

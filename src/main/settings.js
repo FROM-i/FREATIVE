@@ -21,7 +21,8 @@ const DEFAULTS = {
       { id: 'gpt-6-luna', effort: 'low', tier: 'fast', note: '정리·요약' },
     ],
     reasoningEffort: 'medium', // gpt-5·o 계열에만 전달. '' 이면 보내지 않음
-    timeoutSec: 240,
+    timeoutSec: 240, // 목록 조회 등 짧은 요청
+    idleSec: 180,    // 모델 호출 — 이 시간 동안 아무 데이터도 오지 않을 때만 끊고 다시 요청한다(총 시간 제한 없음)
   },
   // 지식 동기화 — 앱 저장소(프롬프트·브레인·유형·팀 라이브러리) + 스킬 저장소(방법론 원본, 읽기 전용)
   knowledge: {

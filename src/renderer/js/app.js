@@ -99,7 +99,7 @@ async function openRun(id) {
   S.run = S.project.run;
   S.selStage = null; S.pinnedStage = false;
   view.innerHTML = `<div class="runview">
-    <div class="run-head"><div class="t"><span class="kicker">MISSION</span><h2 id="runTitle"></h2><span class="stage-status" id="runStatus"></span></div>
+    <div class="run-head"><div class="t"><span class="kicker">MISSION</span><h2 id="runTitle"></h2><span class="stage-status" id="runStatus"></span><div class="run-activity" id="runActivity"></div></div>
       <div class="acts" id="runActs"></div></div>
     <div class="journey-wrap"><div id="journeyHost"></div>
       <div class="journey-tools"><label class="toggle" style="background:var(--paper);padding:2px 8px;border-radius:999px"><input type="checkbox" id="follow" ${S.settings.ui.followCamera ? 'checked' : ''}/> 화가 따라가기</label></div>
@@ -143,16 +143,52 @@ function renderRunAll() {
   $('#runActs').innerHTML = acts.join('');
   $('#runActs').onclick = onRunAction;
   if (S.journey && r) S.journey.update(r);
-  renderLane(); renderRuler(); renderDetail();
+  renderLane(); renderActivity(); renderRuler(); renderDetail();
 }
 
+/* ---------- 실제 진행 확인 — 스트리밍 신호 · 경과 시간 · 무응답 경고 ---------- */
+const PHASE_KO = { connecting: '연결 중', queued: '대기열', reasoning: '생각 중', searching: '웹 검색 중', writing: '작성 중', waiting: '응답 대기', drawing: '그리는 중', retry: '다시 요청' };
+const STALE_SEC = 45;
+const mmss = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+function liveInfo(a) {
+  const now = Date.now();
+  const elapsed = (now - Date.parse(a.startedAt)) / 1000;
+  const L = a.live || {};
+  const quiet = L.seenAt ? (now - L.seenAt) / 1000 : elapsed;
+  // 스트리밍이 막혀 전체 응답을 기다리는 경우(waiting)·이미지는 신호가 원래 없다 — 경과 시간만 정직하게 보인다
+  const silentByDesign = L.phase === 'waiting' || L.phase === 'drawing';
+  const stale = !silentByDesign && quiet > STALE_SEC;
+  const parts = [PHASE_KO[L.phase] || '시작'];
+  if (L.chars) parts.push(`${L.chars.toLocaleString()}자`);
+  else if (L.reasoningChars) parts.push(`생각 ${L.reasoningChars.toLocaleString()}자`);
+  if (L.searches) parts.push(`검색 ${L.searches}`);
+  parts.push(mmss(elapsed));
+  return { text: parts.join(' · '), stale, quiet, elapsed, summary: L.summary || L.note || '' };
+}
 function renderLane() {
   const r = S.run;
   if (!r) { $('#lane').innerHTML = ''; return; }
   const cur = currentStage();
   const agents = arr(r.agents).filter((a) => a.stage === cur || a.status === 'working').slice(-8);
-  $('#lane').innerHTML = agents.map((a) => `<span class="agent ${a.key === 'painter' ? 'painter' : ''} ${a.key === 'brain' ? 'brain' : ''} ${a.status}" title="${esc(a.task || '')}${a.why ? ' · ' + esc(a.why) : ''}"><span class="av">${a.key === 'painter' ? '화' : a.key === 'brain' ? '' : a.role === 'image' ? '이' : '조'}</span>${esc(a.name)}<span class="md">${esc(a.model || '')}${a.cost ? ' · ' + usd(a.cost) : ''}</span></span>`).join('');
+  $('#lane').innerHTML = agents.map((a) => {
+    const li = a.status === 'working' ? liveInfo(a) : null;
+    const tip = `${a.task || ''}${a.why ? ' · ' + a.why : ''}${li && li.summary ? '\n— ' + li.summary : ''}`;
+    return `<span class="agent ${a.key === 'painter' ? 'painter' : ''} ${a.key === 'brain' ? 'brain' : ''} ${a.status} ${li && li.stale ? 'stale' : ''}" title="${esc(tip)}"><span class="av">${a.key === 'painter' ? '화' : a.key === 'brain' ? '' : a.role === 'image' ? '이' : '조'}</span>${esc(a.name)}<span class="md">${esc(a.model || '')}${a.cost ? ' · ' + usd(a.cost) : ''}</span>${li ? `<span class="live">${li.stale ? `신호 없음 ${Math.round(li.quiet)}초 · ` : ''}${esc(li.text)}</span>` : ''}</span>`;
+  }).join('');
 }
+/** 상단 상태 줄 — 지금 실제로 무엇을 하는지 한 줄 */
+function renderActivity() {
+  const el = $('#runActivity'); if (!el) return;
+  const r = S.run;
+  const working = r && r.status === 'running' ? arr(r.agents).filter((a) => a.status === 'working') : [];
+  if (!working.length) { el.innerHTML = ''; el.className = 'run-activity'; return; }
+  const infos = working.map((a) => ({ a, li: liveInfo(a) }));
+  const stale = infos.filter((x) => x.li.stale);
+  const lead = infos.find((x) => x.a.key === 'painter' || x.a.key === 'brain') || infos[0];
+  el.className = `run-activity ${stale.length === infos.length ? 'stale' : ''}`;
+  el.innerHTML = `<span class="pulse ${stale.length === infos.length ? 'off' : ''}"></span><b>${esc(lead.a.name)}</b> ${esc(lead.li.text)}${infos.length > 1 ? ` <span class="muted">외 ${infos.length - 1}명 작업 중</span>` : ''}${lead.li.summary ? ` <span class="muted act-sum">— ${esc(lead.li.summary.slice(-90))}</span>` : ''}${stale.length === infos.length ? ` <span class="warn">· ${Math.round(Math.min(...stale.map((x) => x.li.quiet)))}초째 신호 없음 — ${Math.round(((S.settings && S.settings.openai.idleSec) || 180))}초가 지나면 자동으로 다시 요청합니다</span>` : ''}`;
+}
+setInterval(() => { if (S.view === 'run' && S.run && S.run.status === 'running') { renderLane(); renderActivity(); } }, 1000);
 
 function renderRuler() {
   const r = S.run;
@@ -179,6 +215,11 @@ function renderDetail(force = false) {
 let raf = 0;
 function onRunEvent(e) {
   if (S.view !== 'run' || !S.project || e.projectId !== S.project.id) return;
+  if (e.kind === 'agent-progress') {
+    const a = S.run && arr(S.run.agents).find((x) => x.id === e.agentId);
+    if (a) { a.live = e.live; a.live.seenAt = Date.now(); renderLane(); renderActivity(); }
+    return;
+  }
   S.run = e.run;
   if (e.kind === 'stage-start' && !S.pinnedStage) { S.selStage = e.stage; const d = $('#detail'); if (d) d.scrollTop = 0; }
   if (e.kind === 'gate') { S.pinnedStage = false; toast(e.gate === 'C' ? 'C 게이트 — 컨셉을 판정해 주세요' : '화가가 질문을 했어요'); }

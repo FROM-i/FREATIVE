@@ -1,6 +1,7 @@
 'use strict';
 /**
- * OpenAI 프로바이더 — Chat Completions(JSON 모드) + Responses(웹 탐색) + Images.
+ * OpenAI 프로바이더 — Responses(스트리밍 · JSON · 웹 탐색) + Chat Completions(대체) + Images.
+ * 스트리밍으로 실제 진행(추론 · 검색 · 작성)을 받아 화면에 보이고, '총 시간'이 아니라 '무응답 시간'으로만 끊는다.
  * 다른 모델 공급자를 붙일 때는 같은 메서드(chat, image, listModels, test)를 가진 파일을 providers/에 추가한다.
  */
 const settings = require('../settings');
@@ -64,6 +65,144 @@ async function request(pathname, body, { signal, timeoutSec } = {}) {
   throw lastErr || new Error('OpenAI 요청 실패');
 }
 
+/**
+ * 스트리밍 요청 (Responses API · SSE). 데이터가 들어오는 동안은 끊지 않고, idleSec 동안 아무것도 오지 않을 때만 끊는다.
+ * onEvent(evt) 로 실제 진행(추론 요약 · 검색 · 작성 글자 수)을 알린다. 반환: 완료된 response 객체
+ */
+async function stream(pathname, body, { signal, idleSec = 180, onEvent } = {}) {
+  const c = cfg();
+  if (!c.key) throw new Error('OpenAI API 키가 없습니다. 설정에서 입력하세요.');
+  const url = `${c.baseUrl.replace(/\/$/, '')}${pathname}`;
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const ctrl = new AbortController();
+    const onAbort = () => ctrl.abort();
+    if (signal) { if (signal.aborted) throw new Error('취소됨'); signal.addEventListener('abort', onAbort, { once: true }); }
+    let idle = false;
+    let timer = null;
+    const beat = () => { clearTimeout(timer); timer = setTimeout(() => { idle = true; ctrl.abort(); }, idleSec * 1000); };
+    beat();
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${c.key}`, 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body: JSON.stringify({ ...body, stream: true }),
+        signal: ctrl.signal,
+      });
+      if (!r.ok) {
+        const text = await r.text();
+        let msg = text; try { msg = JSON.parse(text).error.message; } catch { /* noop */ }
+        const e = new Error(`OpenAI ${r.status}: ${msg}`); e.status = r.status;
+        if (r.status === 429 || r.status >= 500) { lastErr = e; await sleep(1500 * (attempt + 1) ** 2); continue; }
+        throw e;
+      }
+      onEvent && onEvent({ type: 'connected' });
+      const reader = r.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      let done = null;
+      for (;;) {
+        const { value, done: end } = await reader.read();
+        if (end) break;
+        beat();
+        buf += dec.decode(value, { stream: true });
+        let k;
+        while ((k = buf.indexOf('\n\n')) >= 0) {
+          const block = buf.slice(0, k); buf = buf.slice(k + 2);
+          const data = block.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).join('\n');
+          if (!data || data === '[DONE]') continue;
+          let ev; try { ev = JSON.parse(data); } catch { continue; }
+          if (ev.type === 'response.completed') done = ev.response;
+          else if (ev.type === 'response.failed' || ev.type === 'response.incomplete') { const e = new Error(`OpenAI 응답 실패: ${(ev.response && ev.response.error && ev.response.error.message) || (ev.response && ev.response.incomplete_details && ev.response.incomplete_details.reason) || ev.type}`); e.status = 502; throw e; }
+          else if (ev.type === 'error') { const e = new Error(`OpenAI 오류: ${ev.message || (ev.error && ev.error.message) || ''}`); e.status = 502; throw e; }
+          if (onEvent) onEvent(ev);
+        }
+      }
+      if (!done) { const e = new Error('스트림이 완료 없이 끝났습니다'); e.status = 502; throw e; }
+      return done;
+    } catch (e) {
+      if (signal && signal.aborted) throw new Error('취소됨');
+      if (idle) { lastErr = new Error(`응답 없음 — ${idleSec}초 동안 아무 데이터도 오지 않아 다시 요청합니다`); lastErr.idle = true; onEvent && onEvent({ type: 'retry', reason: 'idle' }); continue; }
+      if (e.status && e.status < 500 && e.status !== 429) throw e;
+      lastErr = e; onEvent && onEvent({ type: 'retry', reason: e.message });
+      await sleep(1200 * (attempt + 1));
+    } finally {
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', onAbort);
+    }
+  }
+  throw lastErr || new Error('OpenAI 요청 실패');
+}
+
+/** SSE 이벤트 → 사람이 읽는 진행 상태 */
+function progressTracker(onProgress) {
+  if (!onProgress) return null;
+  const st = { phase: 'connecting', chars: 0, reasoningChars: 0, searches: 0, summary: '' };
+  let last = 0;
+  const push = (force) => { const t = Date.now(); if (force || t - last > 700) { last = t; onProgress({ ...st }); } };
+  return (ev) => {
+    switch (ev.type) {
+      case 'connected': st.phase = 'queued'; push(true); break;
+      case 'response.created': case 'response.in_progress': st.phase = 'queued'; push(); break;
+      case 'response.output_item.added':
+        if (ev.item && ev.item.type === 'reasoning') st.phase = 'reasoning';
+        if (ev.item && ev.item.type === 'web_search_call') { st.phase = 'searching'; st.searches++; }
+        if (ev.item && ev.item.type === 'message') st.phase = 'writing';
+        push(true); break;
+      case 'response.reasoning_summary_text.delta': st.phase = 'reasoning'; st.reasoningChars += (ev.delta || '').length; st.summary = (st.summary + (ev.delta || '')).slice(-160); push(); break;
+      case 'response.reasoning_summary_part.added': st.phase = 'reasoning'; st.summary = ''; push(); break;
+      case 'response.web_search_call.searching': case 'response.web_search_call.in_progress': st.phase = 'searching'; push(); break;
+      case 'response.output_text.delta': st.phase = 'writing'; st.chars += (ev.delta || '').length; push(); break;
+      case 'retry': st.phase = 'retry'; st.note = ev.reason; push(true); break;
+      default: push();
+    }
+  };
+}
+
+/** Chat 형식 content parts → Responses input parts */
+function toInput(content) {
+  return (Array.isArray(content) ? content : [{ type: 'text', text: String(content || '') }]).map((c) => {
+    if (c.type === 'text') return { type: 'input_text', text: c.text };
+    if (c.type === 'image_url') return { type: 'input_image', image_url: c.image_url.url };
+    if (c.type === 'file') return { type: 'input_file', filename: c.file.filename, file_data: c.file.file_data };
+    return null;
+  }).filter(Boolean);
+}
+
+/**
+ * 스트리밍 → 안 되면 비스트리밍으로. 조직 미인증 등으로 스트리밍이 막히면 기다림만 알린다(경과 시간은 화면이 센다).
+ * 지원하지 않는 선택 항목(추론 요약 · JSON 형식 · include 등)은 하나씩 빼고 다시.
+ */
+async function respond(body, { signal, onProgress }) {
+  const track = progressTracker(onProgress);
+  for (let i = 0; i < 6; i++) {
+    try {
+      if (body.__nostream) {
+        onProgress && onProgress({ phase: 'waiting', chars: 0, searches: 0, note: '스트리밍 불가 — 응답 전체를 기다리는 중' });
+        const b = { ...body }; delete b.__nostream;
+        return await request('/responses', b, { signal, timeoutSec: 900 });
+      }
+      const b = { ...body }; delete b.__nostream;
+      return await stream('/responses', b, { signal, onEvent: track, idleSec: settings.get().openai.idleSec || 180 });
+    } catch (e) {
+      const msg = String(e.message || '');
+      if (e.status !== 400 && e.status !== 403) throw e;
+      if (/summary/i.test(msg) && body.reasoning && body.reasoning.summary) { delete body.reasoning.summary; continue; }
+      if (/stream|verif/i.test(msg) && !body.__nostream) { body.__nostream = true; continue; }
+      if (/include/.test(msg) && body.include) { delete body.include; continue; }
+      if (/text\.format|json_object|response_format/.test(msg) && body.text) { delete body.text; continue; }
+      if (/reasoning/.test(msg) && body.reasoning) { delete body.reasoning; continue; }
+      if (body.tools) {
+        const tool = body.tools[0];
+        if (/web_search/.test(msg) && tool.type === 'web_search') { tool.type = 'web_search_preview'; delete tool.search_context_size; continue; }
+        if (/user_location/.test(msg) && tool.user_location) { delete tool.user_location; continue; }
+      }
+      throw e;
+    }
+  }
+  throw new Error('OpenAI 요청 실패 — 옵션 조정 후에도 거절됨');
+}
+
 /** JSON 문자열을 관대하게 파싱 (코드펜스·앞뒤 설명 제거) */
 function parseJSON(text) {
   if (!text) throw new Error('빈 응답');
@@ -80,23 +219,32 @@ function parseJSON(text) {
  * @param {string} o.system
  * @param {Array} o.content  — user 메시지 content parts (text / image_url / file)
  */
-async function chat({ role = 'director', model: override, effort, system, content, signal }) {
+async function chat({ role = 'director', model: override, effort, system, content, signal, onProgress }) {
   const c = cfg();
   const model = override || c.models[role] || c.models.director;
+  const eff = effortFor(model, effort || c.roleEfforts[role] || c.reasoningEffort);
   const body = {
     model,
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content },
-    ],
-    response_format: { type: 'json_object' },
+    instructions: system,
+    input: [{ role: 'user', content: toInput(content) }],
+    text: { format: { type: 'json_object' } },
   };
-  const eff = effortFor(model, effort || c.roleEfforts[role] || c.reasoningEffort);
-  if (eff) body.reasoning_effort = eff;
-  const r = await request('/chat/completions', body, { signal });
-  const msg = r.choices && r.choices[0] && r.choices[0].message;
-  const json = parseJSON(msg && msg.content);
-  return { json, model, usage: r.usage || null };
+  if (eff) body.reasoning = { effort: eff, summary: 'auto' };
+  let r;
+  try {
+    r = await respond(body, { signal, onProgress });
+  } catch (e) {
+    // Responses를 못 쓰는 모델·게이트웨이 → Chat Completions (진행은 경과 시간만)
+    if (!(e.status === 404 || (e.status === 400 && /responses|not supported|unsupported/i.test(e.message)))) throw e;
+    onProgress && onProgress({ phase: 'waiting', chars: 0, searches: 0, note: '응답 전체를 기다리는 중' });
+    const cb = { model, messages: [{ role: 'system', content: system }, { role: 'user', content }], response_format: { type: 'json_object' } };
+    if (eff) cb.reasoning_effort = eff;
+    const cr = await request('/chat/completions', cb, { signal, timeoutSec: 900 });
+    const msg = cr.choices && cr.choices[0] && cr.choices[0].message;
+    return { json: parseJSON(msg && msg.content), model, usage: cr.usage || null };
+  }
+  const out = readResponse(r);
+  return { json: parseJSON(out.text), model, usage: r.usage || null };
 }
 
 /** Responses API 출력에서 본문 · 인용 URL · 검색 횟수를 모은다 */
@@ -129,40 +277,24 @@ function readResponse(r) {
  * 웹 탐색 — Responses API + web_search 도구. 조수가 웹을 직접 확인하고 JSON으로 정리한다.
  * 반환: { json, model, usage, citations:[{url,title}], searches }
  */
-async function search({ role = 'sub', model: override, effort, system, content, signal }) {
+async function search({ role = 'sub', model: override, effort, system, content, signal, onProgress }) {
   const c = cfg();
   const model = override || c.models[role] || c.models.sub || c.models.director;
-  const text = (Array.isArray(content) ? content : [{ type: 'text', text: String(content || '') }]).filter((x) => x.type === 'text').map((x) => x.text).join('\n');
-  const tool = { type: 'web_search', search_context_size: 'medium', user_location: { type: 'approximate', country: 'KR' } };
+  let eff = effortFor(model, effort || c.roleEfforts[role] || c.reasoningEffort);
+  if (eff === 'minimal' || eff === 'none') eff = 'low'; // web_search는 minimal·none 추론을 지원하지 않는다
   const body = {
     model,
     instructions: system,
-    input: [{ role: 'user', content: [{ type: 'input_text', text }] }],
-    tools: [tool],
+    input: [{ role: 'user', content: toInput(content).filter((x) => x.type === 'input_text') }],
+    tools: [{ type: 'web_search', search_context_size: 'medium', user_location: { type: 'approximate', country: 'KR' } }],
     tool_choice: 'auto',
     include: ['web_search_call.action.sources'],
     text: { format: { type: 'json_object' } },
   };
-  let eff = effortFor(model, effort || c.roleEfforts[role] || c.reasoningEffort);
-  if (eff === 'minimal' || eff === 'none') eff = 'low'; // web_search는 minimal·none 추론을 지원하지 않는다
-  if (eff) body.reasoning = { effort: eff };
-  let r;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    try { r = await request('/responses', body, { signal, timeoutSec: Math.max(300, c.timeoutSec || 0) }); break; } catch (e) {
-      const msg = String(e.message || '');
-      if (e.status !== 400) throw e;
-      if (/web_search/.test(msg) && tool.type === 'web_search') { tool.type = 'web_search_preview'; delete tool.search_context_size; continue; }
-      if (/include/.test(msg) && body.include) { delete body.include; continue; }
-      if (/text\.format|json_object|response_format/.test(msg) && body.text) { delete body.text; continue; }
-      if (/reasoning/.test(msg) && body.reasoning) { delete body.reasoning; continue; }
-      if (/user_location/.test(msg) && tool.user_location) { delete tool.user_location; continue; }
-      throw e;
-    }
-  }
-  if (!r) throw new Error('웹 탐색 요청 실패');
+  if (eff) body.reasoning = { effort: eff, summary: 'auto' };
+  const r = await respond(body, { signal, onProgress });
   const out = readResponse(r);
-  const json = parseJSON(out.text);
-  return { json, model, usage: r.usage || null, citations: out.citations, searches: out.searches };
+  return { json: parseJSON(out.text), model, usage: r.usage || null, citations: out.citations, searches: out.searches };
 }
 
 async function image({ prompt, size = '1536x1024', model: override, signal }) {

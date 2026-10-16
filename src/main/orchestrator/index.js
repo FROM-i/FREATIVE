@@ -145,6 +145,11 @@ class Controller {
   get mission() { return (this.run.results.brief && this.run.results.brief.mission) || {}; }
 
   save() { store.saveRun(this.id, this.run); }
+  /** 실제 진행 신호 — 저장 없이 가볍게 보낸다. 화면은 마지막 신호 이후 경과 시간으로 '멈춤'을 판단한다 */
+  agentProgress(a, pr) {
+    a.live = { ...pr, at: Date.now() };
+    this.emit({ projectId: this.id, kind: 'agent-progress', agentId: a.id, live: a.live });
+  }
   send(kind, extra = {}) { this.save(); this.emit({ projectId: this.id, kind, ...extra, run: this.run }); }
   line(who, text, stage) {
     if (!text) return;
@@ -302,7 +307,8 @@ class Controller {
     this.send('agent-start', { agent: a });
     try {
       const fn = search && this.provider.search ? this.provider.search : this.provider.chat;
-      const r = await fn({ role, model: pick.model, effort: pick.effort, system, content, signal: this.abort.signal, meta: { stage, prompt, ...meta, ctx } });
+      const onProgress = (pr) => this.agentProgress(a, pr);
+      const r = await fn({ role, model: pick.model, effort: pick.effort, system, content, signal: this.abort.signal, onProgress, meta: { stage, prompt, ...meta, ctx } });
       a.status = 'done'; a.endedAt = now();
       this.run.usage.calls++;
       if (r.usage) { this.run.usage.prompt += r.usage.prompt_tokens || 0; this.run.usage.completion += r.usage.completion_tokens || 0; }
@@ -781,6 +787,7 @@ class Controller {
         const size = ['1536x1024', '1024x1024', '1024x1536'].includes(e.image_size) ? e.image_size : (this.type.imageSize || '1536x1024');
         const d = e.detail || {};
         const prompt = `${e.image_prompt}\n\nCamera & lighting guide: ${[d.angle, d.view, d.light, d.texture].filter(Boolean).join(' / ')}\nStyle note: concept visual draft for a design review. No text, no letters, no logos, no watermark. Leave clean negative space where the headline will go.`;
+        this.agentProgress(a, { phase: 'drawing' });
         const r = await this.provider.image({ prompt, size, model: pick.model, signal: this.abort.signal, meta: { example: e, index: i } });
         const buf = r.buffer || r;
         const ext = buf[0] === 0x3c ? 'svg' : 'png';
