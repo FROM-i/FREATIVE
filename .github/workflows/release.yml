@@ -1,9 +1,15 @@
 # THE FROM FREATIVE — 설치 파일 빌드·배포
-# package.json version을 올리고 태그 v<version>을 push하면 Windows(.exe)·macOS(.dmg/.zip)가 Release에 올라가고
-# 설치된 앱이 자동 업데이트한다. 스킬 원본은 빌드 때 FROM-i/thefrom_design_Skill에서 가져와 내장한다.
+#
+# 릴리스 방법: package.json 의 version 을 올려 main 에 push 한다.
+#   → 그 버전의 Release(v<version>)가 아직 없으면 Windows(.exe)·macOS(.dmg/.zip)를 빌드해 Release 를 만든다.
+#   → 설치된 앱이 electron-updater 로 자동 업데이트한다.
+# 태그 v* push, 수동 실행(workflow_dispatch)으로도 돌릴 수 있다.
+# 스킬 원본(방법론)은 빌드 때 FROM-i/thefrom_design_Skill 에서 가져와 내장한다.
 name: release
 on:
   push:
+    branches: [main]
+    paths: ['package.json', '.github/workflows/release.yml']
     tags: ['v*']
   workflow_dispatch:
 
@@ -11,7 +17,29 @@ permissions:
   contents: write
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      build: ${{ steps.v.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if gh release view "v$VERSION" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v$VERSION 릴리스가 이미 있다 — 건너뜀"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: check
+    if: needs.check.outputs.build == 'true'
     strategy:
       fail-fast: false
       matrix:
