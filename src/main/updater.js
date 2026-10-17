@@ -13,7 +13,7 @@
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { execFileSync, spawn } = require('child_process');
+const { execFileSync, spawn, spawnSync } = require('child_process');
 const { app, net } = require('electron');
 const REPO = 'FROM-i/FREATIVE';
 const RELEASES = `https://github.com/${REPO}/releases/latest`;
@@ -31,6 +31,8 @@ function init(w) {
     ({ autoUpdater } = require('electron-updater'));
   } catch (e) { return; }
   mac = process.platform === 'darwin' && isAdhoc();
+  // 0.4.1~0.5.0이 Squirrel로 받다 실패하고 남긴 캐시 — 직접 교체 방식에서는 쓰지 않는다
+  if (mac) { try { fs.rmSync(path.join(require('os').homedir(), 'Library/Caches/kr.thefrom.freative.ShipIt'), { recursive: true, force: true }); } catch (e) { /* 없으면 그만 */ } }
   autoUpdater.autoDownload = !mac;
   autoUpdater.autoInstallOnAppQuit = !mac;
   autoUpdater.on('checking-for-update', () => send({ state: 'checking' }));
@@ -46,15 +48,15 @@ function init(w) {
   setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
 }
 
+/**
+ * Apple 개발자 서명(Developer ID)이 없으면 직접 교체 방식을 쓴다.
+ * 주의: `codesign -dv`는 정보를 stdout이 아니라 stderr로 낸다 — stdout만 보면 늘 '서명 있음'으로 오판한다(0.3.4~0.5.0의 버그).
+ */
 function isAdhoc() {
-  try {
-    const out = execFileSync('codesign', ['-dv', bundlePath()], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-    return /Signature=adhoc/.test(out);
-  } catch (e) {
-    const msg = String((e && (e.stderr || e.message)) || '');
-    return /Signature=adhoc|not signed/.test(msg) || !/Authority=Developer ID/.test(msg);
-  }
+  const r = spawnSync('codesign', ['-dv', '--verbose=2', bundlePath()], { encoding: 'utf8' });
+  return !hasDeveloperId(`${r.stdout || ''}\n${r.stderr || ''}`);
 }
+function hasDeveloperId(codesignOutput) { return /Authority=Developer ID Application/.test(String(codesignOutput || '')); }
 
 /** /Applications/THE FROM FREATIVE.app */
 function bundlePath() { return path.resolve(process.execPath, '../../..'); }
@@ -160,4 +162,4 @@ function install() {
   if (autoUpdater) autoUpdater.quitAndInstall();
 }
 
-module.exports = { init, check, install, _test: { newer } };
+module.exports = { init, check, install, _test: { newer, hasDeveloperId } };
