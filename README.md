@@ -151,7 +151,7 @@ sequenceDiagram
 | OS | 파일 | 처음 실행 |
 |---|---|---|
 | Windows | `THEFROM-FREATIVE-<버전>-Windows-Setup.exe` | 서명 전이라 SmartScreen이 뜨면 *추가 정보 → 실행* |
-| macOS | `THEFROM-FREATIVE-<버전>-arm64.dmg` (Apple Silicon) · `-x64.dmg` (Intel) | 서명 전이면 *우클릭 → 열기* |
+| macOS | `THEFROM-FREATIVE-<버전>-arm64.dmg` (Apple Silicon) · `-x64.dmg` (Intel) | Apple 인증 전이라 처음 열 때 막히면 *시스템 설정 › 개인정보 보호 및 보안 › 그래도 열기*. 새 버전은 앱이 알려 주고 내려받기 링크를 준다(자동 설치는 Apple 개발자 인증 후) |
 
 처음 열면 **설정 → OpenAI API 키**를 넣습니다(이 PC의 키체인으로 암호화 저장). 키 없이 화면만 보려면 개발 모드의 `npm run mock`.
 

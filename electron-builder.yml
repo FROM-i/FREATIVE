@@ -28,6 +28,9 @@ nsis:
   shortcutName: FREATIVE
   uninstallDisplayName: THE FROM FREATIVE
 
+# 인증서가 없으면 맥 앱을 임시 서명한다 (서명이 깨진 앱은 Apple Silicon에서 '손상됨'으로 막힌다)
+afterPack: build/adhoc-sign.js
+
 mac:
   target:
     - target: dmg
