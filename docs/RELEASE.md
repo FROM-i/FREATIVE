@@ -37,7 +37,7 @@ npm run dist:mac     # macOS (macOS에서만)
 | | 없을 때 | 있을 때 |
 |---|---|---|
 | Windows 코드 서명 | 설치 시 SmartScreen 경고, 자동 업데이트는 동작 | 경고 없음 — `CSC_LINK`·`CSC_KEY_PASSWORD`(pfx) |
-| macOS Developer ID + 공증 | 임시 서명 — 앱이 zip을 직접 내려받아 교체한다(src/main/updater.js). 응용 프로그램 폴더 밖에서 실행하면 내려받기 링크로 안내 | 자동 업데이트 동작 — 워크플로의 `MAC_CSC_LINK`, `APPLE_ID` 등 시크릿 |
+| macOS Developer ID + 공증 | 임시 서명 — 앱이 zip을 직접 내려받아 교체한다(src/main/updater.js). 응용 프로그램 폴더 밖에서 실행하면 내려받기 링크로 안내 | 자동 업데이트 동작 — 시크릿 `MAC_CERT_P12_BASE64`(또는 `MAC_CSC_LINK`) · `MAC_CERT_PASSWORD` · `APPLE_ID` · `APPLE_APP_SPECIFIC_PASSWORD` · `APPLE_TEAM_ID` |
 
 ## D. 저장소 공개 범위
 
