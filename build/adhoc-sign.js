@@ -11,7 +11,7 @@ const { execFileSync } = require('child_process');
 
 exports.default = async function adhocSign(ctx) {
   if (ctx.electronPlatformName !== 'darwin') return;
-  if (process.env.CSC_LINK) return;
+  if (process.env.CSC_LINK || process.env.MAC_SIGNED === '1') return;
   const app = path.join(ctx.appOutDir, `${ctx.packager.appInfo.productFilename}.app`);
   console.log(`  • ad-hoc signing  ${app}`);
   execFileSync('codesign', ['--force', '--deep', '--sign', '-', app], { stdio: 'inherit' });
