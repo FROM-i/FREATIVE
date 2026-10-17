@@ -48,6 +48,12 @@
 ## 코어 PoD와 후보
 {{json:pod}}
 
+## 기본안 — 이 정도는 아무나 낸다
+{{json:baseline}}
+
+## 사업 범위
+{{json:scope}}
+
 ## 조수들의 웹 정찰 — 세 범위
 {{json:scan}}
 

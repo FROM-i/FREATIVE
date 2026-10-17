@@ -50,6 +50,13 @@ const builders = {
         constraints: ['브랜드 로고는 원본만 사용', '조명 설치는 3m 이하'],
         success: '팝업 앞 체류 · 시음 참여',
       },
+      scope: [
+        { id: 'S1', item: '외벽 대표 사인 — 5m 보행 동선에서 읽히는 팝업의 얼굴', kind: '하드웨어·조형', from: '브리프', must: true },
+        { id: 'S2', item: '대기열 패널 2면 — 줄 선 3분의 콘텐츠', kind: '콘텐츠', from: '브리프', must: true },
+        { id: 'S3', item: '컵 슬리브 — 마신 뒤 가져가는 접점', kind: '하드웨어·조형', from: '브리프', must: true },
+        { id: 'S4', item: '시음 참여 프로모션 — 참여에서 공유까지', kind: '서비스·앱', from: '추론', must: true },
+        { id: 'S5', item: '운영 — 팝업 기간 콘텐츠 교체·현장 조도', kind: '운영', from: '추론', must: false },
+      ],
       assumptions: [
         { item: '주 노출은 보행 동선 위 3초 체류', basis: '추론 — 성수 보행 상권' },
         { item: '★4 브랜드 톤은 첨부 자료에서 읽는다', basis: '첨부' },
@@ -105,7 +112,7 @@ const builders = {
       'ISM-KR': { take: ['변수(날씨·시간)를 결과로 받아들이는 설계'], leave: ['무맥락 오방색'], core: '날씨가 완성한다', postcard: '바람이 그려 주는 그림도 그림이야.' },
     };
     const d = lib[id] || { take: ['원리를 이 미션의 언어로 옮긴다'], leave: ['형태 인용'], core: '원리 한 줄', postcard: '이 시대는 당연함에 반대했다.' };
-    return { id, name: ctx.ismBody ? ctx.ismBody.split('·')[1].trim().split('(')[0].trim() : id, era: '', postcard: d.postcard, take: d.take, leave: d.leave, apply: `${d.core} — 사이니지의 첫 3초에 적용`, a3: { pass: true, check: d.take[0] }, core: d.core, fit: 0.6 + Math.random() * 0.35 };
+    return { id, name: ctx.ismBody ? ctx.ismBody.split('·')[1].trim().split('(')[0].trim() : id, era: '', postcard: d.postcard, take: d.take, leave: d.leave, apply: `${d.core} — 사이니지의 첫 3초에 적용`, a3: { pass: true, check: d.take[0] }, form_moves: [{ move: `${d.core} — 거리마다 정보의 해상도를 3단계로 나눈다(5m·1m·0.3m)`, costume: `${id} 양식을 겉모양만 흉내 낸 패널`, scope_ids: ['S1', 'S2'] }, { move: '구조체의 이음매를 감추지 않고 드러낸다 — 공정이 곧 장식', costume: '나무결 시트를 붙인 사각 판', scope_ids: ['S1'] }], core: d.core, fit: 0.6 + Math.random() * 0.35 };
   },
   '04_airplane_synth': () => ({
     selected: ['ISM-JP', 'ISM-SWISS', 'ISM-ARTCRAFT'],
@@ -123,7 +130,8 @@ const builders = {
       target: { headline: '걷는 속도 그대로 3초, 멈추면 30초', insights: [{ title: '두 개의 시간', detail: '지나치는 3초와 멈춘 30초가 다른 정보를 원한다', source: '추론' }, { title: '향에 반응', detail: '시각보다 향이 먼저 멈춰 세운다', source: '일반 관찰' }], keep: ['보행 동선을 막지 않는다'], change: ['가까이 와야 보이는 두 번째 층'] },
       usage: { headline: '사람들은 팝업을 "구경"하고, 줄은 "확인"한다', insights: [{ title: '구경→확인→입장', detail: '대기열 길이로 가치를 판단', source: '일반 관찰' }, { title: '대기의 지루함', detail: '줄 선 3분이 비어 있다', source: '추론' }], keep: ['입구가 어디인지 즉시'], change: ['대기 3분을 이야기의 시간으로'] },
     };
-    const d = lib[k] || lib.market;
+    const extra = { site: { headline: '겨울 오후 외벽은 측광·결로가 있다', insights: [{ title: '측광 반사', detail: '오후 3~5시 서향 외벽에 반사광 — 무광 마감 필요', source: '추론', scope_ids: ['S1'] }], keep: ['보행 동선 폭 1.2m 확보'], change: ['조명 2700K 측면광'] }, ops: { headline: '원두가 주마다 바뀐다', insights: [{ title: '주간 교체', detail: '패널 하단 카드만 주 1회 교체', source: '추론', scope_ids: ['S5'] }], keep: ['운영자 1인이 10분 안에 교체'], change: ['교체 카드 규격 통일'] }, precedent: { headline: '성수 팝업은 포토존 중심', insights: [{ title: '포토존 의존', detail: '대형 브랜드 팝업 다수가 포토존을 중심에 둔다 (목업)', source: '웹:https://example.com/mock/precedent', scope_ids: ['S1'] }], keep: ['시음'], change: ['사진 한 장 대신 다가가는 경험'] } };
+    const d = lib[k] || extra[k] || lib.market;
     return { key: k, label: ctx.layerLabel, ...d, boundary: '5m 거리에서 1순위가 읽혀야 한다', need_evidence: ['인근 팝업 사이니지 사진 2건'], light: 0.5 + Math.random() * 0.4 };
   },
   '06_tunnel_synth': () => ({
@@ -273,6 +281,56 @@ const builders = {
       return [];
     }),
   }),
+  b_baseline: () => ({
+    overall: '입구에 브랜드 로고를 크게 단 사각형 사인을 세우고, 포토존과 시음대를 둔다. 대기열에는 메뉴판을, 컵에는 로고를 찍는다.',
+    by_scope: [{ scope_id: 'S1', obvious: ['로고를 크게 단 사각형 외벽 사인'] }, { scope_id: 'S2', obvious: ['메뉴·가격표 패널'] }, { scope_id: 'S3', obvious: ['로고 인쇄 슬리브'] }, { scope_id: 'S4', obvious: ['인스타 인증하면 쿠키 증정'] }],
+    cliches: ['크라프트지·갈색 톤', '산지 지도 일러스트', '포토존 네온 문구', '인증샷 이벤트'],
+    why_tempting: '빠르고 안전하다. 발주처도 이미 머릿속에 이 그림이 있다.',
+    bar: ['접점마다 사람이 무엇을 얻는지가 기본안보다 분명할 것', '세 접점이 따로 노는 장식이 아니라 하나의 원리로 이어질 것'],
+    line: '이 정도는 누구나 낸다. 여기서 출발하지 않는다.',
+  }),
+  '10_bp_section': (ctx) => {
+    const k = ctx.sectionKey;
+    const thinFirst = k === 'system' && !mockSeen.has('bps-system');
+    if (k === 'system') mockSeen.add('bps-system');
+    const n = thinFirst ? 1 : Math.max(ctx.minItems || 2, 2);
+    const base = {
+      system: [['대표 사인(외벽)', '멀리선 브랜드명 하나, 가까이 오면 원두 사진이 선명해지는 면', '외벽 정면', '3000×2000mm · 1개', ['S1']], ['대기열 패널', '거리마다 다른 층의 정보', '대기 동선', '900×1800mm · 2개', ['S2']], ['카운터 표지', '시음 순서', '카운터', '400×300mm', ['S4']], ['컵 슬리브', '산지 좌표', '컵', '확인 필요', ['S3']]],
+    }[k];
+    const items = Array.from({ length: n }, (_, i) => { const b = base && base[i]; return b ? { name: b[0], what: b[1], where: b[2], spec: b[3], from: 'ISM-JP', scope_ids: b[4] } : { name: `${ctx.sectionLabel} ${i + 1}`, what: `${ctx.sectionLabel} — 거리별 층에서 파생된 항목 ${i + 1}`, where: ['외벽', '대기열', '카운터', '현장'][i % 4], spec: '확인 필요', from: '컨셉', scope_ids: [['S1', 'S2', 'S3', 'S4', 'S5'][i % 5]] }; });
+    if (k === 'mechanic' || k === 'reward' || k === 'touchpoints' || k === 'measure') items.forEach((it) => { it.scope_ids = ['S4']; });
+    if (k === 'ops') items.forEach((it) => { it.scope_ids = ['S5']; });
+    return { key: k, label: ctx.sectionLabel, items, vs_baseline: '기본안의 로고 사인과 달리 거리마다 층이 다르다', open_questions: [] };
+  },
+  '10_blueprint': (ctx) => {
+    const first = !mockSeen.has('bp');
+    mockSeen.add('bp');
+    const keys = (ctx.type && ctx.type.anatomy || []).map((a) => [a.key, a.label]);
+    const items = {
+      system: [{ name: '대표 사인(외벽)', what: '멀리선 브랜드명 하나, 가까이 오면 원두 사진이 선명해지는 렌티큘러 면', where: '외벽 정면', spec: '3000×2000mm · 1개', from: '컨셉', scope_ids: ['S1'] }, { name: '대기열 패널', what: '거리마다 다른 층의 정보', where: '대기 동선', spec: '900×1800mm · 2개', from: 'PoD', scope_ids: ['S2'] }],
+      placement: [{ name: '5m · 1m · 0.3m 세 층', what: '보행→대기→카운터 순서로 거리별 정보', where: '동선 전체', spec: '확인 필요', from: 'ISM-JP', scope_ids: ['S1', 'S2', 'S3'] }],
+      form: [{ name: '유보된 완결', what: '가까이 와야 완성되는 망점 이미지', where: '모든 면', spec: '망점 해상도 3단계', from: 'ISM-JP', scope_ids: ['S1', 'S2'] }],
+      content: [{ name: '원두의 길', what: '농장→로스터리→여기까지의 거리 이야기', where: '대기열 패널', spec: '패널당 3문단', from: '브랜드 레이어', scope_ids: ['S2'] }],
+      interaction: [{ name: '슬리브 마지막 조각', what: '슬리브를 벗기면 산지 좌표가 나온다', where: '카운터', spec: '확인 필요', from: '사용 습관 레이어', scope_ids: ['S3', 'S4'] }],
+      ops: [{ name: '주차별 원두 교체', what: '패널 하단 원두 카드 교체', where: '대기열', spec: '주 1회', from: '추론', scope_ids: ['S5'] }],
+      mechanic: [{ name: '좌표 모으기', what: '슬리브 좌표 3개를 모으면 원두 샘플', where: '카운터', spec: '확인 필요', from: '컨셉', scope_ids: ['S4'] }],
+      touchpoints: [{ name: '인지→참여→보상', what: '외벽(인지) → 대기열(이해) → 카운터(참여) → 슬리브(보상)', where: '동선', spec: '', from: '여정', scope_ids: ['S4'] }],
+      reward: [{ name: '산지 샘플', what: '컨셉(먼 길)과 이어지는 보상', where: '카운터', spec: '30g', from: '컨셉', scope_ids: ['S4'] }],
+      measure: [{ name: '체류와 참여', what: '대기열 앞 체류 시간 · 좌표 교환 수', where: '현장', spec: '확인 필요', from: '추론', scope_ids: ['S4', 'S5'] }],
+    };
+    void items; void keys; void first;
+    return {
+      summary: '멀리서는 이름 하나, 가까이 올수록 원두가 온 길이 선명해지는 세 층의 사인 체계입니다. 외벽·대기열·컵이 같은 원리로 이어지고, 슬리브 좌표가 참여와 보상으로 연결됩니다.',
+      baseline_gap: { same: ['5m에서 읽히는 브랜드명(최소한 갖출 것)'], new: ['거리마다 해상도가 달라지는 면', '대기 3분을 원두 이야기로 바꾼 패널', '슬리브 좌표로 이어지는 참여'] },
+      form_language: { principles: [{ from: 'ISM-JP', principle: '유보된 완결', becomes: '가까이 와야 선명해지는 망점 해상도 3단계' }, { from: 'ISM-SWISS', principle: '크기 하나의 위계', becomes: '브랜드명만 600mm, 나머지는 모두 1/5 이하' }, { from: 'EMP-SIZE', principle: '크기의 강조', becomes: '거리별 글자 높이 600 · 120 · 24mm' }], shape: '얇은 프레임의 직사각 면 — 가장자리 3mm 오크', material: '무광 종이 · 오크 프레임', light: '측면 웜 라이트 2700K', color: '웜 뉴트럴 60 · 원두 브라운 30 · 원본 로고 10', type: '큰 산세리프 한 단어 + 작은 본문', scale: '사람 눈높이 1500mm 기준' },
+      section_notes: [],
+      content_modules: [{ name: '원두의 길', for: '줄 선 사람 · 3분', shows: '농장 사진 → 412km → 로스터리 → 이 컵', update: '원두 바뀔 때', from: '브랜드 레이어', scope_ids: ['S2'] }, { name: '오늘의 한 잔', for: '지나가는 사람 · 3초', shows: '원두 이름 한 단어', update: '매일', from: '타겟 레이어', scope_ids: ['S1'] }],
+      journey: [{ step: '도착', touchpoint: '외벽', does: '멀리서 이름을 본다', gets: '무엇의 팝업인지 3초에 안다', scope_ids: ['S1'] }, { step: '대기', touchpoint: '대기열 패널', does: '줄을 서며 패널을 본다', gets: '원두가 온 길을 안다', scope_ids: ['S2'] }, { step: '시음', touchpoint: '카운터·슬리브', does: '마시고 슬리브를 벗긴다', gets: '산지 좌표를 가져간다', scope_ids: ['S3', 'S4'] }, { step: '운영', touchpoint: '현장', does: '주 1회 원두 카드 교체', gets: '다시 올 이유', scope_ids: ['S5'] }],
+      scope_coverage: [{ scope_id: 'S1', how: '외벽 대표 사인 — 거리별 해상도 면', sections: ['system', 'form'] }, { scope_id: 'S2', how: '대기열 패널 — 원두의 길 콘텐츠', sections: ['system', 'content'] }, { scope_id: 'S3', how: '슬리브 마지막 조각', sections: ['interaction'] }, { scope_id: 'S4', how: '좌표 모으기 참여와 샘플 보상', sections: ['mechanic', 'reward'] }, { scope_id: 'S5', how: '주차별 원두 카드 교체', sections: ['ops'] }],
+      open_questions: ['외벽 설치 허용 크기', '실제 산지 거리 수치'],
+      painter_line: first ? '펼쳐 봤어.' : '빠진 절까지 채웠어.',
+    };
+  },
   b_direct: (ctx) => ({
     direction: `${(ctx.stageLabel || '').split(' — ')[0]} — "천천히 알아가는 거리"라는 우리의 시선을 놓치지 말 것. 팝업의 관성(크게·지금)은 구조로 지키고, 해석은 거리에서 만든다.`,
     lens_guides: [{ lens: 'FROM', guide: '레퍼런스 팝업 사진에서 출발하지 말고 "거리"라는 우리 관점에서 출발' }, { lens: 'JAMAIS', guide: '외벽 사인이라는 익숙한 형식을 버리지 않는다' }],
@@ -286,6 +344,8 @@ const builders = {
     const st = (ctx.stageLabel || '').split(' — ')[0];
     const key = `${st}`;
     const redo = st === 'Positioning Map' && !mockSeen.has(key);
+    const flat = /^Creative/.test(st) && !mockSeen.has('cr-' + key);
+    if (/^Creative/.test(st)) mockSeen.add('cr-' + key);
     mockSeen.add(key);
     return {
       verdict: redo ? '재작업' : st === 'Tunnel' ? '보완' : '통과',
@@ -293,6 +353,9 @@ const builders = {
       strengths: ['관성과 해석이 분리됨'],
       issues: redo ? ['포지셔닝 축이 카테고리 일반 축(가격·트렌디)에 가깝다'] : st === 'Tunnel' ? ['사용 습관 레이어의 대기 3분이 출구에 반영되지 않음'] : [],
       fixes: redo ? ['축 하나를 "거리(멀리↔가까이)"처럼 우리의 관점에서 다시 세울 것'] : st === 'Tunnel' ? ['FoR/PoP/PoD에서 대기 3분 후보를 포함할 것'] : [],
+      checklist: [{ baseline: '로고 사각 사인', status: flat ? '썼음' : '바꿈', where: '외벽' }],
+      baseline_gap: { score: redo || flat ? 2 : 4, same: redo ? ['카테고리 일반 축'] : ['5m 브랜드명'], new: redo ? [] : ['거리별 해석'], note: redo ? '기본안의 축과 같다' : '기본안에 없는 거리의 층', fixes: redo ? ['우리의 관점 축으로'] : [] },
+      coverage: { missing: [], note: '' },
       line: redo ? '다시. 이 축은 남의 지도야.' : '좋아, 다음으로.',
     };
   },
@@ -332,7 +395,7 @@ const builders = {
   },
   b_concept: () => ({
     evaluations: [
-      { id: 'C1', scores: [{ lens: 'FROM', score: 5, note: '거리의 관점이 코어' }, { lens: 'JAMAIS', score: 5, note: '사인 형식 유지 + 거리 해석' }, { lens: 'INERTIA', score: 4, note: '' }, { lens: 'ONEU', score: 5, note: '모든 접점이 파생' }, { lens: 'YELLOW', score: 4, note: '' }, { lens: 'BENEFIT', score: 4, note: '' }], total: 27, risk: '렌티큘러 제작 단가' },
+      { id: 'C1', scores: [{ lens: 'FROM', score: 5, note: '거리의 관점이 코어' }, { lens: 'JAMAIS', score: 5, note: '사인 형식 유지 + 거리 해석' }, { lens: 'INERTIA', score: 4, note: '' }, { lens: 'ONEU', score: 5, note: '모든 접점이 파생' }, { lens: 'YELLOW', score: 4, note: '' }, { lens: 'BENEFIT', score: 4, note: '' }], total: 27, baseline_gap: 4, coverage: '5/5', risk: '렌티큘러 제작 단가' },
       { id: 'C2', scores: [{ lens: 'FROM', score: 4, note: '' }, { lens: 'JAMAIS', score: 3, note: '대기 동선 연출은 흔함' }, { lens: 'INERTIA', score: 4, note: '' }, { lens: 'ONEU', score: 3, note: '외벽과 연결 약함' }, { lens: 'YELLOW', score: 5, note: '' }, { lens: 'BENEFIT', score: 4, note: '' }], total: 23, risk: '줄이 없으면 작동 안 함' },
       { id: 'C5', scores: [{ lens: 'FROM', score: 3, note: '' }, { lens: 'JAMAIS', score: 4, note: '' }, { lens: 'INERTIA', score: 4, note: '' }, { lens: 'ONEU', score: 3, note: '' }, { lens: 'YELLOW', score: 4, note: '' }, { lens: 'BENEFIT', score: 5, note: '기록을 가져감' }], total: 23, risk: '숫자가 확인 필요' },
     ],
@@ -370,7 +433,7 @@ const builders = {
   },
   '10_creative': () => {
     const g = (direction, title, headline, method, img, extra = {}) => ({
-      direction, title, one_liner: extra.one || '', derived_from_core: extra.derive || '"다가가면 완성된다"를 거리 단계로 나눔', headline, subcopy: extra.sub || '가까이 오세요. 원두가 온 길이 보입니다.', cta: '한 모금 시음',
+      direction, touchpoint: extra.tp || '외벽 5m', scope_ids: extra.sids || ['S1'], blueprint_ref: extra.ref || '사인 체계 · 대표 사인', title, one_liner: extra.one || '', derived_from_core: extra.derive || '"다가가면 완성된다"를 거리 단계로 나눔', headline, subcopy: extra.sub || '가까이 오세요. 원두가 온 길이 보입니다.', cta: '한 모금 시음',
       visual: { composition: 'COMP-CIR 원형 집중', grid_layout: 'GRID-COL · LAY-HIER', color: '웜 뉴트럴 60 · 브라운 30 · 로고 10', type: '큰 한 단어', elements: '망점 사진', motion: '보는 거리에 따라 변화' },
       detail: { angle: 'ANG-EYE 눈높이 — 보행자 시선', view: 'VIEW-CU 클로즈업 — 원두 결', light: 'LIGHT-RMATTE 무광 반사 — 겨울 오후', texture: 'TEX-MATTE 무광 종이' },
       knowhow_used: ['EMP-SIZE', 'CON-SIZE', 'RATIO-73'],
@@ -382,9 +445,9 @@ const builders = {
     });
     return {
       examples: [
-        g('A · 시스템 주도', '거리의 그리드', '한 걸음 가까이', '구조', 'Minimal pop-up store facade in Seoul, strict three-band grid, thin brown distance lines, warm neutral wall, winter afternoon side light, eye-level architectural photography', { one: '12열 그리드가 거리별 정보 층을 정확히 나눈다', empty: true }),
-        g('B · 경험 주도', '다가가는 그림', '멈추면 보이는 겨울', '포인트', 'Pop-up coffee store facade, a large softly blurred halftone photo of coffee beans that becomes sharp up close, warm neutral tones, people pausing on a winter street, editorial photography', { one: '멀리선 흐린 한 점, 가까이 오면 원두와 산지가 선명해진다' }),
-        g('B · 경험 주도', '기다림의 지도', '여기까지 온 맛', '구조', 'Queue line wall panels at a coffee pop-up showing an abstract hand-drawn route from farm to city, close-up matte paper texture, soft side light, eye level', { one: '대기 동선이 원두의 여정이 된다', derive: '"다가가면 완성된다"를 1m 대기 층으로', sub: '줄을 따라 걸으면, 원두가 걸어온 길을 걷습니다.' }),
+        g('A · 시스템 주도', '거리의 그리드', '한 걸음 가까이', '구조', 'Minimal pop-up store facade in Seoul, strict three-band grid, thin brown distance lines, warm neutral wall, winter afternoon side light, eye-level architectural photography', { one: '12열 그리드가 거리별 정보 층을 정확히 나눈다', empty: true, tp: '외벽 5m — 도착', sids: ['S1'] }),
+        g('B · 경험 주도', '다가가는 그림', '멈추면 보이는 겨울', '포인트', 'Pop-up coffee store facade, a large softly blurred halftone photo of coffee beans that becomes sharp up close, warm neutral tones, people pausing on a winter street, editorial photography', { one: '멀리선 흐린 한 점, 가까이 오면 원두와 산지가 선명해진다', tp: '카운터 0.3m — 시음', sids: ['S3', 'S4'], ref: '인터랙션 · 슬리브 마지막 조각' }),
+        g('B · 경험 주도', '기다림의 지도', '여기까지 온 맛', '구조', 'Queue line wall panels at a coffee pop-up showing an abstract hand-drawn route from farm to city, close-up matte paper texture, soft side light, eye level', { one: '대기 동선이 원두의 여정이 된다', derive: '"다가가면 완성된다"를 1m 대기 층으로', sub: '줄을 따라 걸으면, 원두가 걸어온 길을 걷습니다.', tp: '대기열 1m — 대기', sids: ['S2'], ref: '콘텐츠 · 원두의 길' }),
       ],
       selection: { recommended: '다가가는 그림', why: 'A의 거리 눈금 반복은 효익이 비어 있다(개살구). "다가가는 그림"은 결정마다 사람이 얻는 것이 있고, "기다림의 지도"를 1m 층으로 품는다' },
       prelim_review: [{ gate: 'G4', status: '예비 통과', note: '익숙한 외벽 사인에 거리별 해석' }, { gate: 'G7', status: '보완 필요', note: '대기열 패널의 본문 크기 검증 필요' }],
@@ -429,7 +492,10 @@ async function chat({ meta, onProgress }) {
   }
   const b = builders[name];
   if (!b) throw new Error('mock: unknown prompt ' + name);
-  return { json: b(meta.ctx || {}), model: 'mock', usage: { prompt_tokens: 3000 + Math.round(Math.random() * 4000), completion_tokens: 600 + Math.round(Math.random() * 900) } };
+  const json = b(meta.ctx || {});
+  if (name === '09_concepts') for (const pr of json.proposals || []) { pr.vs_baseline = '기본안의 로고 사인과 달리 거리마다 다른 층을 준다'; pr.scope_map = [{ scope_id: 'S1', how: '외벽 — 멀리서 이름 하나' }, { scope_id: 'S2', how: '대기열 — 원두의 길' }, { scope_id: 'S3', how: '슬리브 — 마지막 조각' }, { scope_id: 'S4', how: '좌표 모으기' }]; }
+  if (name === '09_concept_kit') json.scope_map = [{ scope_id: 'S1', how: '외벽 — 멀리서 이름 하나, 가까이 원두' }, { scope_id: 'S2', how: '대기열 — 원두의 길 패널' }, { scope_id: 'S3', how: '슬리브 — 산지 좌표' }, { scope_id: 'S4', how: '좌표 3개 → 샘플' }, { scope_id: 'S5', how: '주차별 원두 카드' }];
+  return { json, model: 'mock', usage: { prompt_tokens: 3000 + Math.round(Math.random() * 4000), completion_tokens: 600 + Math.round(Math.random() * 900) } };
 }
 
 async function search({ meta, onProgress }) {

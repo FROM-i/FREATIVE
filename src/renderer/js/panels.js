@@ -48,6 +48,25 @@ function brief(p, run, ctx) {
     <div class="card soft"><span class="kicker">가정 — 도출했지만 확인할 것</span>${arr(b.assumptions).map((a) => `<div style="font-size:13px">${esc(a.item)} ${src(a.basis)}</div>`).join('') || '<span class="muted">없음</span>'}</div>
     <div class="card soft"><span class="kicker">첨부에서 읽은 것</span>${arr(b.attachment_insights).map((a) => `<div style="font-size:13px"><span class="mono">${esc(a.file)}</span><br/>${esc(a.takeaway)}</div>`).join('') || '<span class="muted">첨부 없음</span>'}</div>
     <div class="card soft"><span class="kicker">여행 계획</span>${arr(plan.isms).map((i) => `<div style="font-size:13px"><span class="mono">${esc(i.id)}</span> ${esc(i.why)}</div>`).join('')}</div>
+  </div>
+  ${scopeBlock(b, run.results.baseline)}`;
+}
+
+/** 사업 범위 · 기본안 — 결과는 범위를 모두 다루고, 기본안을 넘어야 한다 */
+function scopeBlock(b, bl) {
+  const scope = arr(b.scope);
+  if (!scope.length && !bl) return '';
+  const by = Object.fromEntries(arr(bl && bl.by_scope).map((x) => [x.scope_id, x.obvious]));
+  return `<div class="grid g2" style="margin-top:16px;align-items:start">
+    <div class="card"><span class="kicker">사업 범위 — 결과는 이 항목을 모두 다룬다</span>
+      <table class="tbl"><thead><tr><th>ID</th><th>범위</th><th>종류</th><th>출처</th></tr></thead><tbody>
+      ${scope.map((x) => `<tr><td class="mono">${esc(x.id)}</td><td><b>${esc(x.item)}</b>${x.must ? '' : ' <span class="muted">(선택)</span>'}</td><td>${esc(x.kind || '')}</td><td>${src(x.from)}</td></tr>`).join('')}</tbody></table></div>
+    ${bl ? `<div class="card baseline"><span class="kicker">기본안 — 이 정도는 아무나 낸다 · 판단 브레인</span>
+      <div style="font-size:14px">${esc(bl.overall || '')}</div>
+      ${scope.length ? `<div class="bl-scope">${scope.map((x) => by[x.id] ? `<div><span class="mono">${esc(x.id)}</span> ${esc(arr(by[x.id]).join(' · '))}</div>` : '').join('')}</div>` : ''}
+      ${arr(bl.cliches).length ? `<div><span class="kicker">뻔한 형태·표현</span><div class="row">${arr(bl.cliches).map((c) => `<span class="chip-s">${esc(c)}</span>`).join('')}</div></div>` : ''}
+      ${arr(bl.bar).length ? `<div><span class="kicker">더프롬 안이 넘어야 할 기준</span>${ul(bl.bar, 'plus')}</div>` : ''}
+      <small class="muted">이후 단계 결과가 이것과 다르지 않으면(브레인 판정 2/5 이하) 자동으로 다시 그립니다.</small></div>` : ''}
   </div>`;
 }
 
@@ -472,6 +491,34 @@ function concept(p, run) {
 }
 
 /* ---------- 08 creative — 가이드 3~5 ---------- */
+/** 설계서 — 하나에서 펼친다 */
+function blueprintBlock(bp, run) {
+  if (!bp) return '';
+  const scope = arr(run.results.brief && run.results.brief.scope);
+  const fl = bp.form_language || {};
+  const secs = arr(bp.sections);
+  const cov = Object.fromEntries(arr(bp.scope_coverage).map((x) => [x.scope_id, x]));
+  const matrix = scope.length ? `<table class="tbl cov"><thead><tr><th>범위</th>${secs.map((x) => `<th>${esc(x.label)}</th>`).join('')}<th>어떻게</th></tr></thead><tbody>
+    ${scope.map((sc) => `<tr class="${cov[sc.id] ? '' : 'miss'}"><td><span class="mono">${esc(sc.id)}</span> ${esc(sc.item)}</td>${secs.map((x) => `<td class="cv">${arr(x.items).some((it) => arr(it.scope_ids).includes(sc.id)) ? '●' : ''}</td>`).join('')}<td>${esc((cov[sc.id] || {}).how || '— 다루지 않음')}</td></tr>`).join('')}</tbody></table>` : '';
+  return `<div class="stack bp">
+    <div class="statement">${esc(bp.summary || '')}</div>
+    ${arr(bp.gaps).length ? `<div class="card soft"><span class="kicker">설계에서 아직 빈 곳</span>${ul(bp.gaps)}</div>` : ''}
+    ${bp.baseline_gap ? `<div class="grid g2"><div class="card soft"><span class="kicker">기본안과 같은 것</span>${ul(bp.baseline_gap.same)}</div><div class="card"><span class="kicker">기본안에 없는 것 — 더프롬 판단</span>${ul(bp.baseline_gap.new, 'plus')}</div></div>` : ''}
+    <div><span class="kicker">범위 × 설계 — 모든 범위를 다뤘는가</span>${matrix}</div>
+    <div class="card"><span class="kicker">조형 언어 — 사조 원리가 무엇이 되었나</span>
+      <table class="tbl"><thead><tr><th>근거</th><th>원리</th><th>무엇이 되었나</th></tr></thead><tbody>
+      ${arr(fl.principles).map((x) => `<tr><td class="mono">${esc(x.from)}</td><td>${esc(x.principle)}</td><td><b>${esc(x.becomes)}</b></td></tr>`).join('')}</tbody></table>
+      <dl class="kv">${[['형태·비례', fl.shape], ['재료·마감', fl.material], ['빛', fl.light], ['색', fl.color], ['서체', fl.type], ['스케일', fl.scale]].filter((x) => x[1]).map((x) => `<dt>${x[0]}</dt><dd>${esc(x[1])}</dd>`).join('')}</dl></div>
+    <div class="grid g2" style="align-items:start">${secs.map((sec) => `<div class="card bp-sec"><span class="kicker">${esc(sec.label)} · ${arr(sec.items).length}</span>${sec.vs_baseline ? `<div class="vsb"><span class="muted">기본안과 다른 점</span> ${esc(sec.vs_baseline)}</div>` : ''}${arr(bp.section_notes).filter((n) => n.key === sec.key && n.note).map((n) => `<div class="vsb warn">${esc(n.note)}</div>`).join('')}
+      ${arr(sec.items).map((it) => `<div class="bp-item"><div class="row" style="gap:6px"><b>${esc(it.name)}</b>${arr(it.scope_ids).map((x) => `<span class="tag">${esc(x)}</span>`).join('')}</div><div>${esc(it.what || '')}</div><small class="muted">${[it.where, it.spec].filter(Boolean).map(esc).join(' · ')}${it.from ? ` · 근거 ${esc(it.from)}` : ''}</small></div>`).join('')}</div>`).join('')}</div>
+    ${arr(bp.content_modules).length ? `<div><span class="kicker">콘텐츠 모듈 — 화면·면에 실제로 보이는 것</span>
+      <table class="tbl" style="margin-top:6px"><thead><tr><th>모듈</th><th>누구·언제</th><th>보이는 것</th><th>갱신</th><th>근거</th></tr></thead><tbody>
+      ${arr(bp.content_modules).map((x) => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.for || '')}</td><td>${esc(x.shows || '')}</td><td>${esc(x.update || '')}</td><td class="muted">${esc(x.from || '')}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    ${arr(bp.journey).length ? `<div><span class="kicker">여정 — 도착부터 떠날 때까지</span><div class="journey-row">${arr(bp.journey).map((j, k) => `<div class="jstep"><span class="mono muted">${String(k + 1).padStart(2, '0')} · ${esc(j.step)}</span><b>${esc(j.touchpoint)}</b><span>${esc(j.does || '')}</span><span class="muted">→ ${esc(j.gets || '')}</span></div>`).join('')}</div></div>` : ''}
+    ${arr(bp.open_questions).length ? `<div class="card soft"><span class="kicker">발주처·사람에게 확인할 것</span>${ul(bp.open_questions)}</div>` : ''}
+  </div>`;
+}
+
 function creative(p, run) {
   const c = run.results.creative;
   if (!c) {
@@ -489,6 +536,7 @@ function creative(p, run) {
       <div class="ex-img">${e.image ? `<img src="${esc(e.image)}" alt="${esc(e.title)} 콘셉트 비주얼 초안"/>` : `<div class="ph">${gen ? '이미지 조수가 그리는 중…' : e.imageError ? `이미지 생성 실패 — ${esc(e.imageError).slice(0, 80)}` : '이미지 없음'}</div>`}
         ${e.image_prompt ? `<button class="btn xs regen" data-act="regen" data-i="${i}" ${gen ? 'disabled' : ''}>${e.image ? '다시 그리기' : '그리기'}</button>` : ''}</div>
       <div class="ex-body">
+        ${e.touchpoint ? `<div class="ex-tp"><b>${esc(e.touchpoint)}</b>${arr(e.scope_ids).map((x) => ` <span class="tag">${esc(x)}</span>`).join('')}</div>` : ''}
         <div class="ex-dir"><span>${String(i + 1).padStart(2, '0')} · ${esc(e.direction)}</span>${isRec ? '<span class="tag y">권장 · 예비</span>' : ''}</div>
         <span class="kicker">${esc(e.title)}</span>
         <h3 class="ex-head">${esc(e.headline || '')}</h3>
@@ -506,8 +554,10 @@ function creative(p, run) {
         ${e.image_prompt ? `<details class="prompt"><summary>이미지 프롬프트</summary><p>${esc(e.image_prompt)}</p></details>` : ''}
       </div></article>`;
   }).join('');
-  return `${head('creative', `Creative 가이드 ${ex.length}종`, 'A · 시스템 주도(대조군) / B · 경험 주도(본안) — 모두 같은 컨셉 코어에서 파생', c.painter_line)}
-  <div class="grid ${ex.length >= 3 ? 'g3' : 'g2'}" style="align-items:start">${cards}</div>
+  return `${head('creative', 'Creative — 설계 · 핵심 장면', '컨셉 하나에서 사업 범위 전체로 펼친 설계서와, 그 설계의 핵심 접점 장면', c.painter_line)}
+  ${blueprintBlock(c.blueprint, run)}
+  ${ex.length ? `<div style="margin-top:28px"><span class="kicker">핵심 장면 ${ex.length}곳 — 설계서에서 서로 다른 접점</span></div>
+  <div class="grid ${ex.length >= 3 ? 'g3' : 'g2'}" style="align-items:start;margin-top:10px">${cards}</div>` : waiting('설계서에서 핵심 장면을 고르는 중')}
   <div class="grid g3" style="margin-top:20px">
     <div class="card ink"><span class="kicker" style="color:#BDB9AF">권장 — 예비</span><b style="font-size:18px">${esc(rec || '')}</b><span>${esc(c.selection && c.selection.why)}</span></div>
     <div class="card"><span class="kicker">예비 판정 — 사람이 확정</span>${arr(c.prelim_review).map((r) => `<div style="font-size:13px"><span class="tag ${/보완/.test(r.status) ? 'y' : ''}">${esc(r.gate)} · ${esc(r.status)}</span> ${esc(r.note)}</div>`).join('')}</div>

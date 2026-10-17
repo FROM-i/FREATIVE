@@ -42,6 +42,12 @@
 ## 지금 후보
 {{json:candidates}}
 
+## 기본안 — 이 정도는 아무나 낸다 (이것과 같은 PoD는 남기지 않는다)
+{{json:baseline}}
+
+## 사업 범위 — 코어 PoD는 범위 전체에서 작동해야 한다
+{{json:scope}}
+
 ## 조수들의 웹 정찰 — 세 범위 요약
 {{json:scan}}
 

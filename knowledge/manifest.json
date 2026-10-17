@@ -1,7 +1,7 @@
 {
   "name": "thefrom-freative-knowledge",
-  "version": "1.8.0",
-  "methodVersion": "0.7",
+  "version": "2.0.0",
+  "methodVersion": "0.8",
   "updated": "2026-10-16",
   "note": "이 파일의 version을 올려야 설치된 앱들이 지식을 다시 내려받는다. files: 앱 안 경로 → 저장소 경로. @skill/ 은 스킬 저장소(thefrom_design_Skill)의 원본 — 앱 저장소에 복사하지 않는다.",
   "skillVersionFrom": "@skill/plugins/thefrom-ux/plugin.json",
@@ -29,9 +29,11 @@
     "prompts/08_forpop.md": "knowledge/prompts/08_forpop.md",
     "prompts/09_concept_kit.md": "knowledge/prompts/09_concept_kit.md",
     "prompts/09_concepts.md": "knowledge/prompts/09_concepts.md",
+    "prompts/10_blueprint.md": "knowledge/prompts/10_blueprint.md",
     "prompts/10_creative.md": "knowledge/prompts/10_creative.md",
     "prompts/11_report.md": "knowledge/prompts/11_report.md",
     "prompts/_common.md": "knowledge/prompts/_common.md",
+    "prompts/b_baseline.md": "knowledge/prompts/b_baseline.md",
     "prompts/b_compare.md": "knowledge/prompts/b_compare.md",
     "prompts/b_concept.md": "knowledge/prompts/b_concept.md",
     "prompts/b_direct.md": "knowledge/prompts/b_direct.md",
@@ -40,7 +42,8 @@
     "prompts/lib_ism.md": "knowledge/prompts/lib_ism.md",
     "prompts/lib_knowhow.md": "knowledge/prompts/lib_knowhow.md",
     "prompts/p_polish.md": "knowledge/prompts/p_polish.md",
-    "prompts/s_scout.md": "knowledge/prompts/s_scout.md"
+    "prompts/s_scout.md": "knowledge/prompts/s_scout.md",
+    "prompts/10_bp_section.md": "knowledge/prompts/10_bp_section.md"
   },
   "skillVersion": "0.4.2",
   "dirs": {

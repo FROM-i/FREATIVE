@@ -37,11 +37,14 @@ const STAGES = [
   { id: 'positioning', scene: 'exit', label: 'Positioning Map', sub: '5 → 4 → 3 → 1' },
   { id: 'forpop', scene: 'compass', label: 'FoR · PoP · PoD', sub: '최종 검증 · 발상의 전환' },
   { id: 'concept', scene: 'newcanvas', label: 'Concept · Theme', sub: '5 → 3 → 1 · C 게이트' },
-  { id: 'creative', scene: 'gallery', label: 'Creative', sub: '가이드 3~5종' },
+  { id: 'creative', scene: 'gallery', label: 'Creative', sub: '설계 · 핵심 장면' },
 ];
 const ORDER = STAGES.map((s) => s.id);
 const LABEL = Object.fromEntries(STAGES.map((s) => [s.id, `${s.label} — ${s.sub}`]));
-const INTRINSIC = new Set(['forpop', 'concept']); // 브레인이 단계 안에서 직접 추론하는 단계
+const INTRINSIC = new Set(['forpop', 'concept']);
+const BASELINE_STAGES = new Set(['positioning', 'forpop', 'concept', 'creative']); // 기본안을 보고 작업하는 단계
+const BASELINE_FLOOR = new Set(['creative']); // 브레인 검증에서 기본안과 같으면 자동 재작업 (concept은 3→1에서 코드로 강제)
+const SCOPE_STAGES = new Set(['concept', 'creative']); // 사업 범위를 모두 다뤄야 하는 단계 // 브레인이 단계 안에서 직접 추론하는 단계
 
 const LAYER_DEFAULTS = [
   { key: 'market', label: '시장', question: '이 카테고리는 지금 어떻게 말하고 있는가' },
@@ -140,7 +143,18 @@ class Controller {
     const types = ids.map(typeById).filter(Boolean);
     if (!types.length) return typeById('proposal');
     if (types.length === 1) return types[0];
-    return { ...types[0], also: types.slice(1).map((t) => ({ id: t.id, label: t.label, unit: t.unit, focus: t.focus })) };
+    // 여러 유형이면 해부도를 합친다 (같은 key는 한 번만)
+    const anatomy = [];
+    for (const t of types) for (const sec of t.anatomy || []) {
+      const same = anatomy.find((x) => x.key === sec.key);
+      if (!same) anatomy.push({ ...sec, type: t.id });
+      else if (same.label !== sec.label) anatomy.push({ ...sec, key: `${sec.key}_${t.id}`, type: t.id });
+    }
+    // 공간 유형의 해부도를 앞에 — 제안서 유형이 먼저 골라져도 사이니지의 조형·운영 절이 밀리지 않게
+    anatomy.sort((a, b) => (a.type === 'proposal') - (b.type === 'proposal'));
+    const uniq = (xs) => [...new Set(xs)];
+    const inertia = { keep: uniq(types.flatMap((t) => (t.inertia || {}).keep || [])), interpret: uniq(types.flatMap((t) => (t.inertia || {}).interpret || [])) };
+    return { ...types[0], anatomy, inertia, focus: uniq(types.flatMap((t) => t.focus || [])), checks: uniq(types.flatMap((t) => t.checks || [])), also: types.slice(1).map((t) => ({ id: t.id, label: t.label, unit: t.unit, focus: t.focus })) };
   }
   get mission() { return (this.run.results.brief && this.run.results.brief.mission) || {}; }
 
@@ -231,6 +245,11 @@ class Controller {
     const prev = ORDER[ORDER.indexOf(stage) - 1];
     const pv = prev && this.run.brain[prev] && this.run.brain[prev].verify;
     if (pv && (pv.fixes || []).length) parts.push(pv.verdict === '보완' ? `## 앞 단계 검증에서 넘어온 보완점 — 반드시 반영\n${pv.fixes.map((f) => `- ${f}`).join('\n')}` : `## 앞 단계 검증에서 나온 고칠 점 — 참고해 반영\n${pv.fixes.map((f) => `- ${f}`).join('\n')}`);
+    const iv = this.inertiaNote();
+    if (iv && role !== 'brain') parts.push(iv.replace('### ', '## '));
+    const bl = this.run.results.baseline;
+    if (bl && BASELINE_STAGES.has(stage)) parts.push(`## 기본안 — 이 정도는 아무나 낸다 (판단 브레인)\n이것과 같거나 이것의 장식만 바꾼 결과는 실패다. 무엇이 다른지 스스로 밝혀라.\n- 기본안: ${bl.overall || ''}\n- 뻔한 형태·표현: ${arr(bl.cliches).join(' / ')}\n- 넘어야 할 기준: ${arr(bl.bar).join(' / ')}`);
+    if (SCOPE_STAGES.has(stage) && this.scope().length) parts.push(`## 사업 범위 — 결과는 이 항목을 모두 다뤄야 한다\n${this.scope().map((x) => `- ${x.id} ${x.item}${x.kind ? ` (${x.kind})` : ''}`).join('\n')}`);
     const insp = this.inspirationFor(stage);
     if (insp !== '(없음)') parts.push(`## 디자이너의 영감 — 판단의 출발점(나로부터)으로 존중하라\n${insp}`);
     return parts.length ? `\n\n---\n${parts.join('\n\n')}` : '';
@@ -245,7 +264,7 @@ class Controller {
     const chosen = p && arr(p.territories).find((x) => p.final && x.id === p.final.id);
     return {
       canvas: R.canvas && { from_me: R.canvas.from_me, tension: R.canvas.tension, inertia: R.canvas.inertia, concept_draft: R.canvas.concept_draft },
-      airplane: s && { hybrid: s.hybrid, suitcase: s.suitcase, leave: s.leave_together, selected: s.selected },
+      airplane: s && { hybrid: s.hybrid, suitcase: s.suitcase, leave: s.leave_together, selected: s.selected, travels: arr(R.airplane.travels).filter((t) => !t.error && (!arr(s.selected).length || arr(s.selected).includes(t.id))).map((t) => ({ id: t.id, name: t.name, take: t.take, apply: t.apply, form_moves: t.form_moves, leave: t.leave })) },
       tunnel: t && { exit_light: t.exit_light, keep: t.keep, change: t.change, conflicts: t.conflicts },
       positioning: p && { whitespace: p.whitespace, chosen, reason: p.final && p.final.reason },
     };
@@ -275,7 +294,10 @@ class Controller {
     if (R.positioning) { const p = R.positioning; const t = (p.territories || []).find((x) => p.final && x.id === p.final.id); d.positioning = { axes: p.axes && { x: p.axes.x && p.axes.x.name, y: p.axes.y && p.axes.y.name }, whitespace: p.whitespace && p.whitespace.label, chosen: t && t.name, reason: p.final && p.final.reason }; }
     if (R.forpop) d.forpop = { for: R.forpop.for && R.forpop.for.frame, for_kind: R.forpop.for && R.forpop.for.chosen, pop: (R.forpop.pop || []).map((x) => x.item), core_pod: R.forpop.core_pod, positioning: R.forpop.compare && R.forpop.compare.positioning && R.forpop.compare.positioning.sentence, differentiation: R.forpop.compare && (R.forpop.compare.scopes || []).map((x) => `${x.title}: ${x.verdict || ''}`), shifts: (R.forpop.shifts || []).map((s) => s.shift && `${s.shift.type} ${s.shift.name}`), coherence: R.forpop.coherence };
     if (R.concept) d.concept = { concept: R.concept.concept, theme: R.concept.theme, keywords: R.concept.keywords, philosophy_core: R.concept.philosophy_core, ...(full ? { metaphor: R.concept.metaphor, tone_manner: R.concept.tone_manner, interpretation: R.concept.interpretation, benefit: R.concept.benefit, proposals: (R.concept.proposals || []).map((p) => ({ id: p.id, theme: p.theme, concept: p.concept })), first_round: R.concept.first_round, brain_select: R.concept.brain_select && R.concept.brain_select.final } : {}) };
-    if (R.creative) d.creative = (R.creative.examples || []).map((e) => ({ direction: e.direction, title: e.title, headline: e.headline, one_liner: e.one_liner, ...(full ? { structure: (e.structure || []).map((s) => s.name), detail: e.detail } : {}) }));
+    if (R.creative) d.creative = (R.creative.examples || []).map((e) => ({ direction: e.direction, touchpoint: e.touchpoint, scope_ids: e.scope_ids, title: e.title, headline: e.headline, one_liner: e.one_liner, ...(full ? { structure: (e.structure || []).map((s) => s.name), detail: e.detail } : {}) }));
+    if (R.brief && R.brief.scope) d.scope = R.brief.scope.map((x) => `${x.id} ${x.item}`);
+    if (R.baseline) d.baseline = { overall: R.baseline.overall, cliches: R.baseline.cliches, bar: R.baseline.bar };
+    if (R.creative && R.creative.blueprint) { const bp = R.creative.blueprint; d.blueprint = full ? this.blueprintDigest(bp) : { summary: bp.summary, baseline_gap: bp.baseline_gap, sections: arr(bp.sections).map((x) => `${x.label}: ${arr(x.items).map((it) => it.name).join(', ')}`) }; }
     const bv = Object.entries(this.run.brain).filter(([, v]) => v && v.verify).map(([k, v]) => ({ stage: k, verdict: v.verify.verdict, issues: (v.verify.issues || []).slice(0, 2) }));
     if (bv.length) d.brain = bv;
     if (this.run.inspirations.length) d.inspirations = this.run.inspirations.map((i) => ({ stage: i.stage, text: i.text }));
@@ -379,7 +401,9 @@ class Controller {
     const c = this.brainCfg(stage);
     return mode !== 'off' && !!c && (c.intensity || []).includes(mode);
   }
-  lensTable() { return (knowledge.load().brain.lenses || []).map((l) => `| ${l.id} | ${l.name} | ${l.question} | ${l.source} |`).join('\n').replace(/^/, '| ID | 렌즈 | 질문 | 출처 |\n|---|---|---|---|\n'); }
+  lensTable() { return (knowledge.load().brain.lenses || []).map((l) => `| ${l.id} | ${l.name} | ${l.question} | ${l.source} |`).join('\n').replace(/^/, '| ID | 렌즈 | 질문 | 출처 |\n|---|---|---|---|\n') + '\n\n' + this.inertiaNote(); }
+  /** 이 결과물에서 관성(지킬 구조)과 해석(바꿀 수 있는 것)의 경계 — 공간 작업에서 형태를 '구조'로 얼리지 않게 */
+  inertiaNote() { const iv = (this.type && this.type.inertia) || {}; if (!arr(iv.keep).length) return ''; return `### 이 결과물에서 관성과 해석의 경계\n- 관성(지킨다): ${arr(iv.keep).join(' · ')}\n- 해석(바꿀 수 있다 — 여기서 새로움을 만든다): ${arr(iv.interpret).join(' · ')}\n- INERTIA 렌즈는 '관성' 목록에만 적용한다. 해석 목록을 바꾼 것을 관성 위반으로 감점하지 않는다.`; }
   stageLenses(stage) { const ids = (this.brainCfg(stage) || {}).lenses || []; const L = knowledge.load().brain.lenses || []; return ids.map((id) => { const l = L.find((x) => x.id === id); return l ? `- ${l.id} · ${l.name}` : `- ${id}`; }).join('\n'); }
   knowhowIndex(stage) {
     const k = knowledge.load();
@@ -425,9 +449,18 @@ class Controller {
     const v = await this.call({
       role: 'brain', prompt: 'b_verify', stage, extras: false,
       agent: { key: 'brain', name: '판단 브레인', task: `검증 · ${LABEL[stage]}` },
-      ctx: { ...this.brainCtx(stage), directive: (this.run.brain[stage] || {}).direct || null, output },
+      ctx: { ...this.brainCtx(stage), directive: (this.run.brain[stage] || {}).direct || null, output, baseline: BASELINE_FLOOR.has(stage) ? this.run.results.baseline || null : null, scope: SCOPE_STAGES.has(stage) ? this.scope() : null },
       meta: { stage, mode: 'verify' },
     });
+    // 기본안과 다르지 않으면 렌즈 점수와 무관하게 재작업 — 우리 이름을 건 결과가 뻔한 답이면 안 된다
+    const gap = v.baseline_gap && Number(v.baseline_gap.score);
+    if (BASELINE_FLOOR.has(stage) && this.run.results.baseline && (!Number.isFinite(gap) || gap <= 2) && v.verdict !== '재작업') {
+      v.verdict = '재작업';
+      v.issues = [Number.isFinite(gap) ? `기본안과 다르지 않음 (${gap}/5) — ${(v.baseline_gap && v.baseline_gap.note) || ''}` : '기본안 대조 점수가 없음 — 검증을 다시 받는다', ...arr(v.issues)];
+      v.fixes = [...arr(v.baseline_gap && v.baseline_gap.fixes), ...arr(v.fixes)];
+    }
+    const miss = arr(v.coverage && v.coverage.missing).filter(Boolean);
+    if (SCOPE_STAGES.has(stage) && miss.length && v.verdict === '통과') { v.verdict = '보완'; v.issues = [`다루지 않은 범위: ${miss.join(', ')}`, ...arr(v.issues)]; }
     const b = this.run.brain[stage] = this.run.brain[stage] || {};
     b.verify = v;
     (b.attempts = b.attempts || []).push({ at: now(), verdict: v.verdict, issues: v.issues });
@@ -445,7 +478,12 @@ class Controller {
     for (let attempt = 0; ; attempt++) {
       await fn();
       const v = await this.brainVerify(stage, outputOf());
-      if (v.verdict !== '재작업' || attempt >= retry) break;
+      if (v.verdict !== '재작업') break;
+      if (attempt >= retry) {
+        (this.run.warnings = this.run.warnings || []).push({ stage, at: now(), text: `판단 브레인이 '재작업'으로 판정했지만 재작업 횟수(${retry})를 다 썼습니다 — ${arr(v.issues)[0] || ''}` });
+        this.line('시스템', `${LABEL[stage]} — 브레인 판정은 재작업이지만 횟수를 다 써서 진행합니다. 결과를 꼭 확인하세요.`, stage);
+        break;
+      }
       this.run.brain[stage].fixPending = v.fixes || [];
       this.line('화가', '브레인의 지적을 반영해 다시 그립니다.', stage);
       this.setStage(stage, { progress: 0.3, redo: attempt + 1 });
@@ -481,17 +519,47 @@ class Controller {
       if (json.plan.isms.length >= 3) break;
       if (!json.plan.isms.find((x) => x.id === d)) json.plan.isms.push({ id: d, why: '기본 후보' });
     }
-    const layers = (json.plan.layers || []).filter((l) => LAYER_DEFAULTS.find((d) => d.key === l.key));
-    json.plan.layers = layers.length >= 3 ? layers : LAYER_DEFAULTS;
+    const typeLayers = [...arr(this.type.layers), ...arr(this.type.also).flatMap((a) => arr((typeById(a.id) || {}).layers))];
+    const allowed = [...LAYER_DEFAULTS, ...typeLayers];
+    let layers = (json.plan.layers || []).filter((l) => allowed.find((d) => d.key === l.key)).map((l) => ({ ...allowed.find((d) => d.key === l.key), ...l }));
+    if (layers.length < 3) layers = [...LAYER_DEFAULTS];
+    // 결과물 유형의 조사 레이어(현장 조건 · 운영 · 선행 사례)는 화가가 빼도 붙인다 — 일반론으로 끝나지 않게
+    for (const tl of typeLayers) if (!layers.find((l) => l.key === tl.key)) layers.push(tl);
+    json.plan.layers = layers.slice(0, 8);
     json.plan.example_count = Math.max(3, Math.min(5, parseInt(json.plan.example_count, 10) || 3));
     const eff = models.effective();
     const pool = new Set(eff.pool.map((p) => p.id));
     const ipool = new Set(eff.imagePool.map((p) => p.id));
     this.run.modelPlan = (json.plan.model_plan || []).filter((p) => (['sub', 'director', 'brain'].includes(p.role) && pool.has(p.model)) || (p.role === 'image' && ipool.has(p.model)));
+    // 사업 범위 — 비거나 한 항목이면 해부도로 보탠다 (결과물을 한 단어로 뭉뚱그리지 않게)
+    let scope = arr(json.scope).map((x) => (typeof x === 'string' ? { item: x } : x)).filter((x) => x && x.item).map((x, i) => ({ id: `S${i + 1}`, item: String(x.item), kind: x.kind || '', from: x.from || '추론', must: !(x.must === false || x.must === 'false') }));
+    if (scope.length < 2) {
+      for (const sec of arr(this.type.anatomy)) if (scope.length < 4 && !scope.find((x) => x.item.includes(sec.label))) scope.push({ id: `S${scope.length + 1}`, item: `${sec.label} — ${sec.ask}`, kind: '', from: '추론 · 결과물 해부도', must: true });
+    }
+    json.scope = scope;
     this.run.results.brief = json;
     this.line('화가', json.plan.note || (json.mission && json.mission.one_line), 'brief');
+    const asking = ['질문부터', '멈춤'].includes(json.gate) && ((json.questions || []).length || json.gate === '멈춤');
+    if (!asking) await this.baseline();
     return json;
   }
+
+  /** 기본안 — 아무 방법론 없이도 나오는 답. 이후 모든 단계의 바닥선 */
+  async baseline() {
+    if (settings.get().run.brain === 'off') return;
+    try {
+      const j = await this.call({
+        role: 'brain', prompt: 'b_baseline', stage: 'brief', extras: false,
+        agent: { key: 'brain', name: '판단 브레인', task: '기본안(뻔한 답) 적기' },
+        ctx: { mission: this.mission, scope: this.scope(), type: this.typeBrief() },
+      });
+      this.run.results.baseline = j;
+      this.line('판단 브레인', j.line || `기본안 — ${j.overall || ''}`, 'brief');
+    } catch (e) { this.line('시스템', `기본안을 적지 못함 — ${e.message}`, 'brief'); }
+  }
+
+  scope() { return arr(this.run.results.brief && this.run.results.brief.scope); }
+  typeBrief() { const t = this.type || {}; return { label: t.label, unit: t.unit, focus: t.focus, anatomy: t.anatomy, inertia: t.inertia, also: t.also }; }
 
   async stageCanvas() {
     const b = this.run.results.brief;
@@ -517,7 +585,7 @@ class Controller {
       const json = await this.call({
         role: 'sub', prompt: '03_ism', stage: 'airplane',
         agent: { key: p.id, name: `조수 · ${card.name} 여행자`, task: p.why },
-        ctx: { mission: b.mission, canvas: this.run.results.canvas, ismBody: card.body, ismId: card.id, typeLabel: this.type.label },
+        ctx: { mission: b.mission, canvas: this.run.results.canvas, ismBody: card.body, ismId: card.id, typeLabel: [this.type.label, ...arr(this.type.also).map((x) => x.label)].join(' + '), scope: this.scope(), anatomy: arr(this.type.anatomy).map((a) => `${a.label} — ${a.ask}`) },
         meta: { ism: card },
       }).catch((e) => ({ id: p.id, error: e.message }));
       json.id = p.id; json.name = card.name; json.era = card.era; json.custom = !!card.custom;
@@ -552,11 +620,13 @@ class Controller {
       const json = await this.call({
         role: 'sub', prompt: '05_layer', stage: 'tunnel',
         agent: { key: layer.key, name: `조수 · ${layer.label} 레이어`, task: layer.question },
-        ctx: { mission: b.mission, canvas: this.run.results.canvas, airplane, attachment_insights: b.attachment_insights, layer, layerKey: layer.key, layerLabel: layer.label, type: this.type },
+        search: !!layer.search && settings.get().run.webSearch !== false && !!this.provider.search,
+        ctx: { mission: b.mission, canvas: this.run.results.canvas, airplane, attachment_insights: b.attachment_insights, rfp: b.rfp || null, scope: this.scope(), layer, layerKey: layer.key, layerLabel: layer.label, type: this.typeBrief() },
         meta: { layer },
       }).catch((e) => ({ key: layer.key, label: layer.label, error: e.message, insights: [] }));
       json.key = layer.key;
       json.label = json.label || layer.label;
+      if (json._citations) { json.citations = json._citations; delete json._citations; delete json._searches; }
       this.run.results.tunnel.layers.push(json);
       done++;
       this.setStage('tunnel', { progress: 0.1 + 0.6 * (done / layers.length) });
@@ -621,7 +691,7 @@ class Controller {
       role: 'brain', prompt: 'b_shift', stage: 'forpop', extras: false,
       agent: { key: 'brain', name: '판단 브레인', task: '발상의 전환 1 · PoD 5 → 3' },
       ctx: {
-        round: 1, mission: this.mission, frame, candidates: base.pod_candidates, previous: null, scan: scanBrief, inspiration: this.inspirationFor('forpop'), lensTable: this.lensTable(),
+        round: 1, mission: this.mission, frame, candidates: base.pod_candidates, previous: null, scan: scanBrief, baseline: this.run.results.baseline || null, scope: this.scope(), inspiration: this.inspirationFor('forpop'), lensTable: this.lensTable(),
         roundRule: '이번은 1차 — 5개를 전환된 시선으로 다시 보고 3개로 좁힌다(합치거나 변형 가능). id는 P1~P3.',
         roundSchema: '{ "round": 1, "shift": { "type": "INVERT|VIEW|SCALE|TIME|SENSE|COMBINE|SUBTRACT|CONTEXT", "name": "전환 이름", "question": "전환 질문", "from": "기존 사고", "to": "전환된 사고", "reasoning": "브레인의 추론 — 렌즈 근거", "lenses": ["렌즈 ID"] }, "result": [ { "id": "P1", "item": "", "gain": "", "from_ids": ["D?"], "transformed": true, "why": "", "desirable": 0.0, "deliverable": 0.0, "defensible": 0.0 } ], "cut": [ { "id": "D?", "reason": "" } ], "line": "" }',
       },
@@ -636,8 +706,8 @@ class Controller {
       role: 'brain', prompt: 'b_shift', stage: 'forpop', extras: false,
       agent: { key: 'brain', name: '판단 브레인', task: '발상의 전환 2 · PoD 3 → 1 · 최종 점검' },
       ctx: {
-        round: 2, mission: this.mission, frame, candidates: r1.result, previous: r1.shift, scan: scanBrief, inspiration: this.inspirationFor('forpop'), lensTable: this.lensTable(),
-        roundRule: '이번은 2차 — 1차와 다른 유형의 전환을 적용해 하나의 코어 PoD로 좁히고, 앞선 모든 단계가 이 코어로 이어지는지 렌즈별로 최종 점검한다.',
+        round: 2, mission: this.mission, frame, candidates: r1.result, previous: r1.shift, scan: scanBrief, baseline: this.run.results.baseline || null, scope: this.scope(), inspiration: this.inspirationFor('forpop'), lensTable: this.lensTable(),
+        roundRule: `이번은 2차 — 1차와 다른 유형의 전환을 적용해 하나의 코어 PoD로 좁히고, 앞선 모든 단계가 이 코어로 이어지는지 렌즈별로 최종 점검한다.${this.scope().length >= 4 ? ' 사업 범위가 넓다 — SUBTRACT(하나만 남기기)는 쓰지 않는다. 코어 PoD는 한 접점의 장치가 아니라 범위 전체에서 작동하는 원리여야 한다.' : ''} 코어 PoD가 기본안과 같으면 안 된다.`,
         roundSchema: '{ "round": 2, "shift": { "type": "", "name": "", "question": "", "from": "", "to": "", "reasoning": "", "lenses": [] }, "core": { "id": "CORE", "item": "코어 PoD", "gain": "사람이 얻는 것", "from_ids": ["P?"], "statement": "무엇은 그대로 두고 무엇이 다른지, 사람이 읽는 자연스러운 한두 문장으로. 칸을 이어 붙이지 말고 FoR·PoP 같은 용어도 문장에 넣지 않는다", "why": "" }, "cut": [ { "id": "P?", "reason": "" } ], "rtb": [ { "fact": "", "source": "브리프|첨부:..|웹:<URL>|확인 필요" } ], "final_check": [ { "lens": "렌즈 ID", "ok": true, "note": "" } ], "verdict": "통과|보완", "line": "" }',
       },
       meta: { round: 2 },
@@ -657,7 +727,7 @@ class Controller {
       role: 'brain', prompt: 'b_compare', stage: 'forpop', extras: false,
       agent: { key: 'brain', name: '판단 브레인', task: '차별성 판정 · 세 범위 · 공통 범례' },
       ctx: {
-        mission: this.mission, frame, scan: scanBrief, inspiration: this.inspirationFor('forpop'), lensTable: this.lensTable(),
+        mission: this.mission, frame, scan: scanBrief, baseline: this.run.results.baseline || null, scope: this.scope(), inspiration: this.inspirationFor('forpop'), lensTable: this.lensTable(),
         pod: { core: fp.core_pod, rtb: fp.rtb, candidates: base.pod_candidates, shifted: r1.result, shifts: fp.shifts.map((x) => ({ shift: x.shift, cut: x.cut })), final_check: fp.final_check },
       },
     });
@@ -751,6 +821,12 @@ class Controller {
   }
 
   async stageConcept() {
+    if (!this._conceptDepth) this._conceptRetried = false;
+    this._conceptDepth = (this._conceptDepth || 0) + 1;
+    try { return await this._stageConcept(); } finally { this._conceptDepth--; }
+  }
+
+  async _stageConcept() {
     const hist = this.run.gates.C.history.filter((h) => h.decision === 'revise');
     const feedback = hist.length ? hist.map((h, i) => `${i + 1}차 수정 의견: ${h.note || '(의견 없음)'}`).join('\n') : '(없음 — 첫 판정)';
     const fp = this.run.results.forpop;
@@ -759,7 +835,7 @@ class Controller {
     const c1 = await this.call({
       role: 'director', prompt: '09_concepts', stage: 'concept',
       agent: { key: 'painter', name: '화가', task: hist.length ? `Concept 5안 — 수정 ${hist.length}차` : 'Concept · Theme 5안 → 1차 3안' },
-      ctx: { mission: this.mission, canvas: this.run.results.canvas, digest: this.digest(), forpop, feedback },
+      ctx: { mission: this.mission, canvas: this.run.results.canvas, digest: this.digest(), forpop, lineage: this.lineage(), tunnel: this.tunnelDigest(), feedback },
     });
     const ids = new Set((c1.proposals || []).map((p) => p.id));
     c1.first_round = c1.first_round || {};
@@ -774,11 +850,27 @@ class Controller {
     const sel = await this.call({
       role: 'brain', prompt: 'b_concept', stage: 'concept', extras: false,
       agent: { key: 'brain', name: '판단 브레인', task: 'Concept 자체 검증 · 3 → 1' },
-      ctx: { mission: this.mission, picked, core: fp.core_pod, forpop, lineage: this.lineage(), lensTable: this.lensTable(), stageLenses: this.stageLenses('concept') },
+      ctx: { mission: this.mission, picked, core: fp.core_pod, forpop, lineage: this.lineage(), baseline: this.run.results.baseline || null, scope: this.scope(), lensTable: this.lensTable(), stageLenses: this.stageLenses('concept') },
     });
     if (!sel.final || !picked.find((p) => p.id === sel.final.id)) sel.final = { id: picked[0].id, why: '브레인 선택 누락 — 1차 첫 안', refine: [] };
+    // 기본안 · 범위 바닥선 — 세 안이 모두 기본안과 같거나 범위의 절반도 못 다루면 5안부터 한 번 다시 (코드로 강제)
+    if (this.run.results.baseline && !this._conceptRetried) {
+      const ratio = (cv) => { const m = String(cv || '').match(/(\d+)\s*\/\s*(\d+)/); return m ? +m[1] / Math.max(1, +m[2]) : NaN; };
+      const ev = arr(sel.evaluations);
+      const okOne = ev.some((e) => Number(e.baseline_gap) >= 3 && !(ratio(e.coverage) < 0.5));
+      if (ev.length && !okOne) {
+        this._conceptRetried = true;
+        this.line('판단 브레인', '세 안 모두 기본안과 다르지 않거나 범위의 절반을 못 다룹니다 — 5안부터 다시 그립니다.', 'concept');
+        this.run.brain.concept = { ...(this.run.brain.concept || {}), fixPending: [...arr(sel.final.refine), '기본안과 다른 방향으로 — 범위 절반 이상에서 구체적으로 작동하는 컨셉으로'] };
+        await this.stageConcept();
+        if (this.run.brain.concept) delete this.run.brain.concept.fixPending;
+        return;
+      }
+    }
     this.run.results.concept.brain_select = sel;
-    this.run.brain.concept = { ...(this.run.brain.concept || {}), verify: { verdict: '통과', scores: ((sel.evaluations || []).find((e) => e.id === sel.final.id) || {}).scores || [], issues: [], fixes: sel.final.refine || [], line: sel.line } };
+    const fe = (sel.evaluations || []).find((e) => e.id === sel.final.id) || {};
+    const fgap = Number(fe.baseline_gap);
+    this.run.brain.concept = { ...(this.run.brain.concept || {}), verify: { verdict: Number.isFinite(fgap) && fgap < 3 ? '보완' : '통과', scores: fe.scores || [], issues: Number.isFinite(fgap) && fgap < 3 ? [`기본안과의 거리 ${fgap}/5 — 설계에서 더 벌려야 한다`] : [], fixes: sel.final.refine || [], line: sel.line, baseline_gap: fe.baseline_gap, coverage: fe.coverage } };
     this.line('판단 브레인', sel.line || sel.final.why, 'concept');
     this.setStage('concept', { progress: 0.7 });
     this.send('progress', { stage: 'concept' });
@@ -787,7 +879,7 @@ class Controller {
     const kit = await this.call({
       role: 'director', prompt: '09_concept_kit', stage: 'concept',
       agent: { key: 'painter', name: '화가', task: '최종 컨셉 키트 · C 게이트' },
-      ctx: { mission: this.mission, final, refine: sel.final.refine || [], evaluation: (sel.evaluations || []).find((e) => e.id === final.id) || null, why: sel.final.why, forpop, lineage: this.lineage(), feedback, type: this.type },
+      ctx: { mission: this.mission, final, refine: sel.final.refine || [], evaluation: (sel.evaluations || []).find((e) => e.id === final.id) || null, why: sel.final.why, forpop, lineage: this.lineage(), tunnel: this.tunnelDigest(), scope: this.scope(), feedback, type: this.typeBrief() },
     });
     this.run.results.concept = { ...this.run.results.concept, ...kit, final_id: final.id };
     this.line('화가', kit.painter_line, 'concept');
@@ -799,18 +891,126 @@ class Controller {
     const hist = this.run.gates.C.history;
     const feedback = hist.map((h) => `${h.decision === 'go' ? 'go' : '수정'}: ${h.note || ''}`).join('\n') || '(없음)';
     const c = this.run.results.concept;
-    const concept = { concept: c.concept, theme: c.theme, keywords: c.keywords, metaphor: c.metaphor, philosophy_core: c.philosophy_core, tone_manner: c.tone_manner, interpretation: c.interpretation, benefit: c.benefit, rough: c.rough };
-    const fp = this.run.results.forpop;
-    const n = Math.max(3, Math.min(5, b.plan.example_count || 3));
+    const concept = { concept: c.concept, theme: c.theme, keywords: c.keywords, metaphor: c.metaphor, philosophy_core: c.philosophy_core, tone_manner: c.tone_manner, interpretation: c.interpretation, benefit: c.benefit, rough: c.rough, scope_map: c.scope_map };
+    const scope = this.scope();
+    const common = { mission: b.mission, scope, rfp: b.rfp || null, type: this.typeBrief(), baseline: this.run.results.baseline || null, concept, forpop: this.forpopHandoff(), lineage: this.lineage(), tunnel: this.tunnelDigest(), feedback };
+
+    // ① 설계 — 하나에서 사업 범위 전체로 펼친다. 해부도 절마다 조수가 병렬로 깊게 그리고, 화가가 통합한다
+    const anatomy = arr(this.type.anatomy);
+    let drafts = await this.draftSections(anatomy, common, {});
+    this.setStage('creative', { progress: 0.25 });
+    this.send('progress', { stage: 'creative' });
+    let blueprint = await this.integrateBlueprint(drafts, common, null, []);
+    let gaps = this.blueprintGaps(blueprint, scope);
+    if (gaps.length) {
+      // 빈 곳만 다시 — 앞 초안을 주고 보완하게 한다 (처음부터 다시 그리지 않는다)
+      this.line('판단 브레인', `설계에서 빈 곳 ${gaps.length}곳 — ${gaps.slice(0, 2).map((g) => g.text).join(' · ')}`, 'creative');
+      const byKey = {};
+      for (const g of gaps) if (g.key) (byKey[g.key] = byKey[g.key] || []).push(g.text);
+      const redo = anatomy.filter((a) => byKey[a.key]);
+      if (redo.length) {
+        const prev = Object.fromEntries(drafts.map((d) => [d.key, d]));
+        const again = await this.draftSections(redo, common, byKey, prev);
+        drafts = drafts.map((d) => again.find((x) => x.key === d.key && arr(x.items).length >= arr(d.items).length) || d);
+      }
+      const cross = gaps.filter((g) => !g.key).map((g) => g.text);
+      blueprint = await this.integrateBlueprint(drafts, common, blueprint, cross.length ? cross : gaps.map((g) => g.text));
+      gaps = this.blueprintGaps(blueprint, scope);
+    }
+    blueprint.gaps = gaps.map((g) => g.text);
+    this.run.results.creative = { blueprint, examples: [] };
+    this.line('화가', blueprint.painter_line, 'creative');
+    this.setStage('creative', { progress: 0.45 });
+    this.send('progress', { stage: 'creative' });
+
+    // ② 핵심 장면 — 설계서에서 서로 다른 접점을 고른다
+    const mustN = scope.filter((x) => x.must).length;
+    const n = Math.max(3, Math.min(5, Math.max(b.plan.example_count || 3, mustN)));
     const json = await this.call({
       role: 'director', prompt: '10_creative', stage: 'creative',
-      agent: { key: 'painter', name: '화가', task: `Creative 가이드 ${n}종` },
-      ctx: { mission: b.mission, concept, forpop: this.forpopHandoff(), lineage: this.lineage(), tunnel: this.tunnelDigest(), feedback, type: this.type, exampleCount: n },
+      agent: { key: 'painter', name: '화가', task: `핵심 장면 ${n}곳` },
+      ctx: { ...common, blueprint: this.blueprintDigest(blueprint), exampleCount: n },
     });
     json.examples = (json.examples || []).slice(0, 5);
-    this.run.results.creative = json;
+    this.run.results.creative = { ...json, blueprint };
     this.line('화가', json.painter_line, 'creative');
-    await this.polish('creative', json, { skip: ['headline'] });
+    await this.polish('creative', this.run.results.creative, { skip: ['headline', 'sections', 'content_modules', 'spec', 'what', 'where', 'shows', 'becomes', 'form_language'] });
+  }
+
+  /** 해부도 절마다 조수가 병렬로 설계한다 */
+  async draftSections(list, common, fixesByKey = {}, prevByKey = {}) {
+    const all = arr(this.type.anatomy);
+    const scopeText = this.scope().map((x) => x.item).join(' ');
+    return pLimit(list, settings.get().run.maxParallel || 4, async (sec) => {
+      const must = arr(sec.must).filter((m) => arr(m.when).some((w) => scopeText.includes(w))).map((m) => m.msg);
+      const fixes = arr(fixesByKey[sec.key]);
+      try {
+        const j = await this.call({
+          role: 'sub', prompt: '10_bp_section', stage: 'creative',
+          agent: { key: `bp-${sec.key}`, name: `조수 · 설계 (${sec.label})`, task: fixes.length ? `${sec.label} 보완` : sec.ask },
+          ctx: {
+            ...common, sectionKey: sec.key, sectionLabel: sec.label, sectionAsk: sec.ask, minItems: sec.min || 2,
+            otherSections: all.filter((a) => a.key !== sec.key).map((a) => a.label).join(' · '),
+            mustNote: must.length ? `- **이 절에 반드시 들어갈 것**: ${must.join(' / ')}` : '',
+            fixes: fixes.length ? `## 지난 초안 — 빠진 것을 채워 다시 낸다 (좋은 항목은 그대로 둔다)\n${fixes.map((f) => `- ${f}`).join('\n')}\n\n지난 초안:\n${JSON.stringify(prevByKey[sec.key] || null)}` : '',
+          },
+        });
+        return { ...j, key: sec.key, label: sec.label, items: arr(j.items) };
+      } catch (err) {
+        this.line('시스템', `설계 절 '${sec.label}' 실패 — ${err.message}`, 'creative');
+        return { key: sec.key, label: sec.label, items: [], error: err.message };
+      }
+    });
+  }
+
+  /** 화가가 절별 초안을 통합한다 — 절 항목은 초안을 그대로 싣는다 */
+  async integrateBlueprint(drafts, common, previous, fixes) {
+    const bp = await this.call({
+      role: 'director', prompt: '10_blueprint', stage: 'creative',
+      agent: { key: 'painter', name: '화가', task: previous ? `설계 통합 보완 — ${fixes.length}곳` : `설계 통합 — 범위 ${common.scope.length}항목 · ${drafts.length}절` },
+      ctx: { ...common, drafts: drafts.map((d) => ({ key: d.key, label: d.label, items: d.items, vs_baseline: d.vs_baseline })), fixes: previous ? `## 지난 통합에서 빠진 것 — 채운다 (좋은 부분은 그대로 둔다)\n${fixes.map((f) => `- ${f}`).join('\n')}\n\n지난 통합:\n${JSON.stringify({ ...previous, sections: undefined })}` : '' },
+    });
+    const anatomy = arr(this.type.anatomy);
+    bp.sections = anatomy.map((a) => drafts.find((d) => d.key === a.key) || { key: a.key, label: a.label, items: [] });
+    bp.open_questions = [...new Set([...arr(bp.open_questions), ...drafts.flatMap((d) => arr(d.open_questions))])];
+    bp.section_vs_baseline = drafts.filter((d) => d.vs_baseline).map((d) => ({ key: d.key, label: d.label, vs_baseline: d.vs_baseline }));
+    return bp;
+  }
+
+  /** 설계서 점검 — {key: 해당 절(없으면 통합), text} */
+  blueprintGaps(bp, scope) {
+    const gaps = [];
+    const anatomy = arr(this.type.anatomy);
+    const scopeText = scope.map((x) => x.item).join(' ');
+    const textOf = (sec) => JSON.stringify(arr(sec && sec.items));
+    for (const a of anatomy) {
+      const sec = arr(bp.sections).find((y) => y.key === a.key);
+      const n = arr(sec && sec.items).length;
+      if (n < (a.min || 2)) gaps.push({ key: a.key, text: `'${a.label}' 항목이 ${n}개 — ${a.min || 2}개 이상 (${a.ask})` });
+      for (const m of arr(a.must)) if (arr(m.when).some((w) => scopeText.includes(w)) && !arr(m.any).some((w) => textOf(sec).includes(w))) gaps.push({ key: a.key, text: `'${a.label}' — ${m.msg}` });
+    }
+    // 범위: 커버리지(통합)와 실제 항목(절) 둘 다 있어야 한다
+    const cov = Object.fromEntries(arr(bp.scope_coverage).filter((x) => x && x.how && String(x.how).length > 4).map((x) => [x.scope_id, x]));
+    const used = new Set([...arr(bp.sections).flatMap((sec) => arr(sec.items).flatMap((it) => arr(it.scope_ids))), ...arr(bp.content_modules).flatMap((m) => arr(m.scope_ids)), ...arr(bp.journey).flatMap((j) => arr(j.scope_ids))]);
+    const keyFor = (x) => { const k = /콘텐츠/.test(x.kind) ? 'content' : /서비스|앱/.test(x.kind) ? 'interaction' : /운영/.test(x.kind) ? 'ops' : 'system'; return anatomy.find((a) => a.key === k) ? k : (anatomy[0] || {}).key; };
+    for (const x of scope) {
+      if (!x.must) continue;
+      if (!used.has(x.id)) gaps.push({ key: keyFor(x), text: `범위 ${x.id} ${x.item} — 설계 항목에서 구체적으로 다루지 않음` });
+      else if (!cov[x.id]) gaps.push({ key: null, text: `범위 ${x.id} — scope_coverage에 어떻게 다루는지 없음` });
+    }
+    // 조형 언어: 고른 사조의 조작에서 나와야 한다
+    const sel = new Set(arr(this.run.results.airplane && this.run.results.airplane.synth && this.run.results.airplane.synth.selected));
+    const pr = arr(bp.form_language && bp.form_language.principles).filter((x) => x.from && x.becomes);
+    if (pr.length < 2) gaps.push({ key: null, text: '조형 언어 — 사조 원리·조형 조작이 무엇으로 바뀌는지 두 개 이상' });
+    else if (sel.size && !pr.some((x) => [...sel].some((id) => String(x.from).includes(id)))) gaps.push({ key: null, text: `조형 언어 — 고른 사조(${[...sel].join(', ')})의 조작에서 나온 결정이 없음` });
+    if (anatomy.some((a) => a.key === 'content') && arr(bp.content_modules).length < 2) gaps.push({ key: null, text: '콘텐츠 모듈 — 화면·면에 실제로 보이는 것을 두 개 이상' });
+    if (arr(this.run.results.brief && this.run.results.brief.rfp && this.run.results.brief.rfp.eval_criteria).length && !arr(bp.eval_map).length) gaps.push({ key: null, text: '평가 항목마다 설계의 어디서 응답하는지(eval_map)' });
+    return gaps;
+  }
+
+  /** 장면 단계로 넘길 설계 요약 */
+  blueprintDigest(bp) {
+    return { summary: bp.summary, baseline_gap: bp.baseline_gap, form_language: bp.form_language, sections: arr(bp.sections).map((s) => ({ key: s.key, label: s.label, items: arr(s.items).map((it) => ({ name: it.name, what: it.what, where: it.where, spec: it.spec, scope_ids: it.scope_ids })) })), content_modules: bp.content_modules, journey: bp.journey, scope_coverage: bp.scope_coverage };
   }
 
   imagesEnabled() {
@@ -865,12 +1065,13 @@ class Controller {
       airplane: () => ({ travels: (this.run.results.airplane.travels || []).map(({ id, take, leave, core, a3 }) => ({ id, take, leave, core, a3 })), synth: this.run.results.airplane.synth }),
       tunnel: () => this.tunnelDigest(),
       positioning: () => this.run.results.positioning,
-      creative: () => ({ examples: (this.run.results.creative.examples || []).map(({ image, imageFile, image_prompt, ...e }) => e), selection: this.run.results.creative.selection }),
+      creative: () => ({ blueprint: this.run.results.creative.blueprint && { ...this.blueprintDigest(this.run.results.creative.blueprint), baseline_gap: undefined }, examples: (this.run.results.creative.examples || []).map(({ image, imageFile, image_prompt, ...e }) => e), selection: this.run.results.creative.selection }),
     }[id] || (() => null);
     this.run.stage = id;
     this.run.status = 'running';
     this.setStage(id, { status: 'running', progress: 0.08, startedAt: now(), error: null, redo: 0 });
     this.send('stage-start', { stage: id });
+    if (BASELINE_STAGES.has(id) && !this.run.results.baseline && this.run.results.brief) await this.baseline();
     if (id === 'brief') await fn(); else await this.withBrain(id, fn, out);
     if (id === 'creative') { this.setStage('creative', { progress: 0.8 }); this.send('progress', { stage: id }); await this.generateImages(); }
     this.setStage(id, { status: 'done', progress: 1, endedAt: now() });

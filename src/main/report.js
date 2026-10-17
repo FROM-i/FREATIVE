@@ -23,6 +23,11 @@ function build(p) {
     out.push(`\n## 1. 미션 — 브리프 게이트: ${b.gate}\n${b.gate_reason || ''}\n`);
     out.push(table(['항목', '내용'], Object.entries(b.mission || {}).map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : v])));
     if (b.assumptions && b.assumptions.length) out.push('\n**가정**\n' + list(b.assumptions, (a) => `${a.item} — ${a.basis}`));
+    if ((b.scope || []).length) out.push('\n**사업 범위**\n' + table(['ID', '범위', '종류', '출처'], b.scope.map((x) => [x.id, x.item + (x.must ? '' : ' (선택)'), x.kind || '', x.from || ''])));
+  }
+  if (r.baseline) {
+    const bl = r.baseline;
+    out.push(`\n**기본안 — 이 정도는 아무나 낸다** (판단 브레인)\n\n${bl.overall || ''}\n\n- 뻔한 형태·표현: ${(bl.cliches || []).join(' · ')}\n- 넘어야 할 기준: ${(bl.bar || []).join(' · ')}`);
   }
   if (r.canvas) {
     const c = r.canvas;
@@ -105,9 +110,22 @@ function build(p) {
   }
   if (r.creative) {
     const c = r.creative;
-    out.push('\n## 8. Creative 가이드');
+    const bp = c.blueprint;
+    if (bp) {
+      out.push(`\n## 8. 설계 — 하나에서 펼친다\n\n> ${bp.summary || ''}`);
+      if (bp.baseline_gap) out.push(`\n**기본안과 같은 것**\n${list(bp.baseline_gap.same)}\n\n**기본안에 없는 것**\n${list(bp.baseline_gap.new)}`);
+      const fl = bp.form_language || {};
+      out.push('\n**조형 언어 — 사조 원리가 무엇이 되었나**\n' + table(['근거', '원리', '무엇이 되었나'], (fl.principles || []).map((x) => [x.from, x.principle, x.becomes])));
+      out.push(table(['항목', '내용'], [['형태·비례', fl.shape], ['재료·마감', fl.material], ['빛', fl.light], ['색', fl.color], ['서체', fl.type], ['스케일', fl.scale]].filter((x) => x[1])));
+      (bp.sections || []).forEach((sec) => out.push(`\n**${sec.label}**\n` + table(['이름', '내용', '위치', '사양', '범위', '근거'], (sec.items || []).map((it) => [it.name, it.what, it.where, it.spec, (it.scope_ids || []).join(','), it.from]))));
+      if ((bp.content_modules || []).length) out.push('\n**콘텐츠 모듈**\n' + table(['모듈', '누구·언제', '보이는 것', '갱신', '근거'], bp.content_modules.map((x) => [x.name, x.for, x.shows, x.update, x.from])));
+      if ((bp.journey || []).length) out.push('\n**여정**\n' + table(['단계', '접점', '하는 것', '얻는 것'], bp.journey.map((j) => [j.step, j.touchpoint, j.does, j.gets])));
+      if ((bp.scope_coverage || []).length) out.push('\n**범위 커버리지**\n' + table(['범위', '어떻게'], bp.scope_coverage.map((x) => [x.scope_id, x.how])));
+      if ((bp.open_questions || []).length) out.push('\n**확인할 것**\n' + list(bp.open_questions));
+    }
+    out.push('\n## 9. 핵심 장면');
     (c.examples || []).forEach((e, i) => {
-      out.push(`\n### ${i + 1}. ${e.direction} — ${e.title}\n${e.one_liner}\n\n- 헤드라인: **${e.headline || ''}**\n- 서브: ${e.subcopy || ''}\n- CTA: ${e.cta || ''}\n- 방법론이 드러나는 곳: ${e.method_shows_in || ''}`);
+      out.push(`\n### ${i + 1}. ${e.touchpoint ? `${e.touchpoint} — ` : ''}${e.title} (${e.direction})\n${e.one_liner}\n\n- 헤드라인: **${e.headline || ''}**\n- 서브: ${e.subcopy || ''}\n- CTA: ${e.cta || ''}\n- 방법론이 드러나는 곳: ${e.method_shows_in || ''}`);
       if (e.image) out.push(`\n![${e.title}](${e.image.replace(/^ct:\/\/project\/[^/]+\//, '')})`);
       out.push('\n' + table(['단위', '이름', '내용', '비고'], (e.structure || []).map((s) => [s.unit, s.name, s.content, s.note])));
       const d = e.detail || {};

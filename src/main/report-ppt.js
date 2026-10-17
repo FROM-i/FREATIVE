@@ -320,11 +320,44 @@ function build(project) {
     s.addText(arr(c.keywords).map((x) => `#${x}`).join('   '), { x: M, y: 6.3, w: W - 2 * M, h: 0.4, fontFace: F, fontSize: 12, color: MUTE });
   }
 
+  /* 설계 — 범위 커버리지 · 조형 언어 · 콘텐츠 */
+  const BP = R.creative && R.creative.blueprint;
+  if (BP) {
+    const scope = arr(R.brief && R.brief.scope);
+    {
+      const s = newSlide('설계 — 컨셉 하나에서 사업 범위 전체로');
+      headline(s, t(BP.summary, 80));
+      const secs = arr(BP.sections).slice(0, 8);
+      if (scope.length && secs.length) {
+        const rows = [[{ text: '범위', options: { bold: true } }, ...secs.map((x) => ({ text: t(x.label, 10), options: { bold: true, align: 'center' } }))],
+          ...scope.slice(0, 9).map((sc) => [{ text: `${sc.id} ${t(sc.item, 34)}` }, ...secs.map((x) => ({ text: arr(x.items).some((it) => arr(it.scope_ids).includes(sc.id)) ? '●' : '', options: { align: 'center' } }))])];
+        s.addTable(rows, { x: M, y: 2.0, w: W - 2 * M, fontFace: F, fontSize: 9, color: INK, border: { type: 'solid', color: HAIR, pt: 0.5 }, rowH: 0.34, colW: [4.2, ...secs.map(() => (W - 2 * M - 4.2) / secs.length)] });
+      }
+      if (BP.baseline_gap) s.addText([{ text: '기본안에 없는 것  ', options: { bold: true } }, { text: t(arr(BP.baseline_gap.new).join('  ·  '), 160) }], { x: M, y: 6.2, w: W - 2 * M, h: 0.5, fontFace: F, fontSize: 10, color: INK });
+    }
+    {
+      const s = newSlide('조형 언어 — 사조 원리가 무엇이 되었나');
+      const fl = BP.form_language || {};
+      headline(s, t(fl.shape || '원리에서 형태로', 60));
+      const pr = arr(fl.principles).slice(0, 6);
+      if (pr.length) s.addTable([[{ text: '근거', options: { bold: true } }, { text: '원리', options: { bold: true } }, { text: '무엇이 되었나', options: { bold: true } }], ...pr.map((x) => [{ text: t(x.from, 16) }, { text: t(x.principle, 30) }, { text: t(x.becomes, 70), options: { bold: true } }])],
+        { x: M, y: 1.9, w: W - 2 * M, fontFace: F, fontSize: 10, color: INK, border: { type: 'solid', color: HAIR, pt: 0.5 }, rowH: 0.4, colW: [1.8, 3.6, W - 2 * M - 5.4] });
+      s.addText([['재료·마감', fl.material], ['빛', fl.light], ['색', fl.color], ['서체', fl.type], ['스케일', fl.scale]].filter((x) => x[1]).map(([k, v]) => ({ text: `${k}  ${t(v, 70)}`, options: { breakLine: true, paraSpaceAfter: 4 } })), { x: M, y: 4.9, w: W - 2 * M, h: 1.5, fontFace: F, fontSize: 10, color: INK, valign: 'top' });
+    }
+    if (arr(BP.content_modules).length) {
+      const s = newSlide('콘텐츠 방향 — 화면·면에 실제로 보이는 것');
+      headline(s, `콘텐츠 모듈 ${arr(BP.content_modules).length}개`);
+      s.addTable([[{ text: '모듈', options: { bold: true } }, { text: '누구·언제', options: { bold: true } }, { text: '보이는 것', options: { bold: true } }, { text: '갱신', options: { bold: true } }],
+        ...arr(BP.content_modules).slice(0, 8).map((x) => [{ text: t(x.name, 20), options: { bold: true } }, { text: t(x.for, 30) }, { text: t(x.shows, 80) }, { text: t(x.update, 20) }])],
+      { x: M, y: 1.9, w: W - 2 * M, fontFace: F, fontSize: 10, color: INK, border: { type: 'solid', color: HAIR, pt: 0.5 }, rowH: 0.42, colW: [2.2, 2.6, W - 2 * M - 6.6, 1.8] });
+    }
+  }
+
   /* 11~ Creative 가이드 */
   if (R.creative) {
     const ex = arr(R.creative.examples);
     ex.forEach((e, i) => {
-      const s = newSlide(`CREATIVE GUIDE ${i + 1} / ${ex.length} — ${t(e.direction, 20)}`);
+      const s = newSlide(`핵심 장면 ${i + 1} / ${ex.length} — ${t(e.touchpoint || e.direction, 40)}`);
       const imgAbs = e.imageFile ? store.resolveProjectFile(project.id, e.imageFile) : null;
       if (imgAbs && /\.(png|jpe?g)$/i.test(imgAbs)) s.addImage({ path: imgAbs, x: M, y: 0.8, w: 6.2, h: 4.13, sizing: { type: 'cover', w: 6.2, h: 4.13 } });
       else { s.addShape(pptx.ShapeType.rect, { x: M, y: 0.8, w: 6.2, h: 4.13, fill: { color: PAPER2 }, line: { color: INK, width: 0.75 } }); s.addText('콘셉트 비주얼 — 생성 이미지 없음', { x: M, y: 2.6, w: 6.2, h: 0.4, fontFace: F, fontSize: 11, align: 'center', color: MUTE }); }

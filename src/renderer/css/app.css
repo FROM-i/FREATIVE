@@ -674,3 +674,20 @@ a.src.web { text-decoration: none; border-color: var(--ink-2); color: var(--ink-
 .polish .pl:last-child { border-bottom: 0; }
 .polish .pl .b { color: var(--mute); text-decoration: line-through; text-decoration-color: var(--hair-2); }
 .polish .pl .a { font-weight: 600; }
+
+/* 범위 · 기본안 · 설계서 */
+.card.baseline { border-color: #8B3B2E; background: color-mix(in srgb, #8B3B2E 4%, var(--paper)); }
+.bl-scope { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink-2); }
+.bp { gap: calc(var(--u) * 2.5); }
+.tbl.cov td.cv { text-align: center; font-size: 12px; width: 64px; }
+.tbl.cov th { font-size: 11px; }
+.tbl.cov tr.miss td { color: #8B3B2E; }
+.bp-sec { gap: 10px; }
+.bp-item { display: flex; flex-direction: column; gap: 2px; font-size: 13px; padding-bottom: 8px; border-bottom: var(--line) solid var(--hair); }
+.bp-item:last-child { border-bottom: 0; }
+.journey-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(170px, 1fr); gap: 8px; overflow-x: auto; margin-top: 8px; }
+.jstep { border: var(--line) solid var(--hair-2); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.ex-tp { font-size: 13px; border-left: 3px solid var(--ink); padding-left: 8px; }
+
+.bp-sec .vsb { font-size: 12px; border-left: 2px solid var(--ink); padding-left: 8px; }
+.bp-sec .vsb.warn { border-color: #8B3B2E; color: #8B3B2E; }

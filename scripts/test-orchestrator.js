@@ -94,6 +94,28 @@ app.whenReady().then(async () => {
     const fpr = run.results.forpop;
     console.log('forpop for', fpr.for.chosen, '| scan', fpr.scan.scopes.map((x) => `${x.scope}:${x.citations.length}`).join(','), '| legend', fpr.compare.legend.axes.length, '| verdicts', fpr.compare.scopes.map((x) => x.verdict).join(','), '| searches', run.usage.searches);
     if (fpr.scan.scopes.length !== 3) fail('웹 정찰 3범위 누락');
+    // ── 펼치기: 범위 · 기본안 · 설계 · 장면 ──
+    {
+      const R = run.results;
+      const bp = R.creative.blueprint || {};
+      const anat = (require(path.join(src, 'knowledge')).load().types.types.filter((t) => ['signage', 'promotion'].includes(t.id)).flatMap((t) => t.anatomy.map((a) => a.key)));
+      const keys = new Set((bp.sections || []).map((x) => x.key));
+      const tps = new Set(R.creative.examples.map((e) => e.touchpoint));
+      console.log('expand scope', R.brief.scope.length, '| baseline', !!R.baseline, '| blueprint sections', keys.size, '/', new Set(anat).size, '| gaps', (bp.gaps || []).length, '| scenes', R.creative.examples.length, 'touchpoints', tps.size);
+      if (R.brief.scope.length < 4) fail('사업 범위가 펼쳐지지 않음');
+      if (!R.baseline || !R.baseline.overall) fail('기본안 없음');
+      for (const k of new Set(anat)) if (!keys.has(k)) fail('설계서에 해부도 절 누락: ' + k);
+      if ((bp.gaps || []).length) fail('설계서 빈 곳: ' + bp.gaps.join(' · '));
+      if (tps.size < R.creative.examples.length) fail('장면이 같은 접점의 변주');
+      if (!run.agents.some((x) => x.stage === 'creative' && /보완/.test(x.task || '') && /설계/.test(x.name || ''))) fail('설계 빈 절 보완이 돌지 않음');
+      const sys = (bp.sections || []).find((x) => x.key === 'system');
+      if (!sys || sys.items.length < 4) fail('사인 체계가 최소 항목(4) 미만');
+      const cr = (run.brain.creative && run.brain.creative.attempts || []).map((a) => a.verdict);
+      console.log('creative attempts', cr.join('→'), '| layers', R.tunnel.layers.map((l) => l.key).join(','), '| form_moves', (R.airplane.travels[0].form_moves || []).length);
+      if (cr[0] !== '재작업') fail('기본안과 같은 결과가 자동 재작업되지 않음');
+      if (!R.tunnel.layers.some((l) => l.key === 'precedent')) fail('결과물 유형의 조사 레이어가 붙지 않음');
+      if (!(R.airplane.travels[0].form_moves || []).length) fail('사조 조형 조작 없음');
+    }
     console.log('polish', JSON.stringify(Object.fromEntries(Object.entries(run.polish || {}).map(([k, v]) => [k, v.length]))), '| core', fpr.core_pod.statement);
     if (/로 다르다$/.test(fpr.core_pod.statement || '')) fail('교열이 칸 이어 붙인 문장을 고치지 않음');
     // 모델 구성 — 추천 구성(models.json): 화가 astra · 브레인 sol(핵심 단계 astra) · 조수 화가 배정 · 이미지 풀
@@ -124,6 +146,12 @@ app.whenReady().then(async () => {
         ['Concept · 테마', R.concept.theme, ['10_creative']],
         ['Concept · 톤앤매너', R.concept.tone_manner && R.concept.tone_manner.mood && R.concept.tone_manner.mood.desc, ['10_creative']],
         ['C 게이트 · 수정 의견', '테마를 더 짧게', ['09_concepts', '09_concept_kit']],
+        ['기본안', R.baseline.overall, ['07_positioning', '08_forpop', '09_concepts', 'b_concept', '10_blueprint', '10_creative']],
+        ['사업 범위', R.brief.scope[1].item, ['09_concepts', 'b_concept', '09_concept_kit', '10_blueprint', '10_creative']],
+        ['설계서 → 장면', R.creative.blueprint.summary, ['10_creative']],
+        ['조형 언어 ← 사조', R.creative.blueprint.form_language.principles[0].becomes, ['10_creative']],
+        ['사조 조형 조작', R.airplane.travels[0].form_moves[0].move, ['09_concepts', '10_bp_section', '10_blueprint']],
+        ['터널 원문 → 컨셉', R.tunnel.layers[0].insights[0].detail, ['09_concepts', '09_concept_kit', '10_bp_section']],
         ['브레인 방향 · 캔버스', run.brain.canvas && run.brain.canvas.direct && run.brain.canvas.direct.direction, ['02_canvas']],
       ];
       const miss = [];
