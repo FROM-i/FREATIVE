@@ -57,6 +57,15 @@ const builders = {
         { id: 'S4', item: '시음 참여 프로모션 — 참여에서 공유까지', kind: '서비스·앱', from: '추론', must: true },
         { id: 'S5', item: '운영 — 팝업 기간 콘텐츠 교체·현장 조도', kind: '운영', from: '추론', must: false },
       ],
+      root_issue: {
+        task: '겨울 원두 팝업의 사이니지·프로모션',
+        purpose: '팝업 앞에서 시음 참여가 는다',
+        candidates: [
+          { id: 'R1', issue: '지나가던 사람이 원두의 산지 거리를 "맛으로" 알아채고 걸음을 멈춘다', test: '이 안이 있으면, 커피를 살 생각이 없던 사람도 멈추는가?', why: '참여의 원인은 정보가 아니라 멈출 이유다' },
+          { id: 'R2', issue: '마신 사람이 산지 이야기를 들고 돌아가 다른 사람에게 전한다', test: '이 안이 있으면, 마신 사람이 누군가에게 말하게 되는가?', why: '팝업은 기간이 끝나도 이야기는 남아야 한다' },
+        ],
+        recommended: 'R1',
+      },
       assumptions: [
         { item: '주 노출은 보행 동선 위 3초 체류', basis: '추론 — 성수 보행 상권' },
         { item: '★4 브랜드 톤은 첨부 자료에서 읽는다', basis: '첨부' },
@@ -86,6 +95,44 @@ const builders = {
         ],
         note: '좋아, 미션을 받았어. 캔버스부터 펼쳐 보자.',
       },
+    };
+  },
+  '12_round': (ctx) => {
+    const n = ctx.round || 1;
+    const R = [
+      { idea: '외벽 사인이 원두 이름 대신 "제주에서 이 컵까지 487km"를 크게 보여 준다', snag: '이 안은 아직 "산지 정보를 크게 쓴 간판"의 변주다. 숫자를 읽고 지나가면 끝이다.', move: '깊이', how: '왜 숫자를 읽고도 멈추지 않나 → 거리가 몸으로 느껴지지 않아서', result: '거리는 숫자가 아니라 걸음으로 느껴질 때 멈춤이 된다' },
+      { idea: '보도 위 487걸음 구간에 원두의 이동 경로를 깔아, 걷는 사람이 산지 거리를 몸으로 지나오게 한다', snag: '경로를 까는 것만으로는 걸음을 멈출 이유가 끝에 없다. 끝에 무엇이 있는지가 비어 있다.', move: '비틀기', how: '방향 — 사람이 팝업으로 오는 것이 아니라, 팝업이 걷는 사람의 경로 위로 나간다', result: '시음은 매장 안이 아니라 경로의 끝, 보도 위에서 일어난다' },
+      { idea: '경로 끝 보도 위 시음대에서 487번째 걸음에 한 모금을 건넨다', snag: '시음대가 보도에 나가면 운영 인력과 허가가 문제다. 대가가 크다.', move: '조합', how: '경로 × 대기열 패널', result: '대기열 자체를 경로의 마지막 구간으로 써서 허가 문제를 줄인다' },
+    ][Math.min(n, 3) - 1];
+    return {
+      round: n,
+      current: { idea: R.idea, from: n === 1 ? '터널 출구 · 사조(일본 미학)' : '지난 회차의 최선과 사람의 답' },
+      snag: R.snag,
+      moves: [
+        { move: R.move, how: R.how, result: R.result, substitute: { who: '성수동을 걷는 20~30대', changes: '팝업 앞 5m에서 걸음을 멈추고 30초 머문다' }, keep: true },
+        { move: '넓이', how: '다른 업계 — 마라톤 거리 표지', result: '거리 표지는 숫자보다 남은 거리를 느끼게 한다', substitute: { who: '', changes: '' }, keep: true },
+      ],
+      best: { idea: R.idea, why: '근본 이슈(멈출 이유)를 맛 이전에 몸으로 만든다', root_change: '지나가던 사람이 경로를 따라 걷다 팝업 앞에서 멈춘다', map: { novelty: 2 + n, use: 3 }, pieces: ['마라톤 거리 표지의 "남은 거리"'] },
+      questions: [
+        { type: '전제 빼기', question: '사인을 아예 세우지 않고, 보도 자체를 사인으로 쓰면 어떨까?', attacks: '팝업에는 간판이 있어야 한다는 전제', leads_to: '비틀기', gain: '보행 동선 전체가 접점이 된다', loss: '멀리서 팝업을 알아보는 얼굴을 잃는다' },
+        { type: '실패 먼저', question: '한 달 뒤 이 팝업이 실패했다면, 사람들이 숫자만 찍고 지나갔기 때문 아닐까?', attacks: '정보를 크게 쓰면 멈춘다는 가정', leads_to: '깊이', gain: '멈춤의 진짜 원인을 다시 찾는다', loss: '지금 안의 시각적 단순함' },
+        { type: '반대편 서기', question: '빨리 지나가고 싶은 출근길 사람에게 487걸음 경로는 방해가 아닐까?', attacks: '경로가 누구에게나 즐겁다는 가정', leads_to: '조합', gain: '시간대별로 다른 경로를 설계한다', loss: '하나의 강한 경험' },
+      ],
+      room: n >= 3 ? 'less' : 'more',
+      room_why: n >= 3 ? '두 회차 연속 최선이 같은 축(경로) 위에 있다' : '끝의 경험이 아직 비어 있다',
+    };
+  },
+  'b_round': (ctx) => {
+    const p = ctx.painter || {};
+    const q = (p.questions || [])[0] || {};
+    return {
+      moves: (p.moves || []).map((mv, i) => ({ i, keep: !!(mv.substitute && mv.substitute.changes), why: mv.substitute && mv.substitute.changes ? '' : '대입이 비어 있음 — 무엇이 달라지는지 보이지 않는다' })),
+      pick: 0,
+      card: { now: p.best && p.best.idea, snag: p.snag, question: q.question, type: q.type, leads_to: q.leads_to, if_yes: `얻는 것: ${q.gain} / 잃는 것: ${q.loss}` },
+      next: { move: q.leads_to || '비틀기', why: '질문의 전제를 받아들이면 바로 다음 수가 된다' },
+      stop: (ctx.round || 1) >= 3,
+      stop_why: (ctx.round || 1) >= 3 ? '두 회차 연속 최선이 같은 축 위에 있다' : '',
+      line: '숫자를 크게 쓰는 것으로는 멈추지 않는다. 몸으로 지나가게 하자.',
     };
   },
   '02_canvas': (ctx) => {

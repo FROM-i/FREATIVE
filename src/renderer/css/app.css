@@ -691,3 +691,29 @@ a.src.web { text-decoration: none; border-color: var(--ink-2); color: var(--ink-
 
 .bp-sec .vsb { font-size: 12px; border-left: 2px solid var(--ink); padding-left: 8px; }
 .bp-sec .vsb.warn { border-color: #8B3B2E; color: #8B3B2E; }
+
+/* 근본 이슈 · 생각의 회차 · 중간 리뷰 */
+.rootform .root-layers { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 2); font-size: 13px; }
+.root-cands { display: flex; flex-direction: column; gap: var(--u); }
+.root-cand { display: grid; grid-template-columns: 20px 1fr; gap: var(--u); align-items: start; padding: calc(var(--u) * 1.5) calc(var(--u) * 2); border: var(--line) solid var(--hair-2); border-radius: 8px; cursor: pointer; background: var(--paper); }
+.root-cand:has(input:checked) { border-color: var(--ink); box-shadow: inset 4px 0 0 var(--yellow); }
+.root-cand input { margin-top: 4px; accent-color: #141414; }
+.root-card { margin-bottom: 16px; border-left: 6px solid var(--yellow); }
+.root-issue { font-size: 18px; line-height: 1.45; }
+.rv-card { border: var(--line) solid var(--hair-2); border-radius: 10px; padding: calc(var(--u) * 2) calc(var(--u) * 2.5); background: var(--paper); margin-top: 12px; }
+.rv-card.live { border: 2px solid var(--ink); box-shadow: 0 0 0 4px rgba(255, 214, 0, .45); }
+.rv-h { display: flex; align-items: center; gap: var(--u); margin-bottom: 8px; }
+dl.rv { display: grid; grid-template-columns: 96px 1fr; gap: 8px 16px; margin: 0; }
+dl.rv dt { font-size: 12px; font-weight: 800; color: #6B6862; padding-top: 2px; }
+dl.rv dd { margin: 0; font-size: 15px; line-height: 1.6; }
+dl.rv dd.rq { font-weight: 800; font-size: 17px; }
+.rv-type { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--yellow); vertical-align: 2px; }
+.rv-act { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
+.rv-act .sep { width: 1px; height: 22px; background: var(--hair-2); margin: 0 4px; }
+.rv-other { display: flex; gap: 8px; margin-top: 8px; }
+.rv-other .input { flex: 1; }
+.rv-more { margin-top: 6px; font-size: 13px; }
+.rv-more summary { cursor: pointer; color: #6B6862; padding: 4px 0; }
+.rv-list .rv-card { opacity: .92; }
+.tbl tr.dim td { opacity: .5; text-decoration: line-through; }
+.rootform .root-layers .kicker { display: block; margin-bottom: 2px; }

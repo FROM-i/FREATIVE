@@ -74,7 +74,25 @@ app.whenReady().then(async () => {
     await orch.start(p.id, emit);
     await waitFor((e) => e.kind === 'gate' && e.gate === 'brief');
     await orch.answerBrief(p.id, { Q1: '지금 들어가 볼 이유', Q2: '걷다가 지나치며 (3초)' }, emit);
+    // 근본 이슈 확정 — 사람이 후보를 고쳐 쓴다
+    await waitFor((e) => e.kind === 'gate' && e.gate === 'root');
+    { const rb = store.get(p.id).run.results.brief; console.log('root candidates', rb.root_issue.candidates.length, '| recommended', rb.root_issue.recommended); if (rb.root_issue.candidates.length < 2) fail('근본 이슈 후보가 2개 미만'); }
+    events.length = 0;
+    await orch.answerRoot(p.id, { issue: '지나가던 사람이 산지 거리를 몸으로 지나오며 걸음을 멈춘다', test: '커피를 살 생각이 없던 사람도 멈추는가?' }, emit);
+    // 생각의 회차 — 중간 리뷰 세 번: 비틀어 → 이 질문으로 가자 → 지금 안으로
+    const answers = [{ choice: 'twist', text: '숫자보다 몸으로 느끼게' }, { choice: 'question' }, { choice: 'done' }];
+    for (let i = 0; i < answers.length; i++) {
+      await waitFor((e) => e.kind === 'gate' && e.gate === 'review');
+      const T = store.get(p.id).run.results.think;
+      const c = T.rounds[T.rounds.length - 1].card;
+      console.log(`review ${T.rounds.length} | now: ${c.now.slice(0, 40)} | Q: ${c.question.slice(0, 40)} (${c.type}→${c.leads_to})`);
+      if (!c.now || !c.snag || !c.question || !c.if_yes) fail('리뷰 카드 줄 누락');
+      if ((c.now + c.snag + c.question + c.if_yes).length > 520) fail('리뷰 카드가 너무 길다');
+      events.length = 0;
+      await orch.answerReview(p.id, answers[i], emit);
+    }
     await waitFor((e) => e.kind === 'gate' && e.gate === 'C');
+    { const T = store.get(p.id).run.results.think; console.log('think rounds', T.rounds.length, '| answers', T.rounds.map((r) => r.answer && r.answer.choice).join('→'), '| final', (T.final && T.final.idea || '').slice(0, 40)); if (T.rounds.length !== 3 || !T.final) fail('생각의 회차 흐름 이상'); }
     events.length = 0;
     await orch.gate(p.id, 'revise', '테마를 더 짧게', emit);
     await waitFor((e) => e.kind === 'gate' && e.gate === 'C');
@@ -152,6 +170,11 @@ app.whenReady().then(async () => {
         ['조형 언어 ← 사조', R.creative.blueprint.form_language.principles[0].becomes, ['10_creative']],
         ['사조 조형 조작', R.airplane.travels[0].form_moves[0].move, ['09_concepts', '10_bp_section', '10_blueprint']],
         ['터널 원문 → 컨셉', R.tunnel.layers[0].insights[0].detail, ['09_concepts', '09_concept_kit', '10_bp_section']],
+        ['근본 이슈 (사람 확정)', run.root.issue, ['12_round', 'b_round', '07_positioning', '08_forpop', '09_concepts', '10_bp_section', '10_creative', 'b_verify']],
+        ['회차 · 사람의 답', '숫자보다 몸으로 느끼게', ['12_round']],
+        ['회차 · 찌르는 질문', R.think.rounds[0].card.question, ['12_round', '07_positioning', '08_forpop']],
+        ['회차 · 최선', R.think.final.idea, ['07_positioning', '08_forpop', '09_concepts', '10_bp_section', '10_blueprint']],
+        ['터널 → 회차', R.tunnel.synth.exit_light, ['12_round']],
         ['브레인 방향 · 캔버스', run.brain.canvas && run.brain.canvas.direct && run.brain.canvas.direct.direction, ['02_canvas']],
       ];
       const miss = [];
@@ -162,11 +185,13 @@ app.whenReady().then(async () => {
     const r = report.exportProject(p.id);
     console.log('report', fs.statSync(r.reportPath).size, 'bytes');
 
-    // 영감 → 터널부터 다시
+    // 영감 → 터널부터 다시 (이번엔 중간 리뷰 자동 진행)
+    require(path.join(src, 'settings')).set({ run: { midReview: 'auto', maxRounds: 3 } });
     events.length = 0;
     await orch.inspire(p.id, 'tunnel', '대기 줄 자체를 경험으로 보고 싶다', emit);
     await waitFor((e) => e.kind === 'gate' && e.gate === 'C');
     const r2 = store.get(p.id).run;
+    { const T = r2.results.think; console.log('auto rounds', T.rounds.length, '| stop', T.rounds.map((x) => x.stopHint).join(',')); if (!T.final || T.rounds.length < 1) fail('자동 회차 실패'); }
     console.log('inspire ok — versions', r2.versions.length, 'inspirations', r2.inspirations.length, 'airplane kept', !!r2.results.airplane, 'tunnel redone', r2.stages.tunnel.status);
     await orch.gate(p.id, 'go', '', emit);
     await waitFor((e) => e.kind === 'done' || e.kind === 'error');

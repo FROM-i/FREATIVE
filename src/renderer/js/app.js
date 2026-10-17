@@ -122,7 +122,7 @@ async function openRun(id) {
 function currentStage() {
   const r = S.run;
   if (!r) return 'brief';
-  if (r.status === 'paused') return r.pausedAt === 'C' ? 'concept' : 'brief';
+  if (r.status === 'paused') return { C: 'concept', review: 'think', root: 'brief' }[r.pausedAt] || 'brief';
   return r.stage || 'brief';
 }
 
@@ -131,7 +131,7 @@ function renderRunAll() {
   $('#runTitle').textContent = p.name;
   const st = r ? r.status : 'draft';
   const stg = S.info.stages.find((s) => s.id === currentStage());
-  $('#runStatus').innerHTML = st === 'running' ? `<span class="pulse"></span>${esc(stg.label)} — ${esc(stg.sub)}` : st === 'paused' ? `<span class="dot y"></span>${r.pausedAt === 'C' ? 'C 게이트 — 사람의 판정을 기다립니다' : '브리프 게이트 — 질문에 답해 주세요'}` : `<span class="dot"></span>${esc(STATUS_KO[st] || st)}${r && r.error ? ` — ${esc(r.error)}` : ''}`;
+  $('#runStatus').innerHTML = st === 'running' ? `<span class="pulse"></span>${esc(stg.label)} — ${esc(stg.sub)}` : st === 'paused' ? `<span class="dot y"></span>${{ C: 'C 게이트 — 사람의 판정을 기다립니다', root: '근본 이슈 — 하나를 골라 확정해 주세요', review: '중간 리뷰 — 카드를 읽고 방향을 정해 주세요' }[r.pausedAt] || '브리프 게이트 — 질문에 답해 주세요'}` : `<span class="dot"></span>${esc(STATUS_KO[st] || st)}${r && r.error ? ` — ${esc(r.error)}` : ''}`;
   const acts = [];
   if (!r || ['error', 'canceled', 'interrupted'].includes(st)) acts.push(`<button class="btn sm primary" data-act="start">${r ? '이어서 진행' : '여행 시작'}</button>`);
   if (st === 'running') acts.push('<button class="btn sm ghost" data-act="cancel">멈춤</button>');
@@ -223,7 +223,7 @@ function onRunEvent(e) {
   }
   S.run = e.run;
   if (e.kind === 'stage-start' && !S.pinnedStage) { S.selStage = e.stage; const d = $('#detail'); if (d) d.scrollTop = 0; }
-  if (e.kind === 'gate') { S.pinnedStage = false; toast(e.gate === 'C' ? 'C 게이트 — 컨셉을 판정해 주세요' : '화가가 질문을 했어요'); }
+  if (e.kind === 'gate') { S.pinnedStage = false; toast({ C: 'C 게이트 — 컨셉을 판정해 주세요', root: '근본 이슈 후보가 나왔어요 — 하나를 골라 주세요', review: '중간 리뷰 — 찌르는 질문에 답해 주세요' }[e.gate] || '화가가 질문을 했어요'); }
   if (e.kind === 'error') toast(`오류 — ${e.error}`, 6000);
   if (e.kind === 'done') toast('여정을 마쳤습니다. 갤러리에 그림이 걸렸어요.');
   if (e.kind === 'budget') toast(`미션 예산을 넘었습니다 — ${usd(e.run.usage.cost)}`, 6000);
@@ -262,6 +262,13 @@ async function onDetailClick(e) {
     S.pinnedStage = false;
     await api.run.gate(S.project.id, b.dataset.d, note);
   }
+  if (b.dataset.act === 'review') {
+    const text = ($('#reviewText') || {}).value || '';
+    if (b.dataset.c === 'other' && !text.trim()) { toast('어느 방향으로 갈지 적어 주세요'); $('#reviewText').focus(); return; }
+    $$('[data-act="review"]').forEach((x) => { x.disabled = true; });
+    S.pinnedStage = false;
+    try { await api.run.answerReview(S.project.id, { choice: b.dataset.c, text: text.trim() }); } catch (err) { toast(err.message, 5000); $$('[data-act="review"]').forEach((x) => { x.disabled = false; }); }
+  }
   if (b.dataset.act === 'regen') { b.disabled = true; await api.run.regenerateImage(S.project.id, +b.dataset.i); }
 }
 
@@ -274,6 +281,17 @@ async function onDetailSubmit(e) {
     ins.querySelector('button').disabled = true;
     S.pinnedStage = false;
     try { await api.run.inspire(S.project.id, ins.dataset.stage, text); toast('영감을 받아 이 단계부터 다시 그립니다'); } catch (err) { toast(err.message, 5000); ins.querySelector('button').disabled = false; }
+    return;
+  }
+  const rf = e.target.closest('[data-form="root"]');
+  if (rf) {
+    e.preventDefault();
+    const fd = Object.fromEntries([...new FormData(rf).entries()].map(([k, v]) => [k, String(v).trim()]));
+    const ans = fd.issue ? { issue: fd.issue, test: fd.test } : { id: fd.pick };
+    if (!ans.issue && !ans.id) { toast('후보를 고르거나 직접 적어 주세요'); return; }
+    rf.querySelector('button[type="submit"]').disabled = true;
+    S.pinnedStage = false;
+    try { await api.run.answerRoot(S.project.id, ans); } catch (err) { toast(err.message, 5000); rf.querySelector('button[type="submit"]').disabled = false; }
     return;
   }
   const form = e.target.closest('[data-form="brief"]');
@@ -300,7 +318,7 @@ async function renderSettings() {
   const USES = E.uses || { text: [], image: [] };
   const found = S.discovered || { text: [], image: [] };
   const ROLES = [['director', '화가 · 메인', '오케스트레이션 · 컨셉 · 가이드', 'text'], ['brain', '판단 브레인', '방향 제시 · 검증 · 발상의 전환', 'text'], ['sub', '조수 · 서브', '화가가 풀에서 고르지 않은 곳의 기본값', 'text'], ['editor', '교열', '단계 끝마다 보고서 문장을 사람이 읽는 한국어로 다듬는다', 'text'], ['image', '이미지', '화가가 이미지 풀에서 고르지 않은 곳의 기본값', 'image']];
-  const STAGE_KO = { forpop: 'FoR · PoP · PoD', concept: 'Concept · Theme', canvas: '캔버스', airplane: 'Airplane', tunnel: 'Tunnel', positioning: 'Positioning', creative: 'Creative' };
+  const STAGE_KO = { think: '생각의 회차', forpop: 'FoR · PoP · PoD', concept: 'Concept · Theme', canvas: '캔버스', airplane: 'Airplane', tunnel: 'Tunnel', positioning: 'Positioning', creative: 'Creative' };
   const modelSel = (kind, value, attrs) => {
     const groups = {};
     CAT.filter((c) => c.kind === kind).forEach((c) => { (groups[c.gen] = groups[c.gen] || []).push(c); });
@@ -354,6 +372,9 @@ async function renderSettings() {
 
     <div class="sgroup"><h3>더프롬 판단 브레인</h3>
       <div class="srow"><div class="lbl">개입 강도<small>표준: 모든 단계 · 핵심: 캔버스·FoR/PoP/PoD·컨셉·Creative</small></div><div class="seg" data-seg="run.brain">${[['standard', '표준'], ['core', '핵심'], ['off', '끔']].map(([v, l]) => `<button data-v="${v}" class="${s.run.brain === v ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+      <div class="srow"><div class="lbl">근본 이슈 확정<small>브리프 뒤에 화가가 낸 근본 이슈 후보 중 하나를 사람이 고르거나 고쳐 쓴다 — 이후 모든 단계가 여기에 대입한다</small></div><label class="toggle"><input type="checkbox" data-k="run.rootGate" ${s.run.rootGate !== false ? 'checked' : ''}/> 사람이 확정</label></div>
+      <div class="srow"><div class="lbl">생각의 회차 · 중간 리뷰<small>대기: 회차마다 리뷰 카드에 답할 때까지 기다린다 · 자동: 판단 브레인의 제안대로 진행하고 기록만 남긴다</small></div><div class="seg" data-seg="run.midReview">${[['wait', '대기'], ['auto', '자동']].map(([v, l]) => `<button data-v="${v}" class="${(s.run.midReview || 'wait') === v ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+      <div class="srow"><div class="lbl">회차 수<small>자동일 때 최대 회차 · 대기일 때는 사람이 '지금 안으로 가자'를 누를 때까지 (최대 8)</small></div><div class="seg" data-seg="run.maxRounds">${[2, 3, 4, 5].map((v) => `<button data-v="${v}" class="${(s.run.maxRounds ?? 3) === v ? 'on' : ''}">${v}</button>`).join('')}</div></div>
       <div class="srow"><div class="lbl">재작업 횟수<small>브레인이 '재작업' 판정 시 다시 그리는 최대 횟수</small></div><div class="seg" data-seg="run.brainRetry">${[0, 1, 2].map((v) => `<button data-v="${v}" class="${(s.run.brainRetry ?? 1) === v ? 'on' : ''}">${v}</button>`).join('')}</div></div>
       <div class="srow"><div class="lbl">렌즈</div><div class="muted" style="font-size:13px">${(S.brain && S.brain.lenses || []).map((l) => `<span class="lens-chip" title="${esc(l.question)}">${esc(l.name)}</span>`).join(' ')} — 라이브러리 › 판단 브레인에서 자세히</div></div>
     </div>

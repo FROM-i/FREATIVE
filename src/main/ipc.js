@@ -103,6 +103,8 @@ function register(win, { isMock }) {
 
   h('run:start', async (id) => { const p = meta(id); await guard('run:execute', p); return orchestrator.start(id, emit); });
   h('run:answerBrief', async (id, answers) => { const p = meta(id); await guard('run:execute', p); return orchestrator.answerBrief(id, answers, emit); });
+  h('run:answerRoot', async (id, ans) => { const p = meta(id); await guard('run:execute', p); return orchestrator.answerRoot(id, ans, emit); });
+  h('run:answerReview', async (id, ans) => { const p = meta(id); await guard('run:execute', p); return orchestrator.answerReview(id, ans, emit); });
   h('run:gate', async (id, decision, note) => { const p = meta(id); await guard('run:execute', p); return orchestrator.gate(id, decision, note, emit); });
   h('run:cancel', async (id) => orchestrator.cancel(id));
   h('run:inspire', async (id, stage, text) => { const p = meta(id); await guard('run:execute', p); return orchestrator.inspire(id, stage, text, emit); });

@@ -25,6 +25,11 @@ function build(p) {
     if (b.assumptions && b.assumptions.length) out.push('\n**가정**\n' + list(b.assumptions, (a) => `${a.item} — ${a.basis}`));
     if ((b.scope || []).length) out.push('\n**사업 범위**\n' + table(['ID', '범위', '종류', '출처'], b.scope.map((x) => [x.id, x.item + (x.must ? '' : ' (선택)'), x.kind || '', x.from || ''])));
   }
+  {
+    const ri = r.brief && r.brief.root_issue;
+    const root = (p.run && p.run.root) || (ri && (ri.candidates || []).find((c) => c.id === ri.recommended));
+    if (root) out.push(`\n**근본 이슈 — 모든 결과를 여기에 대입한다** (${p.run && p.run.root && p.run.root.confirmed ? '사람이 확정' : '화가 추천 · 미확정'})\n\n> ${root.issue}\n\n- 과업: ${(ri && ri.task) || ''}\n- 목적: ${(ri && ri.purpose) || ''}\n- 판정 질문: ${root.test || ''}`);
+  }
   if (r.baseline) {
     const bl = r.baseline;
     out.push(`\n**기본안 — 이 정도는 아무나 낸다** (판단 브레인)\n\n${bl.overall || ''}\n\n- 뻔한 형태·표현: ${(bl.cliches || []).join(' · ')}\n- 넘어야 할 기준: ${(bl.bar || []).join(' · ')}`);
@@ -47,6 +52,18 @@ function build(p) {
       out.push(`\n### ${l.label} — ${l.headline}\n${list(l.insights, (i) => `**${i.title}** ${i.detail} _(${i.source})_`)}\n- 지킬 것: ${(l.keep || []).join(', ')}\n- 바꿀 것: ${(l.change || []).join(', ')}\n- 경계: ${l.boundary || ''}`);
     }
     if (t.synth) out.push(`\n**좁혀진 범위**: ${t.synth.narrowed}\n\n**출구의 빛**: ${t.synth.exit_light}`);
+  }
+  if (r.think && (r.think.rounds || []).length) {
+    const T = r.think;
+    const ANS = { question: '이 질문으로 가자', half: '반만', other: '다른 방향', deeper: '더 깊이', wider: '더 넓게', twist: '비틀어', done: '지금 안으로 가자' };
+    out.push('\n## 4.5 생각의 회차 — 중간 리뷰 기록');
+    if (T.final) out.push(`\n**회차의 결론**: ${T.final.idea}${T.final.root_change ? `\n\n근본 이슈에서 — ${T.final.root_change}` : ''}`);
+    for (const rd of T.rounds) {
+      const c = rd.card || {};
+      out.push(`\n### 회차 ${rd.n} — ${rd.answer ? ANS[rd.answer.choice] || rd.answer.choice : '답 없음 (화가 제안대로)'}${rd.answer && rd.answer.text ? ` · ${rd.answer.text}` : ''}\n- **지금 안**: ${c.now || ''}\n- **걸리는 것**: ${c.snag || ''}\n- **찌르는 질문**: ${c.question || ''}${c.type ? ` _(${c.type} → ${c.leads_to || ''})_` : ''}\n- **넣으면**: ${c.if_yes || ''}`);
+      const mv = ((rd.painter || {}).moves || []);
+      if (mv.length) out.push(table(['수', '어떻게', '결과', '근본 이슈에 넣으면', ''], mv.map((m) => [m.move, m.how || '', m.result || '', m.substitute && m.substitute.changes ? `${m.substitute.who || ''} — ${m.substitute.changes}` : '대입 없음', m.keep ? '' : '버림'])));
+    }
   }
   if (r.positioning) {
     const p2 = r.positioning;

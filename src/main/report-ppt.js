@@ -80,7 +80,7 @@ function build(project) {
   {
     const s = newSlide('THE FROM METHOD — 판단의 사슬');
     headline(s, '나로부터 시작해, 사조를 여행하고, 터널을 지나 하나의 코어로');
-    const steps = [['canvas', '나로부터'], ['airplane', 'Airplane'], ['tunnel', 'Tunnel'], ['positioning', 'Positioning'], ['forpop', 'FoR·PoP·PoD'], ['concept', 'Concept'], ['creative', 'Creative']];
+    const steps = [['canvas', '나로부터'], ['airplane', 'Airplane'], ['tunnel', 'Tunnel'], ['think', '생각의 회차'], ['positioning', 'Positioning'], ['forpop', 'FoR·PoP·PoD'], ['concept', 'Concept'], ['creative', 'Creative']];
     const x0 = M + 0.3, x1 = W - M - 0.3, y = 3.6;
     s.addShape(pptx.ShapeType.line, { x: x0, y, w: x1 - x0, h: 0, line: { color: INK, width: 1 } });
     steps.forEach(([id, label], i) => {
@@ -140,6 +140,21 @@ function build(project) {
       s.addShape(pptx.ShapeType.rect, { x: M, y: 5.25, w: W - 2 * M, h: 0.85, fill: { color: INK }, line: { color: INK } });
       s.addText(`출구 — ${t(R.tunnel.synth.narrowed, 110)}`, { x: M + 0.2, y: 5.3, w: W - 2 * M - 0.4, h: 0.75, fontFace: F, fontSize: 15, bold: true, color: PAPER, valign: 'middle' });
     }
+  }
+
+  /* 6-2 근본 이슈 · 생각의 회차 */
+  if (R.think && arr(R.think.rounds).length) {
+    const T = R.think;
+    const ANS = { question: '이 질문으로', half: '반만', other: '다른 방향', deeper: '더 깊이', wider: '더 넓게', twist: '비틀어', done: '지금 안으로' };
+    const s = newSlide('근본 이슈 · 생각의 회차');
+    const root = run.root || {};
+    headline(s, (T.final && T.final.idea) || '생각의 회차');
+    if (root.issue) {
+      s.addShape(pptx.ShapeType.rect, { x: M, y: 1.75, w: 0.08, h: 0.7, fill: { color: Y }, line: { color: Y } });
+      s.addText([{ text: '근본 이슈\n', options: { fontSize: 10, color: MUTE, bold: true } }, { text: t(root.issue, 110), options: { fontSize: 15, color: INK, bold: true } }], { x: M + 0.2, y: 1.7, w: W - 2 * M - 0.2, h: 0.8, fontFace: F, valign: 'top' });
+    }
+    const rows = arr(T.rounds).slice(-4).map((r) => [String(r.n), t(r.card && r.card.snag, 70), t(r.card && r.card.question, 70), r.answer ? ANS[r.answer.choice] || r.answer.choice : '—']);
+    s.addTable([[{ text: '회차', options: { bold: true } }, { text: '걸리는 것', options: { bold: true } }, { text: '찌르는 질문', options: { bold: true } }, { text: '사람의 답', options: { bold: true } }], ...rows], { x: M, y: 2.75, w: W - 2 * M, colW: [0.7, 5.0, 5.4, W - 2 * M - 11.1], fontFace: F, fontSize: 11, color: INK, border: { type: 'solid', color: HAIR, pt: 0.5 }, rowH: 0.55, valign: 'middle' });
   }
 
   /* 7 Positioning */

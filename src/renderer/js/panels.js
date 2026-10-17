@@ -2,7 +2,7 @@
 import { esc, arr } from './util.js';
 import { ismIcon } from './art.js';
 
-const NO = { brief: '01', canvas: '02', airplane: '03', tunnel: '04', positioning: '05', forpop: '06', concept: '07', creative: '08' };
+const NO = { brief: '01', canvas: '02', airplane: '03', tunnel: '04', think: '05', positioning: '06', forpop: '07', concept: '08', creative: '09' };
 
 function head(stage, title, sub, line) {
   return `<div class="sec-head"><div class="no">${NO[stage]}</div><div class="tt"><h3 class="h3">${esc(title)}</h3><small>${esc(sub)}</small></div>${line ? `<div class="painter-line">${esc(line)}</div>` : '<div></div>'}</div><!--/head-->`;
@@ -19,12 +19,13 @@ function brief(p, run, ctx) {
   if (!b) return head('brief', '미션 접수', '브리프 게이트 — 화가가 접수 폼과 첨부를 읽습니다') + waiting('미션 편지를 읽는 중');
   const m = b.mission || {};
   const rows = [['결과물', m.deliverable], ['목적', m.objective], ['타겟', m.target], ['제품·서비스', m.product], ['채널', m.channel], ['디바이스', m.device], ['핵심 순간', m.key_moment], ['브랜드', m.brand], ['성공 기준', m.success]];
-  const q = run.stages.brief.status === 'waiting' ? questions(b) : '';
+  const q = run.stages.brief.status === 'waiting' ? (run.pausedAt === 'root' ? rootForm(b) : questions(b)) : '';
   const models = run.models || {};
   const plan = b.plan || {};
   const nIsm = arr(plan.isms).length, nLy = arr(plan.layers).length;
   return `${head('brief', '미션 접수', `브리프 게이트 · ${b.gate} — ${b.gate_reason || ''}`, plan.note)}
   ${q}
+  ${run.pausedAt !== 'root' ? rootCard(run.root, b.root_issue) : ''}
   <div class="grid g3" style="margin-top:${q ? 24 : 0}px">
     <div class="card" style="grid-column: span 2">
       <div class="row"><span class="kicker">MISSION</span>${b.gate === '통과' || b.gate === '진행 가능' ? '<span class="tag">게이트 통과</span>' : `<span class="tag y">${esc(b.gate)}</span>`}</div>
@@ -50,6 +51,80 @@ function brief(p, run, ctx) {
     <div class="card soft"><span class="kicker">여행 계획</span>${arr(plan.isms).map((i) => `<div style="font-size:13px"><span class="mono">${esc(i.id)}</span> ${esc(i.why)}</div>`).join('')}</div>
   </div>
   ${scopeBlock(b, run.results.baseline)}`;
+}
+
+/** 근본 이슈 — 과업 → 목적 → 근본 이슈. 사람이 고르거나 고쳐 쓴다 */
+function rootForm(b) {
+  const ri = b.root_issue || {};
+  return `<form class="qform rootform" data-form="root">
+    <div class="row"><span class="tag y">근본 이슈 확정</span><span class="muted" style="font-size:13px">이후 모든 단계의 결과를 여기에 대입합니다. 하나를 고르거나 직접 고쳐 쓰세요.</span></div>
+    <div class="root-layers"><div><span class="kicker">과업</span>${esc(ri.task || '')}</div><div><span class="kicker">목적</span>${esc(ri.purpose || '')}</div></div>
+    <div class="root-cands">${arr(ri.candidates).map((c) => `<label class="root-cand"><input type="radio" name="pick" value="${esc(c.id)}" ${c.id === ri.recommended ? 'checked' : ''}/><div><b>${esc(c.issue)}</b>${c.id === ri.recommended ? ' <span class="tag">화가 추천</span>' : ''}<div class="muted" style="font-size:13px">판정 질문 — ${esc(c.test || '')}</div>${c.why ? `<div class="muted" style="font-size:12px">${esc(c.why)}</div>` : ''}</div></label>`).join('')}</div>
+    <div class="qq"><b>직접 쓰기 <span class="muted" style="font-weight:400">(쓰면 위 선택보다 우선)</span></b>
+      <input class="input" name="issue" placeholder="누구의 무엇이 바뀌어야 하나 — 결과물 이름(사이니지·앱)이 아니라 사람의 변화로" />
+      <input class="input" name="test" placeholder="판정 질문 — 어떤 안이든 여기에 넣어 본다 (선택)" /></div>
+    <div class="row"><button class="btn primary" type="submit">이 근본 이슈로 출발 →</button></div>
+  </form>`;
+}
+function rootCard(root, ri) {
+  if (!root && !(ri && arr(ri.candidates).length)) return '';
+  const r = root || (() => { const c = arr(ri.candidates).find((x) => x.id === ri.recommended) || ri.candidates[0]; return { issue: c.issue, test: c.test, confirmed: false }; })();
+  return `<div class="card root-card"><div class="row"><span class="kicker">근본 이슈 — 모든 결과를 여기에 대입한다</span>${r.confirmed ? `<span class="tag">사람이 확정${r.by ? ` · ${esc(r.by)}` : ''}</span>` : '<span class="tag y">화가 추천 · 미확정</span>'}</div>
+    <b class="root-issue">${esc(r.issue)}</b>${r.test ? `<div class="muted" style="font-size:13px">판정 질문 — ${esc(r.test)}</div>` : ''}</div>`;
+}
+
+/* ---------- 05 think — 생각의 회차 ---------- */
+const ANS = { question: '이 질문으로 가자', half: '반만', other: '다른 방향', deeper: '더 깊이', wider: '더 넓게', twist: '비틀어', done: '지금 안으로 가자' };
+function reviewCard(r, live) {
+  const c = r.card || {};
+  return `<div class="rv-card ${live ? 'live' : ''}">
+    <div class="rv-h"><span class="mono">회차 ${r.n}</span>${r.answer ? `<span class="tag">${esc(ANS[r.answer.choice] || r.answer.choice)}${r.answer.text ? ` · ${esc(r.answer.text)}` : ''}</span>` : live ? '<span class="tag y">답을 기다립니다</span>' : '<span class="tag">답 없음 — 화가 제안대로</span>'}</div>
+    <dl class="rv">
+      <dt>지금 안</dt><dd>${esc(c.now)}</dd>
+      <dt>걸리는 것</dt><dd>${esc(c.snag)}</dd>
+      <dt>찌르는 질문</dt><dd class="rq">${esc(c.question)}${c.type ? ` <span class="rv-type">${esc(c.type)}${c.leads_to ? ` → ${esc(c.leads_to)}` : ''}</span>` : ''}</dd>
+      <dt>넣으면</dt><dd>${esc(c.if_yes)}</dd>
+    </dl>
+    ${live ? `<div class="rv-act">
+      <button class="btn go" data-act="review" data-c="question">이 질문으로 가자</button>
+      <button class="btn" data-act="review" data-c="half">반만</button>
+      <span class="sep"></span>
+      <button class="btn" data-act="review" data-c="deeper">더 깊이</button>
+      <button class="btn" data-act="review" data-c="wider">더 넓게</button>
+      <button class="btn" data-act="review" data-c="twist">비틀어</button>
+      <span class="sep"></span>
+      <button class="btn primary" data-act="review" data-c="done">지금 안으로 가자 →</button>
+    </div>
+    <div class="rv-other"><input class="input box" id="reviewText" placeholder="한마디 덧붙이기 (선택) — 또는 다른 방향을 적고 오른쪽 버튼"/><button class="btn" data-act="review" data-c="other">아니다 — 이 방향으로</button></div>` : ''}
+  </div>`;
+}
+function roundDetail(r) {
+  const p = r.painter || {};
+  const best = p.best || {};
+  return `<details class="rv-more"><summary>회차 ${r.n}의 생각 — 수 ${arr(p.moves).length} · 질문 후보 ${arr(p.questions).length}</summary>
+    <table class="tbl"><thead><tr><th>수</th><th>어떻게</th><th>결과</th><th>근본 이슈에 넣으면</th><th></th></tr></thead><tbody>
+    ${arr(p.moves).map((m) => `<tr class="${m.keep ? '' : 'dim'}"><td><span class="tag">${esc(m.move)}</span></td><td>${esc(m.how || '')}</td><td>${esc(m.result || '')}</td><td>${m.substitute && m.substitute.changes ? `${esc(m.substitute.who || '')} — ${esc(m.substitute.changes)}` : '<span class="muted">대입 없음</span>'}</td><td>${m.keep ? '' : `<span class="muted" title="${esc(m.dropped || '')}">버림</span>`}</td></tr>`).join('')}</tbody></table>
+    <div class="grid g2" style="margin-top:10px;align-items:start">
+      <div class="card soft"><span class="kicker">이번 회차의 최선 · 새로움 ${esc(best.map && best.map.novelty)} / 쓸모 ${esc(best.map && best.map.use)}</span><b>${esc(best.idea || '')}</b><div class="muted" style="font-size:13px">${esc(best.why || '')}</div>${best.root_change ? `<div style="font-size:13px">근본 이슈에서 — ${esc(best.root_change)}</div>` : ''}${arr(best.pieces).length ? `<div class="muted" style="font-size:12px">남겨 둔 조각 — ${esc(arr(best.pieces).join(' · '))}</div>` : ''}</div>
+      <div class="card soft"><span class="kicker">찌르는 질문 후보 — 판단 브레인이 하나를 고름</span>${arr(p.questions).map((q, i) => `<div style="font-size:13px;margin-bottom:6px">${(r.brain && +r.brain.pick === i) ? '● ' : ''}<b>${esc(q.question)}</b><br/><span class="muted">${esc(q.type)} · 공격: ${esc(q.attacks || '')} · 얻음: ${esc(q.gain || '')} · 잃음: ${esc(q.loss || '')}</span></div>`).join('')}</div>
+    </div>
+    ${r.brain && r.brain.line ? `<div class="muted" style="font-size:13px;margin-top:6px">판단 브레인 — ${esc(r.brain.line)}</div>` : ''}
+  </details>`;
+}
+function think(p, run) {
+  const T = run.results.think;
+  const root = rootCard(run.root, run.results.brief && run.results.brief.root_issue);
+  if (!T || !arr(T.rounds).length) return head('think', '생각의 회차', '걸림 → 수(깊이·넓이·비틀기·조합) → 근본 이슈에 대입 → 중간 리뷰') + root + waiting('지금 안에서 무엇이 걸리는지 보는 중');
+  const live = run.status === 'paused' && run.pausedAt === 'review';
+  const rounds = arr(T.rounds);
+  const last = rounds[rounds.length - 1];
+  const working = run.stage === 'think' && run.status === 'running';
+  return `${head('think', '생각의 회차', `회차 ${rounds.length} · 걸림 → 수 → 대입 → 중간 리뷰`, last.brain && last.brain.line)}
+  ${root}
+  ${T.final ? `<div class="card ink" style="margin:16px 0"><span class="kicker" style="color:#BDB9AF">회차의 결론 — 다음 단계의 출발점</span><b style="font-size:20px;line-height:1.45">${esc(T.final.idea)}</b>${T.final.root_change ? `<div style="color:#D9D6CE;font-size:13px;margin-top:6px">근본 이슈에서 — ${esc(T.final.root_change)}</div>` : ''}</div>` : ''}
+  ${working ? `<div class="empty" style="padding:16px">회차 ${rounds.length + 1}을 두는 중<span class="blink">_</span></div>` : ''}
+  ${live ? reviewCard(last, true) + roundDetail(last) : ''}
+  <div class="rv-list">${rounds.slice(0, live ? -1 : undefined).reverse().map((r) => reviewCard(r, false) + roundDetail(r)).join('')}</div>`;
 }
 
 /** 사업 범위 · 기본안 — 결과는 범위를 모두 다루고, 기본안을 넘어야 한다 */
@@ -605,7 +680,7 @@ function inspireBox(run, stage) {
   </form>`;
 }
 
-const BASE = { brief, canvas, airplane, tunnel, positioning, forpop, concept, creative };
+const BASE = { brief, canvas, airplane, tunnel, think, positioning, forpop, concept, creative };
 /** 단계 패널 = 단계 결과 + 판단 브레인 카드 + 영감 입력 */
 /** 교열 기록 — 무엇을 어떻게 고쳤는지 감추지 않는다 */
 function polishBox(run, stage) {
@@ -626,6 +701,8 @@ export const RENDER = Object.fromEntries(Object.entries(BASE).map(([k, fn]) => [
 /** 하단 게이트 바 */
 export function gateBar(run) {
   if (!run) return '';
+  if (run.status === 'paused' && run.pausedAt === 'root') return `<div class="gatebar"><div class="ttl"><span class="dot y"></span>근본 이슈 확정</div><span class="muted">위 미션 접수 패널에서 근본 이슈를 고르거나 고쳐 쓰고 출발하세요.</span></div>`;
+  if (run.status === 'paused' && run.pausedAt === 'review') return `<div class="gatebar"><div class="ttl"><span class="dot y"></span>중간 리뷰</div><span class="muted">생각의 회차 카드를 읽고 한마디로 방향을 정해 주세요 — 이 질문으로 / 더 깊이 / 비틀어 / 지금 안으로.</span></div>`;
   if (run.status === 'paused' && run.pausedAt === 'C') {
     return `<div class="gatebar"><div class="ttl"><span class="dot y"></span>C 게이트 · 컨셉 판정</div>
       <textarea class="textarea box" id="gateNote" placeholder="판정 의견 (수정이면 무엇을 바꿀지)"></textarea>

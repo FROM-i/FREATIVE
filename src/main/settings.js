@@ -54,7 +54,10 @@ const DEFAULTS = {
     brainRetry: 1,     // 브레인이 '재작업' 판정 시 다시 그리는 횟수
     budgetUsd: 10,     // 미션당 예산 — 넘으면 경고
     polish: true,      // 교열 — 단계 끝마다 보고서 문장을 다듬는다
-    webSearch: true,   // FoR·PoP·PoD 차별성 검토에서 조수가 웹을 직접 탐색
+    webSearch: true,
+    rootGate: true,    // 근본 이슈 — 브리프 뒤에 사람이 확정한다
+    midReview: 'wait', // 생각의 회차 중간 리뷰 — wait: 사람의 답을 기다린다 · auto: 브레인 제안대로 진행
+    maxRounds: 3,      // 생각의 회차 수 (auto일 때 상한 · wait일 때는 사람이 멈출 때까지, 최대 8)   // FoR·PoP·PoD 차별성 검토에서 조수가 웹을 직접 탐색
     generateImages: true,
     imageQuality: 'medium',
   },

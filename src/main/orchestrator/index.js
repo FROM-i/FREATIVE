@@ -34,6 +34,7 @@ const STAGES = [
   { id: 'canvas', scene: 'canvas', label: '캔버스', sub: '나로부터 · S0' },
   { id: 'airplane', scene: 'airplane', label: 'Airplane', sub: '사조 여행' },
   { id: 'tunnel', scene: 'tunnel', label: 'Tunnel', sub: '인사이트 레이어링' },
+  { id: 'think', scene: 'exit', label: '생각의 회차', sub: '깊이 · 넓이 · 비틀기 · 중간 리뷰' },
   { id: 'positioning', scene: 'exit', label: 'Positioning Map', sub: '5 → 4 → 3 → 1' },
   { id: 'forpop', scene: 'compass', label: 'FoR · PoP · PoD', sub: '최종 검증 · 발상의 전환' },
   { id: 'concept', scene: 'newcanvas', label: 'Concept · Theme', sub: '5 → 3 → 1 · C 게이트' },
@@ -42,6 +43,11 @@ const STAGES = [
 const ORDER = STAGES.map((s) => s.id);
 const LABEL = Object.fromEntries(STAGES.map((s) => [s.id, `${s.label} — ${s.sub}`]));
 const INTRINSIC = new Set(['forpop', 'concept']);
+const SELF_BRAIN = new Set(['brief', 'think']); // 브레인이 단계 안에서 직접 움직이는 단계 — withBrain으로 감싸지 않는다
+const ROUND_CAP = 8; // 생각의 회차 절대 상한 (사람이 계속 이어 가도)
+const MOVES = ['깊이', '넓이', '비틀기', '조합'];
+const QTYPES = ['전제 빼기', '극단 밀기', '반대편 서기', '하나만 남기기', '실패 먼저'];
+const ANSWER_KO = { question: '이 질문으로 가자', half: '반만', other: '아니다 — 다른 방향', deeper: '더 깊이', wider: '더 넓게', twist: '비틀어', done: '지금 안으로 가자' };
 const BASELINE_STAGES = new Set(['positioning', 'forpop', 'concept', 'creative']); // 기본안을 보고 작업하는 단계
 const BASELINE_FLOOR = new Set(['creative']); // 브레인 검증에서 기본안과 같으면 자동 재작업 (concept은 3→1에서 코드로 강제)
 const SCOPE_STAGES = new Set(['concept', 'creative']); // 사업 범위를 모두 다뤄야 하는 단계 // 브레인이 단계 안에서 직접 추론하는 단계
@@ -245,6 +251,8 @@ class Controller {
     const prev = ORDER[ORDER.indexOf(stage) - 1];
     const pv = prev && this.run.brain[prev] && this.run.brain[prev].verify;
     if (pv && (pv.fixes || []).length) parts.push(pv.verdict === '보완' ? `## 앞 단계 검증에서 넘어온 보완점 — 반드시 반영\n${pv.fixes.map((f) => `- ${f}`).join('\n')}` : `## 앞 단계 검증에서 나온 고칠 점 — 참고해 반영\n${pv.fixes.map((f) => `- ${f}`).join('\n')}`);
+    const root = this.root();
+    if (root && stage !== 'brief') parts.push(`## 근본 이슈 — 모든 결과를 여기에 대입한다\n- 근본 이슈: ${root.issue}\n- 판정 질문: ${root.test || '(없음)'}\n- 이 단계의 결과가 근본 이슈에서 **누구의 무엇을** 바꾸는지 행동·시간·장소로 밝혀라. 달라지는 것이 없으면 그 결과는 버린다.`);
     const iv = this.inertiaNote();
     if (iv && role !== 'brain') parts.push(iv.replace('### ', '## '));
     const bl = this.run.results.baseline;
@@ -267,6 +275,31 @@ class Controller {
       airplane: s && { hybrid: s.hybrid, suitcase: s.suitcase, leave: s.leave_together, selected: s.selected, travels: arr(R.airplane.travels).filter((t) => !t.error && (!arr(s.selected).length || arr(s.selected).includes(t.id))).map((t) => ({ id: t.id, name: t.name, take: t.take, apply: t.apply, form_moves: t.form_moves, leave: t.leave })) },
       tunnel: t && { exit_light: t.exit_light, keep: t.keep, change: t.change, conflicts: t.conflicts },
       positioning: p && { whitespace: p.whitespace, chosen, reason: p.final && p.final.reason },
+      root: this.root(),
+      think: this.thinkDigest(),
+    };
+  }
+
+  /** 근본 이슈 — 사람이 확정한 것, 없으면 화가의 추천 */
+  root() {
+    const b = this.run.results.brief;
+    if (this.run.root) return this.run.root;
+    const ri = b && b.root_issue;
+    if (!ri) return null;
+    const c = arr(ri.candidates).find((x) => x.id === ri.recommended) || arr(ri.candidates)[0];
+    return c ? { id: c.id, issue: c.issue, test: c.test, task: ri.task, purpose: ri.purpose, confirmed: false } : null;
+  }
+
+  /** 생각의 회차 결과 — 뒤 단계로 넘기는 형태 */
+  thinkDigest() {
+    const T = this.run.results.think;
+    if (!T || !arr(T.rounds).length) return null;
+    const best = T.final || (T.rounds[T.rounds.length - 1].painter || {}).best;
+    return {
+      best,
+      rounds: T.rounds.map((r) => ({ n: r.n, idea: r.card && r.card.now, snag: r.card && r.card.snag, question: r.card && r.card.question, answer: r.answer ? `${ANSWER_KO[r.answer.choice] || r.answer.choice}${r.answer.text ? ` — ${r.answer.text}` : ''}` : '(답 없음 — 화가 제안대로)' })),
+      kept: arr(T.rounds).flatMap((r) => arr(r.painter && r.painter.moves).filter((m) => m.keep).map((m) => `${m.move}${m.how ? `(${m.how})` : ''}: ${m.result}`)).slice(-8),
+      discarded: arr(T.rounds).flatMap((r) => arr(r.painter && r.painter.moves).filter((m) => !m.keep).map((m) => m.result)).slice(-6),
     };
   }
 
@@ -295,6 +328,9 @@ class Controller {
     if (R.forpop) d.forpop = { for: R.forpop.for && R.forpop.for.frame, for_kind: R.forpop.for && R.forpop.for.chosen, pop: (R.forpop.pop || []).map((x) => x.item), core_pod: R.forpop.core_pod, positioning: R.forpop.compare && R.forpop.compare.positioning && R.forpop.compare.positioning.sentence, differentiation: R.forpop.compare && (R.forpop.compare.scopes || []).map((x) => `${x.title}: ${x.verdict || ''}`), shifts: (R.forpop.shifts || []).map((s) => s.shift && `${s.shift.type} ${s.shift.name}`), coherence: R.forpop.coherence };
     if (R.concept) d.concept = { concept: R.concept.concept, theme: R.concept.theme, keywords: R.concept.keywords, philosophy_core: R.concept.philosophy_core, ...(full ? { metaphor: R.concept.metaphor, tone_manner: R.concept.tone_manner, interpretation: R.concept.interpretation, benefit: R.concept.benefit, proposals: (R.concept.proposals || []).map((p) => ({ id: p.id, theme: p.theme, concept: p.concept })), first_round: R.concept.first_round, brain_select: R.concept.brain_select && R.concept.brain_select.final } : {}) };
     if (R.creative) d.creative = (R.creative.examples || []).map((e) => ({ direction: e.direction, touchpoint: e.touchpoint, scope_ids: e.scope_ids, title: e.title, headline: e.headline, one_liner: e.one_liner, ...(full ? { structure: (e.structure || []).map((s) => s.name), detail: e.detail } : {}) }));
+    if (this.root()) d.root = this.root();
+    const td = this.thinkDigest();
+    if (td) d.think = full ? td : { best: td.best, questions: td.rounds.map((r) => `${r.question || ''} → ${r.answer}`) };
     if (R.brief && R.brief.scope) d.scope = R.brief.scope.map((x) => `${x.id} ${x.item}`);
     if (R.baseline) d.baseline = { overall: R.baseline.overall, cliches: R.baseline.cliches, bar: R.baseline.bar };
     if (R.creative && R.creative.blueprint) { const bp = R.creative.blueprint; d.blueprint = full ? this.blueprintDigest(bp) : { summary: bp.summary, baseline_gap: bp.baseline_gap, sections: arr(bp.sections).map((x) => `${x.label}: ${arr(x.items).map((it) => it.name).join(', ')}`) }; }
@@ -356,9 +392,9 @@ class Controller {
 
   /* ---------- 교열 — 사람이 읽는 문장으로 ---------- */
   /** 단계 결과에서 사람이 읽을 문장을 모아, 고쳐야 할 것만 고친다. 사실·ID·URL·카피는 건드리지 않는다 */
-  async polish(stage, obj, { skip = [] } = {}) {
+  async polish(stage, obj, { skip = [], keys = [] } = {}) {
     if (!obj || settings.get().run.polish === false) return;
-    const KEYS = new Set(['theme', 'statement', 'sentence', 'one_line', 'one_liner', 'coherence', 'why', 'reason', 'note', 'gain', 'how', 'summary', 'concept', 'keep', 'change', 'visible', 'task', 'headline', 'subhead', 'exec_summary', 'bullets', 'rationale', 'desc', 'target_view', 'exit_light', 'from_me', 'tension', 'cost', 'what', 'fixes', 'issues']);
+    const KEYS = new Set([...keys, 'theme', 'statement', 'sentence', 'one_line', 'one_liner', 'coherence', 'why', 'reason', 'note', 'gain', 'how', 'summary', 'concept', 'keep', 'change', 'visible', 'task', 'headline', 'subhead', 'exec_summary', 'bullets', 'rationale', 'desc', 'target_view', 'exit_light', 'from_me', 'tension', 'cost', 'what', 'fixes', 'issues']);
     const SKIP = new Set(['scan', 'rtb', 'citations', 'series', 'image_prompt', 'painter_line', 'line', 'source', 'url', 'id', 'polished', ...skip]);
     const found = [];
     const walk = (x, p, key, parent) => {
@@ -390,7 +426,7 @@ class Controller {
       if (t && t[f.path[f.path.length - 1]] === f.text) { t[f.path[f.path.length - 1]] = ed.after; applied.push({ before: f.text, after: ed.after, issue: ed.issue || '' }); }
     }
     this.run.polish = this.run.polish || {};
-    this.run.polish[stage] = applied;
+    this.run.polish[stage] = [...(keys.length ? arr(this.run.polish[stage]) : []), ...applied];
     if (applied.length) this.line('조수', `교열 — ${found.length}문장 중 ${applied.length}곳을 다듬었어요.`, stage);
   }
 
@@ -415,7 +451,7 @@ class Controller {
   brainCtx(stage) {
     const c = this.brainCfg(stage) || {};
     return {
-      stageLabel: LABEL[stage], mission: this.mission, digest: this.digest(), inspiration: this.inspirationFor(stage),
+      stageLabel: LABEL[stage], mission: this.mission, root: this.root(), digest: this.digest(), inspiration: this.inspirationFor(stage),
       lensTable: this.lensTable(), stageLenses: this.stageLenses(stage), stageFocus: c.direct || '', knowhowIndex: this.knowhowIndex(stage),
       ismIds: knowledge.load().isms.map((i) => `${i.id}(${i.name})`).join(', '),
     };
@@ -537,6 +573,12 @@ class Controller {
       for (const sec of arr(this.type.anatomy)) if (scope.length < 4 && !scope.find((x) => x.item.includes(sec.label))) scope.push({ id: `S${scope.length + 1}`, item: `${sec.label} — ${sec.ask}`, kind: '', from: '추론 · 결과물 해부도', must: true });
     }
     json.scope = scope;
+    // 근본 이슈 — 과업 → 목적 → 근본 이슈. 후보는 2~3개, 사람이 확정한다
+    const ri = json.root_issue || {};
+    ri.candidates = arr(ri.candidates).filter((c) => c && c.issue).slice(0, 3).map((c, i) => ({ id: `R${i + 1}`, issue: String(c.issue), test: c.test ? String(c.test) : '', why: c.why || '' }));
+    if (!ri.candidates.find((c) => c.id === ri.recommended)) ri.recommended = ri.candidates[0] ? ri.candidates[0].id : null;
+    json.root_issue = ri.candidates.length ? ri : null;
+    if (this.run.root && !this.run.root.confirmed) delete this.run.root;
     this.run.results.brief = json;
     this.line('화가', json.plan.note || (json.mission && json.mission.one_line), 'brief');
     const asking = ['질문부터', '멈춤'].includes(json.gate) && ((json.questions || []).length || json.gate === '멈춤');
@@ -651,11 +693,102 @@ class Controller {
     return { synth: t.synth, layers: t.layers.filter((l) => !l.error).map((l) => ({ label: l.label, headline: l.headline, insights: l.insights, keep: l.keep, change: l.change, boundary: l.boundary })) };
   }
 
+  /* ---------- 생각의 회차 — 걸림 → 수 → 대입 → 고르기 → 중간 리뷰 (method/thinking.md) ---------- */
+  thinkCfg() {
+    const r = settings.get().run;
+    return { wait: r.midReview !== 'auto', max: Math.max(1, Math.min(ROUND_CAP, parseInt(r.maxRounds, 10) || 3)) };
+  }
+
+  /** 사람의 답을 다음 회차의 지시로 */
+  roundDirective(last) {
+    if (!last) return null;
+    const a = last.answer;
+    const q = last.card || {};
+    if (!a) return `사람의 답이 없었다. 판단 브레인이 제안한 방향으로 간다: ${(last.brain && last.brain.next && `${last.brain.next.move} — ${last.brain.next.why}`) || '지난 회차의 찌르는 질문'}. 다음 카드의 '지금 안' 첫머리에 그렇게 진행했다고 적는다.`;
+    const t = a.text ? ` 사람의 말: "${a.text}"` : '';
+    return {
+      question: `사람이 지난 질문("${q.question}")으로 가자고 했다. 그 질문을 전제로 받아들이고, 거기서 이어지는 수(${q.leads_to || '비틀기'})로 이번 회차를 둔다.${t}`,
+      half: `사람이 지난 질문("${q.question}")에 '반만' 동의했다. 질문이 건드린 전제 중 무엇을 받아들이고 무엇을 지킬지 먼저 정하고, 그 경계에서 이번 회차를 둔다.${t}`,
+      other: `사람이 지난 질문을 받아들이지 않고 다른 방향을 줬다. 그 방향이 이번 회차의 출발점이다.${t}`,
+      deeper: `사람이 '더 깊이'를 골랐다. 이번 회차는 깊이로 간다 — 지금 안의 "왜"를 거듭해 한 층 아래의 본질을 찾는다.${t}`,
+      wider: `사람이 '더 넓게'를 골랐다. 이번 회차는 넓이로 간다 — 다른 업계·다른 재료·다른 사례에서 가져온다.${t}`,
+      twist: `사람이 '비틀어'를 골랐다. 이번 회차는 비틀기로 간다 — 주체·시간·방향·크기 중 지금까지 쓰지 않은 방식으로.${t}`,
+    }[a.choice] || `사람의 답: ${ANSWER_KO[a.choice] || a.choice}.${t}`;
+  }
+
+  async stageThink() {
+    const T = this.run.results.think = this.run.results.think || { rounds: [] };
+    const cfg = this.thinkCfg();
+    const b = this.run.results.brief;
+    const prev = T.rounds[T.rounds.length - 1];
+    if (cfg.wait && T.awaiting && prev && !prev.answer) return; // 앱을 다시 열었을 때 — 답을 기다리던 리뷰를 그대로 다시 보인다
+    T.awaiting = false;
+    while (true) {
+      const last = T.rounds[T.rounds.length - 1];
+      if (last && last.answer && last.answer.choice === 'done') break;
+      const n = T.rounds.length + 1;
+      if (n > ROUND_CAP || (!cfg.wait && n > cfg.max)) break;
+      this.setStage('think', { progress: Math.min(0.9, 0.1 + 0.8 * ((n - 1) / cfg.max)) });
+      this.send('progress', { stage: 'think' });
+      const history = T.rounds.map((r) => ({ n: r.n, now: r.card && r.card.now, snag: r.card && r.card.snag, moves: arr(r.painter && r.painter.moves).map((m) => ({ move: m.move, how: m.how, result: m.result, keep: m.keep })), question: r.card && r.card.question, answer: r.answer ? `${ANSWER_KO[r.answer.choice] || r.answer.choice}${r.answer.text ? ` — ${r.answer.text}` : ''}` : null }));
+      const usedMoves = arr(last && last.painter && last.painter.moves).map((m) => m.move);
+      const painter = await this.call({
+        role: 'director', prompt: '12_round', stage: 'think',
+        agent: { key: 'painter', name: '화가', task: `생각의 회차 ${n}` },
+        ctx: { round: n, mission: this.mission, root: this.root(), lineage: this.lineage(), tunnel: this.tunnelDigest(), baseline: this.run.results.baseline || null, scope: this.scope(), rfp: (b && b.rfp) || null, type: this.typeBrief(), history, directive: this.roundDirective(last), avoidRepeat: usedMoves },
+      });
+      // 대입이 비어 있으면 그 수는 버린다 — 말장난을 걸러내는 문
+      painter.moves = arr(painter.moves).map((m) => ({ ...m, move: MOVES.includes(m.move) ? m.move : '깊이', keep: m.keep !== false && !!(m.substitute && String(m.substitute.changes || '').trim().length >= 6) }));
+      painter.questions = arr(painter.questions).filter((q) => q && q.question).map((q) => ({ ...q, type: QTYPES.includes(q.type) ? q.type : '전제 빼기' })).slice(0, 3);
+      let brain = null;
+      if (settings.get().run.brain !== 'off') {
+        brain = await this.call({
+          role: 'brain', prompt: 'b_round', stage: 'think', extras: false,
+          agent: { key: 'brain', name: '판단 브레인', task: `회차 ${n} · 질문 고르기 · 리뷰 카드` },
+          ctx: { round: n, mission: this.mission, root: this.root(), baseline: this.run.results.baseline || null, scope: this.scope(), painter, history, wait: cfg.wait, max: cfg.max },
+        }).catch((e) => { this.line('시스템', `판단 브레인 회차 검토를 건너뜀 — ${e.message}`, 'think'); return null; });
+      }
+      // 브레인이 버리라고 한 수
+      for (const v of arr(brain && brain.moves)) { const m = painter.moves[v.i]; if (m && v.keep === false) { m.keep = false; m.dropped = v.why || '브레인 — 대입이 구체적이지 않음'; } }
+      const qi = Math.max(0, Math.min(painter.questions.length - 1, parseInt(brain && brain.pick, 10) || 0));
+      const q = painter.questions[qi] || {};
+      const card = (brain && brain.card) || {};
+      const round = {
+        n, at: now(), painter, brain,
+        card: {
+          now: card.now || (painter.best && painter.best.idea) || '',
+          snag: card.snag || painter.snag || '',
+          question: card.question || q.question || '',
+          type: card.type || q.type || '',
+          leads_to: card.leads_to || q.leads_to || '',
+          if_yes: card.if_yes || [q.gain && `얻는 것: ${q.gain}`, q.loss && `잃는 것: ${q.loss}`].filter(Boolean).join(' / '),
+        },
+        stopHint: !!(brain && brain.stop) || (painter.room === 'less' && last && last.painter && last.painter.room === 'less'),
+      };
+      await this.polish('think', round.card, { keys: ['now', 'snag', 'question', 'if_yes'], skip: ['type', 'leads_to'] });
+      T.rounds.push(round);
+      T.best = painter.best;
+      this.line('화가', `회차 ${n} — ${round.card.now}`, 'think');
+      if (round.card.question) this.line('판단 브레인', `찌르는 질문 — ${round.card.question}`, 'think');
+      if (cfg.wait) { T.awaiting = true; return; }
+      if (round.stopHint) { this.line('화가', `회차 ${n}에서 멈춥니다 — ${(brain && brain.stop_why) || painter.room_why || '더 나아질 여지가 줄었다'}`, 'think'); break; }
+    }
+    this.finishThink();
+  }
+
+  finishThink() {
+    const T = this.run.results.think;
+    const last = T.rounds[T.rounds.length - 1];
+    const p = (last && last.painter) || {};
+    T.awaiting = false;
+    T.final = { idea: (p.best && p.best.idea) || (last && last.card.now) || '', why: p.best && p.best.why, root_change: p.best && p.best.root_change, from_round: last && last.n, open_question: last && last.answer && last.answer.choice === 'done' ? null : last && last.card.question };
+  }
+
   async stagePositioning() {
     const json = await this.call({
       role: 'director', prompt: '07_positioning', stage: 'positioning',
       agent: { key: 'painter', name: '화가', task: 'Creative Positioning Map' },
-      ctx: { mission: this.mission, canvas: this.run.results.canvas, airplane: this.run.results.airplane.synth, tunnel: this.tunnelDigest() },
+      ctx: { mission: this.mission, canvas: this.run.results.canvas, airplane: this.run.results.airplane.synth, tunnel: this.tunnelDigest(), think: this.thinkDigest(), root: this.root() },
     });
     this.run.results.positioning = json;
     this.line('화가', json.painter_line, 'positioning');
@@ -671,7 +804,7 @@ class Controller {
     const base = await this.call({
       role: 'director', prompt: '08_forpop', stage: 'forpop',
       agent: { key: 'painter', name: '화가', task: '최종 검증 · FoR · PoP · PoD 후보 5 · 정찰 계획' },
-      ctx: { mission: this.mission, canvas: this.run.results.canvas, airplane: this.run.results.airplane.synth, tunnel: this.tunnelDigest(), positioning: this.positioningDigest() },
+      ctx: { mission: this.mission, canvas: this.run.results.canvas, airplane: this.run.results.airplane.synth, tunnel: this.tunnelDigest(), positioning: this.positioningDigest(), think: this.thinkDigest(), root: this.root() },
     });
     this.run.results.forpop = { ...base, shifts: [] };
     this.line('화가', base.painter_line, 'forpop');
@@ -1057,13 +1190,14 @@ class Controller {
   async runStage(id) {
     const fn = {
       brief: () => this.stageBrief(), canvas: () => this.stageCanvas(), airplane: () => this.stageAirplane(),
-      tunnel: () => this.stageTunnel(), positioning: () => this.stagePositioning(), forpop: () => this.stageForpop(),
+      tunnel: () => this.stageTunnel(), think: () => this.stageThink(), positioning: () => this.stagePositioning(), forpop: () => this.stageForpop(),
       concept: () => this.stageConcept(), creative: () => this.stageCreative(),
     }[id];
     const out = {
       canvas: () => this.run.results.canvas,
       airplane: () => ({ travels: (this.run.results.airplane.travels || []).map(({ id, take, leave, core, a3 }) => ({ id, take, leave, core, a3 })), synth: this.run.results.airplane.synth }),
       tunnel: () => this.tunnelDigest(),
+      think: () => this.thinkDigest(),
       positioning: () => this.run.results.positioning,
       creative: () => ({ blueprint: this.run.results.creative.blueprint && { ...this.blueprintDigest(this.run.results.creative.blueprint), baseline_gap: undefined }, examples: (this.run.results.creative.examples || []).map(({ image, imageFile, image_prompt, ...e }) => e), selection: this.run.results.creative.selection }),
     }[id] || (() => null);
@@ -1072,7 +1206,8 @@ class Controller {
     this.setStage(id, { status: 'running', progress: 0.08, startedAt: now(), error: null, redo: 0 });
     this.send('stage-start', { stage: id });
     if (BASELINE_STAGES.has(id) && !this.run.results.baseline && this.run.results.brief) await this.baseline();
-    if (id === 'brief') await fn(); else await this.withBrain(id, fn, out);
+    if (SELF_BRAIN.has(id)) await fn(); else await this.withBrain(id, fn, out);
+    if (id === 'think' && this.run.results.think && this.run.results.think.awaiting) return;
     if (id === 'creative') { this.setStage('creative', { progress: 0.8 }); this.send('progress', { stage: id }); await this.generateImages(); }
     this.setStage(id, { status: 'done', progress: 1, endedAt: now() });
     this.send('stage-done', { stage: id });
@@ -1092,6 +1227,19 @@ class Controller {
             this.send('gate', { gate: 'brief' });
             return;
           }
+          // 근본 이슈 확정 — 비용이 크게 들기 전에 사람이 고른다
+          if (r.root_issue && !(this.run.root && this.run.root.confirmed) && settings.get().run.rootGate !== false) {
+            this.run.status = 'paused'; this.run.pausedAt = 'root';
+            this.setStage('brief', { status: 'waiting' });
+            this.send('gate', { gate: 'root' });
+            return;
+          }
+        }
+        if (id === 'think' && this.run.results.think && this.run.results.think.awaiting) {
+          this.run.status = 'paused'; this.run.pausedAt = 'review';
+          this.setStage('think', { status: 'waiting' });
+          this.send('gate', { gate: 'review' });
+          return;
         }
         if (id === 'concept') {
           if (this.brief.depth !== 'full') {
@@ -1157,6 +1305,44 @@ async function answerBrief(projectId, answers, emit) {
   const r = c.run.results.brief || {};
   c.run.gates.brief.rounds.push({ at: now(), questions: r.questions || [], answers });
   c.runFrom('brief');
+  return { ok: true };
+}
+
+/** 근본 이슈 확정 — 후보 중 하나를 고르거나 직접 쓴다 */
+async function answerRoot(projectId, ans, emit) {
+  const c = controller(projectId, emit);
+  const ri = (c.run.results.brief && c.run.results.brief.root_issue) || { candidates: [] };
+  const pick = arr(ri.candidates).find((x) => x.id === (ans && ans.id));
+  const issue = String((ans && ans.issue) || (pick && pick.issue) || '').trim();
+  if (!issue) throw new Error('근본 이슈를 고르거나 적어 주세요');
+  c.run.root = { id: pick && !ans.issue ? pick.id : 'H', issue, test: String((ans && ans.test) || (pick && pick.test) || '').trim(), task: ri.task, purpose: ri.purpose, confirmed: true, by: (c.project.brief && c.project.brief.worker) || '', at: now() };
+  c.line('디자이너', `근본 이슈 확정 — ${issue}`, 'brief');
+  c.setStage('brief', { status: 'done' });
+  c.run.pausedAt = null;
+  c.runFrom('canvas');
+  return { ok: true };
+}
+
+/** 중간 리뷰의 답 — 다음 회차로 가거나, 지금 안으로 다음 단계에 간다 */
+async function answerReview(projectId, ans, emit) {
+  const c = controller(projectId, emit);
+  const T = c.run.results.think;
+  const last = T && T.rounds[T.rounds.length - 1];
+  if (!last) throw new Error('답할 리뷰가 없습니다');
+  const choice = (ans && ans.choice) || 'done';
+  if (!ANSWER_KO[choice]) throw new Error('알 수 없는 답');
+  if (choice === 'other' && !String(ans.text || '').trim()) throw new Error('다른 방향을 적어 주세요');
+  last.answer = { choice, text: String((ans && ans.text) || '').trim(), at: now(), by: (c.project.brief && c.project.brief.worker) || '' };
+  c.line('디자이너', `회차 ${last.n} — ${ANSWER_KO[choice]}${last.answer.text ? ` · ${last.answer.text}` : ''}`, 'think');
+  c.run.pausedAt = null;
+  if (choice === 'done' || T.rounds.length >= ROUND_CAP) {
+    c.finishThink();
+    c.setStage('think', { status: 'done', progress: 1, endedAt: now() });
+    c.runFrom('positioning');
+  } else {
+    T.awaiting = false;
+    c.runFrom('think');
+  }
   return { ok: true };
 }
 
@@ -1239,4 +1425,4 @@ function markInterrupted() {
   }
 }
 
-module.exports = { STAGES, ORDER, start, answerBrief, gate, inspire, cancel, regenerateImage, reportCore, emitterFor, markInterrupted, formatBrief };
+module.exports = { STAGES, ORDER, start, answerBrief, answerRoot, answerReview, gate, inspire, cancel, regenerateImage, reportCore, emitterFor, markInterrupted, formatBrief };

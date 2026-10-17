@@ -12,10 +12,10 @@ export const SCENES = [
   { id: 'canvas', stage: 'canvas', no: '02', title: 'CANVAS', x: 1300, w: 1300, walk: [1460, 1860] },
   { id: 'airplane', stage: 'airplane', no: '03', title: 'AIRPLANE — TIME TRAVEL', x: 2600, w: 2800, walk: [2760, 5280] },
   { id: 'tunnel', stage: 'tunnel', no: '04', title: 'TUNNEL — LAYERING', x: 5400, w: 2800, walk: [5560, 8060] },
-  { id: 'exit', stage: 'positioning', no: '05', title: 'POSITIONING MAP', x: 8200, w: 1400, walk: [8320, 8850] },
-  { id: 'compass', stage: 'forpop', no: '06', title: 'FoR · PoP · PoD', x: 9600, w: 1400, walk: [9700, 10130] },
-  { id: 'newcanvas', stage: 'concept', no: '07', title: 'NEW CANVAS — CONCEPT', x: 11000, w: 1400, walk: [11100, 11520] },
-  { id: 'gallery', stage: 'creative', no: '08', title: 'GALLERY — CREATIVE', x: 12400, w: 1600, walk: [12520, 13360] },
+  { id: 'exit', stage: 'positioning', no: '06', title: 'POSITIONING MAP', x: 8200, w: 1400, walk: [8320, 8850] },
+  { id: 'compass', stage: 'forpop', no: '07', title: 'FoR · PoP · PoD', x: 9600, w: 1400, walk: [9700, 10130] },
+  { id: 'newcanvas', stage: 'concept', no: '08', title: 'NEW CANVAS — CONCEPT', x: 11000, w: 1400, walk: [11100, 11520] },
+  { id: 'gallery', stage: 'creative', no: '09', title: 'GALLERY — CREATIVE', x: 12400, w: 1600, walk: [12520, 13360] },
 ];
 const W = 14000;
 const PLANE = [2760, 5280];
@@ -276,7 +276,8 @@ export class Journey {
   dynScene(s, run) {
     const R = run.results || {};
     const st = (run.stages[s.stage] || {}).status || 'pending';
-    if (st === 'pending') return '';
+    const thinking = s.id === 'exit' && R.think && arr(R.think.rounds).length;
+    if (st === 'pending' && !thinking) return '';
     const fo = (x, y, w, h, inner, cls = '') => `<foreignObject x="${x}" y="${y}" width="${w}" height="${h}" class="pop in ${cls}"><div xmlns="http://www.w3.org/1999/xhtml" style="height:100%">${inner}</div></foreignObject>`;
     switch (s.id) {
       case 'mission': {
@@ -288,7 +289,7 @@ export class Journey {
         return `
           <path class="ln d thin" d="M620,${GY - 120} L700,236"/>
           ${fo(640, 70, 330, 172, `<div class="fo-card"><div class="k">MISSION · 브리프 게이트 ${esc(b.gate)}</div><b>${esc(m.title || '')}</b>${esc(m.one_line || '')}<div style="margin-top:6px">${[m.deliverable, m.device, m.channel].filter(Boolean).map((x) => `<span class="fo-word">${esc(x)}</span>`).join('')}</div></div>`)}
-          ${wait ? fo(380, 200, 220, 64, `<div class="fo-bubble" style="background:var(--yellow)">질문이 ${arr(b.questions).length}개 있어요 — 아래에서 답해 주세요</div>`) : ''}
+          ${wait ? fo(380, 200, 220, 64, `<div class="fo-bubble" style="background:var(--yellow)">${run.pausedAt === 'root' ? '근본 이슈 후보가 나왔어요 — 아래에서 골라 주세요' : `질문이 ${arr(b.questions).length}개 있어요 — 아래에서 답해 주세요`}</div>`) : ''}
           ${b.plan && b.plan.note ? fo(1000, 210, 250, 70, `<div class="fo-plain">“${esc(b.plan.note)}”</div>`) : ''}`;
       }
       case 'canvas': {
@@ -359,13 +360,19 @@ export class Journey {
         return out;
       }
       case 'exit': {
+        const T = R.think;
+        const tr = T ? arr(T.rounds) : [];
+        const lr = tr[tr.length - 1];
+        const waitR = run.status === 'paused' && run.pausedAt === 'review';
+        const thinkFo = lr ? `<g transform="translate(8440,${GY})">${A.assistant({ item: 'note' })}</g>` + fo(8330, 186, 270, 140, `<div class="fo-card ${waitR ? 'y' : ''}"><div class="k">생각의 회차 ${tr.length}${T.final ? ' · 결론' : waitR ? ' · 중간 리뷰' : ''}</div><b>${esc((T.final && T.final.idea) || (lr.card && lr.card.now) || '')}</b>${!T.final && lr.card && lr.card.question ? `<div style="margin-top:4px">? ${esc(lr.card.question)}</div>` : ''}</div>`) : '';
+        if (st === 'pending') return thinkFo;
         const p = R.positioning;
         const cx = 8990, top = GY - HILL.h - 70 - 170;
-        if (!p) return fo(8700, 160, 170, 50, `<div class="fo-bubble">지도를 펼치는 중<span class="thinking-dot">.</span><span class="thinking-dot">.</span><span class="thinking-dot">.</span></div>`);
+        if (!p) return thinkFo + fo(8700, 160, 170, 50, `<div class="fo-bubble">지도를 펼치는 중<span class="thinking-dot">.</span><span class="thinking-dot">.</span><span class="thinking-dot">.</span></div>`);
         const sx = (v) => cx + v * 80, sy = (v) => top + 85 - v * 75;
         const cut = new Set(arr(p.rounds).flatMap((r) => arr(r.cut)));
         const fin = p.final && p.final.id;
-        return `
+        return thinkFo + `
           <path class="ln d thin" d="M${cx - 88},${top + 85} H${cx + 88} M${cx},${top + 6} V${top + 164}"/>
           <text class="lbl-s" x="${cx + 86}" y="${top + 80}" text-anchor="end" style="font-size:8px">${esc(p.axes.x.high)}</text>
           <text class="lbl-s" x="${cx + 4}" y="${top + 14}" style="font-size:8px">${esc(p.axes.y.high)}</text>

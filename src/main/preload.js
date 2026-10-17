@@ -51,6 +51,8 @@ contextBridge.exposeInMainWorld('api', {
   run: {
     start: (id) => invoke('run:start', id),
     answerBrief: (id, answers) => invoke('run:answerBrief', id, answers),
+    answerRoot: (id, ans) => invoke('run:answerRoot', id, ans),
+    answerReview: (id, ans) => invoke('run:answerReview', id, ans),
     gate: (id, decision, note) => invoke('run:gate', id, decision, note),
     cancel: (id) => invoke('run:cancel', id),
     inspire: (id, stage, text) => invoke('run:inspire', id, stage, text),
