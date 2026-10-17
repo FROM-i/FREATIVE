@@ -77,7 +77,22 @@ jobs:
         run: |
           set -o pipefail
           if [ "$RUNNER_OS" = "macOS" ] && [ -n "$S_CSC_LINK" ]; then
-            export CSC_LINK="$S_CSC_LINK" CSC_KEY_PASSWORD="$S_CSC_KEY_PASSWORD"
+            # 인증서 점검 — 붙여 넣을 때 섞인 공백·줄바꿈을 지우고, p12 안에 '인증서 + 개인 키'(서명 신원)가 있는지 먼저 본다
+            P12="$RUNNER_TEMP/cert.p12"
+            printf '%s' "$S_CSC_LINK" | tr -d ' \r\n\t' | base64 --decode > "$P12" 2>/dev/null || echo "::error::MAC_CERT_P12_BASE64를 base64로 풀 수 없습니다 — 값을 다시 복사해 넣어 주세요"
+            KC="$RUNNER_TEMP/diag.keychain-db"
+            security create-keychain -p diag "$KC" >/dev/null 2>&1; security unlock-keychain -p diag "$KC"
+            if security import "$P12" -k "$KC" -P "$S_CSC_KEY_PASSWORD" -T /usr/bin/codesign >/dev/null 2>"$RUNNER_TEMP/imp.err"; then
+              NCERT=$(security find-certificate -a "$KC" | grep -c '"labl"' || true)
+              NID=$(security find-identity -v -p codesigning "$KC" | grep -c 'Developer ID Application' || true)
+              NAMES_=$(security find-certificate -a "$KC" | sed -n 's/.*"labl"<blob>="\(.*\)"/\1/p' | paste -sd ' / ' -)
+              echo "::notice::p12 점검 — 인증서 $NCERT개 ($NAMES_) · 서명 신원(인증서+개인 키) $NID개"
+              if [ "$NID" = "0" ]; then echo "::error::p12에 Developer ID Application 인증서와 개인 키가 함께 들어 있지 않습니다. 키체인 접근에서 인증서 왼쪽 화살표를 펼쳐 개인 키가 보이는 상태로 인증서를 내보내 주세요."; security delete-keychain "$KC"; exit 1; fi
+            else
+              echo "::error::p12를 열 수 없습니다 — MAC_CERT_PASSWORD가 내보낼 때 정한 암호와 같은지 확인해 주세요 ($(head -c 200 "$RUNNER_TEMP/imp.err"))"; security delete-keychain "$KC"; exit 1
+            fi
+            security delete-keychain "$KC"
+            export CSC_LINK="$P12" CSC_KEY_PASSWORD="$S_CSC_KEY_PASSWORD"
             echo "::notice::Developer ID 인증서로 서명합니다${S_APPLE_ID:+ · 공증 포함}"
             [ -n "$S_APPLE_ID" ] && export APPLE_ID="$S_APPLE_ID" APPLE_APP_SPECIFIC_PASSWORD="$S_APPLE_APP_SPECIFIC_PASSWORD" APPLE_TEAM_ID="$S_APPLE_TEAM_ID"
           else
