@@ -34,7 +34,7 @@ async function boot() {
   });
   api.updater.onEvent((u) => {
     if (u.state === 'ready') toast(`새 버전 v${u.version} 준비됨 — 설정에서 재시작하면 적용됩니다`, 6000);
-    if (u.state === 'manual') toast(`새 버전 v${u.version}이 나왔습니다 — Mac은 설정 › 업데이트에서 내려받아 설치합니다`, 8000);
+    if (u.state === 'manual') toast(`새 버전 v${u.version}이 나왔습니다 — ${u.message || '설정에서 내려받아 설치합니다'}`, 9000);
     S.update = u; if (S.view === 'settings') renderSettings();
   });
   api.run.onEvent(onRunEvent);
@@ -389,7 +389,7 @@ async function renderSettings() {
     </div>
 
     <div class="sgroup"><h3>앱</h3>
-      <div class="srow"><div class="lbl">버전</div><div class="inline"><span>v${esc(S.info.version)} · ${esc(S.info.platform)}</span><button class="btn sm ghost" data-s="upd">업데이트 확인</button>${u && u.state === 'ready' ? `<button class="btn sm go" data-s="install">v${esc(u.version)} 설치 후 재시작</button>` : ''}${u && u.state === 'manual' ? `<button class="btn sm go" data-ext="${esc(u.url)}">v${esc(u.version)} 내려받기</button>` : ''}<span class="muted" style="font-size:12px">${esc(u ? (u.state === 'downloading' ? `내려받는 중 ${u.percent}%` : u.message || u.state) : '')}</span></div></div>
+      <div class="srow"><div class="lbl">버전</div><div class="inline"><span>v${esc(S.info.version)} · ${esc(S.info.platform)}</span><button class="btn sm ghost" data-s="upd">업데이트 확인</button>${u && u.state === 'ready' ? `<button class="btn sm go" data-s="install">v${esc(u.version)} 설치 후 재시작</button>` : ''}${u && u.state === 'manual' ? `<button class="btn sm go" data-ext="${esc(u.url)}">v${esc(u.version)} 내려받기</button>` : ''}<span class="muted" style="font-size:12px">${esc(u ? (u.state === 'downloading' ? (u.message || `내려받는 중 ${u.percent}%`) : u.state === 'ready' ? '' : u.message || ({ checking: '확인 중', latest: '최신 버전', error: '오류' }[u.state] || '')) : '')}</span></div></div>
       <div class="srow"><div class="lbl">기본 작업자<small>새 미션에 자동으로 채워짐</small></div><input class="input box" data-k="lastWorker" value="${esc(s.lastWorker || '')}" style="max-width:240px"/></div>
       <div class="srow"><div class="lbl">사용자 · 조직<small>중앙관제 전환 시 로그인으로 바뀝니다</small></div><div>${esc(S.user.name)} · ${esc(S.user.orgId)} · ${esc(S.user.role)} <span class="muted">(${esc(S.user.provider)})</span></div></div>
       <div class="srow"><div class="lbl">데이터 위치</div><div class="inline"><span class="mono" style="word-break:break-all">${esc(S.info.userData)}</span><button class="btn xs ghost" data-s="open">열기</button></div></div>
