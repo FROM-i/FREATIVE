@@ -53,22 +53,33 @@ function record(entry) {
   try { fs.appendFileSync(ledgerFile(), JSON.stringify({ at: new Date().toISOString(), ...entry }) + '\n'); } catch { /* noop */ }
 }
 
-function summary() {
-  const out = { month: 0, total: 0, calls: 0, byModel: {}, byMonth: {} };
+/** 장부 집계 — 월·모델별에 더해 프로젝트별 · 일별(최근 60일). 목업 호출은 빼고 센다 (includeMock은 테스트용) */
+function summary({ includeMock = false } = {}) {
+  const out = { month: 0, total: 0, calls: 0, byModel: {}, byMonth: {}, byProject: [], byDay: [] };
   let lines = [];
   try { lines = fs.readFileSync(ledgerFile(), 'utf8').split('\n').filter(Boolean); } catch { return out; }
   const ym = new Date().toISOString().slice(0, 7);
+  const localDay = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('sv-SE'); };
+  const since = localDay(new Date(Date.now() - 59 * 864e5).toISOString());
+  const proj = {}, day = {};
+  const add = (m, k, e) => { const x = m[k] = m[k] || { calls: 0, input: 0, output: 0, usd: 0, first: e.at, last: e.at }; x.calls++; x.input += e.input || 0; x.output += e.output || 0; x.usd += e.usd || 0; if (e.at < x.first) x.first = e.at; if (e.at > x.last) x.last = e.at; };
   for (const l of lines) {
     try {
       const e = JSON.parse(l);
-      if (e.mock) continue;
+      if (e.mock && !includeMock) continue;
       out.total += e.usd || 0; out.calls++;
       if ((e.at || '').startsWith(ym)) out.month += e.usd || 0;
       const k = (e.at || '').slice(0, 7);
       out.byMonth[k] = (out.byMonth[k] || 0) + (e.usd || 0);
       out.byModel[e.model] = (out.byModel[e.model] || 0) + (e.usd || 0);
+      add(proj, e.projectId || '(프로젝트 없음)', e);
+      const d = localDay(e.at); if (d && d >= since) add(day, d, e);
     } catch { /* skip */ }
   }
+  let nameOf = () => null;
+  try { const store = require('./services/storage'); const list = store.list(); const by = Object.fromEntries(list.map((p) => [p.id, p.name])); nameOf = (id) => by[id] || null; } catch { /* 저장소 없이 */ }
+  out.byProject = Object.entries(proj).map(([id, v]) => ({ id, name: nameOf(id) || (id === '(프로젝트 없음)' ? '프로젝트 밖 호출' : '삭제된 프로젝트'), deleted: !nameOf(id) && id !== '(프로젝트 없음)', ...v })).sort((a, b) => b.last.localeCompare(a.last));
+  out.byDay = Object.entries(day).map(([d, v]) => ({ day: d, ...v })).sort((a, b) => b.day.localeCompare(a.day));
   return out;
 }
 

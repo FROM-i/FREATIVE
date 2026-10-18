@@ -28,6 +28,7 @@ const providers = require('../providers');
 const cost = require('../cost');
 const models = require('../models');
 const { render } = require('./prompts');
+const voice = require('../voice');
 
 const STAGES = [
   { id: 'brief', scene: 'mission', label: '미션 접수', sub: '브리프 게이트' },
@@ -122,6 +123,7 @@ function formatBrief(b) {
   row('★5 제약·금지·재료', b.constraints);
   row('비교·레퍼런스', b.references);
   row('★6 깊이', b.depth === 'full' ? '끝까지 (C 게이트 예비 통과 후 가이드까지)' : 'C 게이트까지 (컨셉 판정 후 가이드 생성)');
+  row('지금의 나 — 요즘 꽂힌 것', b.nowFocus);
   row('메모', b.memo);
   return L.join('\n');
 }
@@ -280,6 +282,9 @@ class Controller {
     };
   }
 
+  /** 지금의 나 — 접수 폼의 '요즘 내가 꽂힌 것'. 그 프로젝트에만 쓰고 쌓지 않는다 */
+  nowNote() { const v = this.brief && String(this.brief.nowFocus || '').trim(); return v || null; }
+
   /** 근본 이슈 — 사람이 확정한 것, 없으면 화가의 추천 */
   root() {
     const b = this.run.results.brief;
@@ -408,14 +413,27 @@ class Controller {
     };
     walk(obj, [], '', null);
     if (!found.length) return;
+    // AI투 검사기 — 걸린 문장 · 100자 넘는 문장 · 사람이 바로 읽는 칸(keys, 예: 리뷰 카드)만 교열에 보낸다
+    const must = new Set(keys);
+    const before = voice.tally(found.map((f) => f.text));
+    const targets = found.filter((f) => must.has(f.path[f.path.length - 1]) || voice.lint(f.text).length);
+    const stat = (after) => {
+      this.run.polishStats = this.run.polishStats || {};
+      const prev = keys.length && this.run.polishStats[stage];
+      const sum = (a, b) => { const o = { ...(a || {}) }; for (const [k, v] of Object.entries(b || {})) o[k] = (o[k] || 0) + v; return o; };
+      this.run.polishStats[stage] = prev
+        ? { sentences: prev.sentences + found.length, sent: prev.sent + targets.length, before: prev.before + before.total, after: prev.after + after.total, byKindBefore: sum(prev.byKindBefore, before.byKind), byKindAfter: sum(prev.byKindAfter, after.byKind) }
+        : { sentences: found.length, sent: targets.length, before: before.total, after: after.total, byKindBefore: before.byKind, byKindAfter: after.byKind };
+    };
+    if (!targets.length) { stat(before); return; }
     let res;
     try {
       res = await this.call({
         role: 'editor', prompt: 'p_polish', stage, extras: false,
-        agent: { key: 'editor', name: '조수 · 교열', task: `문장 다듬기 · ${found.length}문장` },
-        ctx: { stageLabel: LABEL[stage] || stage, mission: this.mission && { deliverable: this.mission.deliverable, product: this.mission.product, target: this.mission.target, channel: this.mission.channel }, sentences: found.map(({ id, text, ctx }) => ({ id, text, context: ctx || undefined })) },
+        agent: { key: 'editor', name: '조수 · 교열', task: `문장 다듬기 · ${targets.length}/${found.length}문장` },
+        ctx: { stageLabel: LABEL[stage] || stage, mission: this.mission && { deliverable: this.mission.deliverable, product: this.mission.product, target: this.mission.target, channel: this.mission.channel }, sentences: targets.map(({ id, text, ctx }) => ({ id, text, context: ctx || undefined, flags: voice.lint(text).map((h) => `${h.kind}: ${h.phrase}`) })) },
       });
-    } catch (e) { this.line('시스템', `교열을 건너뜀 — ${e.message}`, stage); return; }
+    } catch (e) { stat(before); this.line('시스템', `교열을 건너뜀 — ${e.message}`, stage); return; }
     const by = Object.fromEntries(found.map((f) => [f.id, f]));
     const applied = [];
     for (const ed of arr(res.edits)) {
@@ -425,9 +443,12 @@ class Controller {
       let t = obj; for (const k of f.path.slice(0, -1)) t = t[k];
       if (t && t[f.path[f.path.length - 1]] === f.text) { t[f.path[f.path.length - 1]] = ed.after; applied.push({ before: f.text, after: ed.after, issue: ed.issue || '' }); }
     }
+    const finals = found.map((f) => { let t = obj; for (const k of f.path) t = t == null ? t : t[k]; return typeof t === 'string' ? t : f.text; });
+    stat(voice.tally(finals));
     this.run.polish = this.run.polish || {};
     this.run.polish[stage] = [...(keys.length ? arr(this.run.polish[stage]) : []), ...applied];
-    if (applied.length) this.line('조수', `교열 — ${found.length}문장 중 ${applied.length}곳을 다듬었어요.`, stage);
+    const ps = this.run.polishStats[stage];
+    if (applied.length) this.line('조수', `교열 — ${targets.length}문장을 검토해 ${applied.length}곳을 다듬었어요 (AI투 ${before.total} → ${ps && !keys.length ? ps.after : '…'}).`, stage);
   }
 
   /* ---------- 더프롬 판단 브레인 ---------- */
@@ -608,7 +629,7 @@ class Controller {
     const json = await this.call({
       role: 'director', prompt: '02_canvas', stage: 'canvas',
       agent: { key: 'painter', name: '화가', task: '캔버스 — 나로부터 · 컨셉 한 문장 초안' },
-      ctx: { mission: b.mission, assumptions: b.assumptions, attachment_insights: b.attachment_insights, type: this.type },
+      ctx: { mission: b.mission, assumptions: b.assumptions, attachment_insights: b.attachment_insights, type: this.type, now: this.nowNote() },
     });
     this.run.results.canvas = json;
     this.line('화가', json.painter_line, 'canvas');
@@ -732,14 +753,43 @@ class Controller {
       this.send('progress', { stage: 'think' });
       const history = T.rounds.map((r) => ({ n: r.n, now: r.card && r.card.now, snag: r.card && r.card.snag, moves: arr(r.painter && r.painter.moves).map((m) => ({ move: m.move, how: m.how, result: m.result, keep: m.keep })), question: r.card && r.card.question, answer: r.answer ? `${ANSWER_KO[r.answer.choice] || r.answer.choice}${r.answer.text ? ` — ${r.answer.text}` : ''}` : null }));
       const usedMoves = arr(last && last.painter && last.painter.moves).map((m) => m.move);
-      const painter = await this.call({
-        role: 'director', prompt: '12_round', stage: 'think',
-        agent: { key: 'painter', name: '화가', task: `생각의 회차 ${n}` },
-        ctx: { round: n, mission: this.mission, root: this.root(), lineage: this.lineage(), tunnel: this.tunnelDigest(), baseline: this.run.results.baseline || null, scope: this.scope(), rfp: (b && b.rfp) || null, type: this.typeBrief(), history, directive: this.roundDirective(last), avoidRepeat: usedMoves },
-      });
-      // 대입이 비어 있으면 그 수는 버린다 — 말장난을 걸러내는 문
-      painter.moves = arr(painter.moves).map((m) => ({ ...m, move: MOVES.includes(m.move) ? m.move : '깊이', keep: m.keep !== false && !!(m.substitute && String(m.substitute.changes || '').trim().length >= 6) }));
-      painter.questions = arr(painter.questions).filter((q) => q && q.question).map((q) => ({ ...q, type: QTYPES.includes(q.type) ? q.type : '전제 빼기' })).slice(0, 3);
+      const roundCtx = { round: n, mission: this.mission, root: this.root(), lineage: this.lineage(), tunnel: this.tunnelDigest(), baseline: this.run.results.baseline || null, scope: this.scope(), rfp: (b && b.rfp) || null, type: this.typeBrief(), history, directive: this.roundDirective(last), avoidRepeat: usedMoves, now: this.nowNote(), retryNote: null };
+      const callPainter = (ctx, task) => this.call({ role: 'director', prompt: '12_round', stage: 'think', agent: { key: 'painter', name: '화가', task }, ctx });
+      const normalize = (p) => {
+        // 대입이 비어 있으면 그 수는 버린다 — 말장난을 걸러내는 문
+        p.moves = arr(p.moves).map((m) => ({ ...m, move: MOVES.includes(m.move) ? m.move : '깊이', keep: m.keep !== false && !!(m.substitute && String(m.substitute.changes || '').trim().length >= 6) }));
+        p.questions = arr(p.questions).filter((q) => q && q.question).map((q) => ({ ...q, type: QTYPES.includes(q.type) ? q.type : '전제 빼기' })).slice(0, 3);
+        return p;
+      };
+      // 회차 규칙을 코드로 지킨다 — 같은 수를 주된 수로 연속해 두지 않는다(사람이 그 수를 고른 경우는 예외) · 질문 3개는 서로 다른 방식
+      const chosenMove = last && last.answer && { deeper: '깊이', wider: '넓이', twist: '비틀기' }[last.answer.choice];
+      const lastMain = arr(last && last.painter && last.painter.moves)[0];
+      const violations = (p) => {
+        const out = [];
+        const main = p.moves[0] && p.moves[0].move;
+        if (main && lastMain && main === lastMain.move && main !== chosenMove) out.push(`지난 회차의 주된 수(${main})를 다시 주된 수로 두었다. 다른 수를 주된 수로 써라.`);
+        const types = p.questions.map((q) => q.type);
+        if (p.questions.length < 3 || new Set(types).size < types.length) out.push('찌르는 질문 3개를 서로 다른 방식으로 써라 (전제 빼기 · 극단 밀기 · 반대편 서기 · 하나만 남기기 · 실패 먼저 중 셋).');
+        return out;
+      };
+      let painter;
+      try {
+        painter = normalize(await callPainter(roundCtx, `생각의 회차 ${n}`));
+        const bad = violations(painter);
+        if (bad.length) {
+          this.line('시스템', `회차 ${n} — 회차 규칙을 어겨 한 번 다시 둡니다: ${bad.join(' ')}`, 'think');
+          const retry = await callPainter({ ...roundCtx, retryNote: `지난 출력이 회차 규칙을 어겼다 — ${bad.join(' ')}` }, `생각의 회차 ${n} · 규칙 맞춰 다시`).catch(() => null);
+          if (retry) painter = normalize(retry);
+          const still = violations(painter);
+          if (still.length) (this.run.warnings = this.run.warnings || []).push({ stage: 'think', at: now(), text: `회차 ${n}: 다시 두어도 규칙을 어김 — ${still.join(' ')}` });
+        }
+      } catch (e) {
+        // 1회차는 출발점이 없으니 오류로 둔다. 2회차부터는 지금까지의 최선으로 이어 간다
+        if (this.abort.signal.aborted || !T.rounds.length) throw e;
+        this.line('시스템', `회차 ${n} 실패 — 회차 ${n - 1}의 최선으로 이어 갑니다 (${e.message})`, 'think');
+        (this.run.warnings = this.run.warnings || []).push({ stage: 'think', at: now(), text: `회차 ${n} 실패: ${e.message}` });
+        break;
+      }
       let brain = null;
       if (settings.get().run.brain !== 'off') {
         brain = await this.call({

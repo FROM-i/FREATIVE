@@ -18,7 +18,7 @@ function brief(p, run, ctx) {
   const b = run.results.brief;
   if (!b) return head('brief', '미션 접수', '브리프 게이트 — 화가가 접수 폼과 첨부를 읽습니다') + waiting('미션 편지를 읽는 중');
   const m = b.mission || {};
-  const rows = [['결과물', m.deliverable], ['목적', m.objective], ['타겟', m.target], ['제품·서비스', m.product], ['채널', m.channel], ['디바이스', m.device], ['핵심 순간', m.key_moment], ['브랜드', m.brand], ['성공 기준', m.success]];
+  const rows = [['결과물', m.deliverable], ['목적', m.objective], ['타겟', m.target], ['제품·서비스', m.product], ['채널', m.channel], ['디바이스', m.device], ['핵심 순간', m.key_moment], ['브랜드', m.brand], ['성공 기준', m.success], ['지금의 나', p.brief && p.brief.nowFocus]];
   const q = run.stages.brief.status === 'waiting' ? (run.pausedAt === 'root' ? rootForm(b) : questions(b)) : '';
   const models = run.models || {};
   const plan = b.plan || {};
@@ -686,8 +686,12 @@ const BASE = { brief, canvas, airplane, tunnel, think, positioning, forpop, conc
 function polishBox(run, stage) {
   const keys = stage === 'creative' ? ['creative', 'report'] : [stage];
   const list = keys.flatMap((k) => arr(run.polish && run.polish[k]));
-  if (!list.length) return '';
-  return `<details class="polish"><summary><span class="kicker">교열 — ${list.length}곳을 사람이 읽는 문장으로 다듬었습니다</span></summary>
+  const st = keys.map((k) => run.polishStats && run.polishStats[k]).filter(Boolean);
+  const agg = st.reduce((o, x) => ({ sentences: o.sentences + x.sentences, sent: o.sent + x.sent, before: o.before + x.before, after: o.after + x.after }), { sentences: 0, sent: 0, before: 0, after: 0 });
+  const kinds = {}; for (const x of st) for (const [k, v] of Object.entries(x.byKindBefore || {})) kinds[k] = (kinds[k] || 0) + v;
+  const statLine = st.length ? ` · AI투 ${agg.before} → ${agg.after} · 검토 ${agg.sent}/${agg.sentences}문장${Object.keys(kinds).length ? ` (${Object.entries(kinds).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, v]) => `${k} ${v}`).join(', ')})` : ''}` : '';
+  if (!list.length && !st.length) return '';
+  return `<details class="polish"><summary><span class="kicker">교열 — ${list.length}곳을 사람이 읽는 문장으로 다듬었습니다${esc(statLine)}</span></summary>
     ${list.map((x) => `<div class="pl"><div class="b"><span class="muted">전</span> ${esc(x.before)}</div><div class="a"><span class="muted">후</span> ${esc(x.after)}</div>${x.issue ? `<small class="muted">${esc(x.issue)}</small>` : ''}</div>`).join('')}</details>`;
 }
 

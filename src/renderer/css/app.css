@@ -717,3 +717,6 @@ dl.rv dd.rq { font-weight: 800; font-size: 17px; }
 .rv-list .rv-card { opacity: .92; }
 .tbl tr.dim td { opacity: .5; text-decoration: line-through; }
 .rootform .root-layers .kicker { display: block; margin-bottom: 2px; }
+.cost-tbl { max-width: 720px; font-size: 13px; }
+.cost-tbl td.mono, .cost-tbl th { white-space: nowrap; }
+.cost-tbl tr.dim-row td { color: var(--mute, #8A867D); }

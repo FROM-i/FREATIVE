@@ -57,7 +57,7 @@ app.whenReady().then(async () => {
     const user = await require(path.join(src, 'services/auth')).current();
     const p = store.create(user, {
       projectName: '겨울 원두 팝업', deliverables: ['signage', 'promotion'], purposes: ['인지', '참여'],
-      target: '주말 성수동을 걷는 20~30대', product: '제주 로컬 커피 브랜드 겨울 원두', channel: '오프라인', devices: ['옥외·사이니지'], keyMoment: '', depth: 'gate',
+      target: '주말 성수동을 걷는 20~30대', product: '제주 로컬 커피 브랜드 겨울 원두', channel: '오프라인', devices: ['옥외·사이니지'], keyMoment: '', depth: 'gate', nowFocus: '요즘 기다리는 시간이 자꾸 눈에 밟힌다',
     }, [att]);
 
     const events = [];
@@ -92,6 +92,9 @@ app.whenReady().then(async () => {
       await orch.answerReview(p.id, answers[i], emit);
     }
     await waitFor((e) => e.kind === 'gate' && e.gate === 'C');
+    { const rr = store.get(p.id).run; const retried = rr.agents.filter((x) => x.stage === 'think' && /규칙 맞춰 다시/.test(x.task || '')).length; console.log('round rule retry', retried, '| round3 main move', rr.results.think.rounds[2].painter.moves[0].move); if (retried !== 1 || rr.results.think.rounds[2].painter.moves[0].move === '비틀기') fail('회차 규칙 코드 검사가 다시 두게 하지 않음'); }
+    { const ps = store.get(p.id).run.polishStats || {}; console.log('polishStats', JSON.stringify(Object.fromEntries(Object.entries(ps).map(([k, v]) => [k, `${v.sent}/${v.sentences} ${v.before}→${v.after}`])))); if (!ps.concept || ps.concept.sent > ps.concept.sentences) fail('교열 통계 없음'); }
+    { const voice = require(path.join(src, 'voice')); const h = voice.lint('길을 알고 나면, 잎 하나가 달라 보입니다. 특별한 경험을 제공합니다.'); console.log('voice', h.map((x) => x.kind).join(',')); if (h.length < 3 || voice.lint('월말 알림이 이번 달 가장 큰 지출 세 건을 보여 줍니다.').length) fail('AI투 검사기 오작동'); }
     { const T = store.get(p.id).run.results.think; console.log('think rounds', T.rounds.length, '| answers', T.rounds.map((r) => r.answer && r.answer.choice).join('→'), '| final', (T.final && T.final.idea || '').slice(0, 40)); if (T.rounds.length !== 3 || !T.final) fail('생각의 회차 흐름 이상'); }
     events.length = 0;
     await orch.gate(p.id, 'revise', '테마를 더 짧게', emit);
@@ -170,6 +173,7 @@ app.whenReady().then(async () => {
         ['조형 언어 ← 사조', R.creative.blueprint.form_language.principles[0].becomes, ['10_creative']],
         ['사조 조형 조작', R.airplane.travels[0].form_moves[0].move, ['09_concepts', '10_bp_section', '10_blueprint']],
         ['터널 원문 → 컨셉', R.tunnel.layers[0].insights[0].detail, ['09_concepts', '09_concept_kit', '10_bp_section']],
+        ['지금의 나', '요즘 기다리는 시간이 자꾸 눈에 밟힌다', ['01_brief', '02_canvas', '12_round']],
         ['근본 이슈 (사람 확정)', run.root.issue, ['12_round', 'b_round', '07_positioning', '08_forpop', '09_concepts', '10_bp_section', '10_creative', 'b_verify']],
         ['회차 · 사람의 답', '숫자보다 몸으로 느끼게', ['12_round']],
         ['회차 · 찌르는 질문', R.think.rounds[0].card.question, ['12_round', '07_positioning', '08_forpop']],
@@ -187,11 +191,14 @@ app.whenReady().then(async () => {
 
     // 영감 → 터널부터 다시 (이번엔 중간 리뷰 자동 진행)
     require(path.join(src, 'settings')).set({ run: { midReview: 'auto', maxRounds: 3 } });
+    process.env.CT_MOCK_FAIL_ROUND = '3'; // 자동 회차 3회차가 실패해도 2회차 최선으로 이어 가는지
     events.length = 0;
     await orch.inspire(p.id, 'tunnel', '대기 줄 자체를 경험으로 보고 싶다', emit);
     await waitFor((e) => e.kind === 'gate' && e.gate === 'C');
     const r2 = store.get(p.id).run;
-    { const T = r2.results.think; console.log('auto rounds', T.rounds.length, '| stop', T.rounds.map((x) => x.stopHint).join(',')); if (!T.final || T.rounds.length < 1) fail('자동 회차 실패'); }
+    delete process.env.CT_MOCK_FAIL_ROUND;
+    { const T = r2.results.think; console.log('auto rounds', T.rounds.length, '| final from', T.final && T.final.from_round, '| warnings', (r2.warnings || []).filter((w) => w.stage === 'think').length); if (!T.final || T.rounds.length !== 2 || T.final.from_round !== 2) fail('회차 실패 뒤 이어 가기 실패'); }
+    { const u = require(path.join(src, 'cost')).summary({ includeMock: true }); console.log('cost byProject', u.byProject.length, u.byProject[0] && u.byProject[0].name, u.byProject[0] && u.byProject[0].calls, '| byDay', u.byDay.length); if (!u.byProject.length || !u.byDay.length || u.byProject[0].name !== '겨울 원두 팝업') fail('비용 프로젝트별·일별 집계 실패'); }
     console.log('inspire ok — versions', r2.versions.length, 'inspirations', r2.inspirations.length, 'airplane kept', !!r2.results.airplane, 'tunnel redone', r2.stages.tunnel.status);
     await orch.gate(p.id, 'go', '', emit);
     await waitFor((e) => e.kind === 'done' || e.kind === 'error');

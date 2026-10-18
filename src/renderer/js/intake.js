@@ -6,7 +6,7 @@ const DRAFT_KEY = 'ct.intake.draft';
 const empty = () => ({
   projectName: '', worker: '', deliverables: [], deliverableNote: '', purposes: [], purposeNote: '',
   target: '', product: '', channel: '', devices: [], keyMoment: '',
-  brand: '', constraints: '', references: '', depth: 'gate', images: true, memo: '',
+  brand: '', constraints: '', references: '', depth: 'gate', images: true, memo: '', nowFocus: '',
 });
 
 function loadDraft() { try { return { ...empty(), ...JSON.parse(localStorage.getItem(DRAFT_KEY) || '{}') }; } catch { return empty(); } }
@@ -80,6 +80,10 @@ export function renderIntake(root, { types, onStart, worker = '' }) {
         <div class="q"><div class="q-no">06</div><div class="q-body">
           <div class="q-title">핵심 순간 <span class="star opt">★3 권장</span><span class="hint">비우면 화가가 도출하거나 최대 3개만 묻습니다</span></div>
           <input class="input" name="keyMoment" placeholder="이걸 만난 사람이 가장 얻고 싶은 것 — 예) 지나가다 멈춰 한 모금 맛볼 이유" value="${esc(s.keyMoment)}"/></div></div>
+
+        <div class="q"><div class="q-no">07</div><div class="q-body">
+          <div class="q-title">요즘 내가 꽂힌 것 <span class="star opt">선택</span><span class="hint">'나로부터'의 출발점 — 관심사, 최근에 본 것, 붙잡고 있는 고민. 과제와 닿지 않으면 화가가 억지로 쓰지 않습니다</span></div>
+          <textarea class="textarea" name="nowFocus" rows="2" placeholder="예) 요즘 자꾸 '기다리는 시간'이 눈에 밟힌다 / 지난주 본 전시의 빈 벽 / 우리 팀이 너무 설명을 많이 하는 것 같다">${esc(s.nowFocus || '')}</textarea></div></div>
 
         <details class="more" ${s.brand || s.constraints || s.references || s.memo ? 'open' : ''}>
           <summary>더 알려주기 <span class="muted" style="font-weight:400;font-size:13px">브랜드 · 제약 · 레퍼런스 · 깊이 — 비워도 됩니다</span></summary>

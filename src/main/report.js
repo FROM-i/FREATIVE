@@ -158,6 +158,9 @@ function build(p) {
     out.push('\n## 9. 더프롬 판단 브레인');
     out.push(table(['단계', '방향 제시', '판정', '핵심 지적'], brain.map(([k, v]) => [k, (v.direct || {}).direction || '', (v.verify || {}).verdict || '', ((v.verify || {}).issues || [])[0] || ''])));
   }
+  if (p.run && p.run.polishStats && Object.keys(p.run.polishStats).length) {
+    out.push('\n## 부록 · 교열 — AI투 검사기 (writing.md 4장)\n' + table(['단계', '검토 / 전체 문장', 'AI투 전 → 후', '많이 나온 것'], Object.entries(p.run.polishStats).map(([k, v]) => [k, `${v.sent} / ${v.sentences}`, `${v.before} → ${v.after}`, Object.entries(v.byKindBefore || {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([kk, n]) => `${kk} ${n}`).join(', ')])));
+  }
   if (p.run && (p.run.inspirations || []).length) out.push('\n## 10. 디자이너의 영감\n' + list(p.run.inspirations, (i) => `${i.stage} · ${i.text}`));
   if (p.run && p.run.usage) out.push(`\n---\nAPI 비용(추정) $${(p.run.usage.cost || 0).toFixed(3)} · 호출 ${p.run.usage.calls} · 이미지 ${p.run.usage.images || 0}`);
   return out.filter(Boolean).join('\n');

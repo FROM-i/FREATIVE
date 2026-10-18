@@ -19,6 +19,7 @@
 {{json:mission}}
 
 ## 문장 목록 ({{stageLabel}}) — context는 같은 항목의 다른 칸이다. 고치는 대상은 text뿐이다
+flags는 AI투 검사기가 글자 그대로 찾은 표현이다. 문맥상 괜찮으면 고치지 않는다 — 고칠지는 네가 판단한다.
 {{json:sentences}}
 
 고쳐야 할 문장만 골라 고쳐라. JSON으로 출력하라.

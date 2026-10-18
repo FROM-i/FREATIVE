@@ -20,6 +20,7 @@ async function loadCatalog() {
   S.isms = c.isms;
 }
 const usd = (v) => `$${(v || 0).toFixed((v || 0) < 1 ? 3 : 2)}`;
+const tk = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n || 0));
 const krw = (v) => `₩${Math.round((v || 0) * ((S.settings && S.settings.krwPerUsd) || 1400)).toLocaleString()}`;
 async function boot() {
   [S.info, S.user, S.types, S.isms, S.settings, S.knowledge] = await Promise.all([
@@ -385,6 +386,10 @@ async function renderSettings() {
           ${months.length ? `<div class="usage-bars">${months.map(([mm, v]) => `<div><span class="mono">${mm}</span><i style="width:${Math.max(2, (v / maxM) * 100)}%"></i><span class="mono">${usd(v)}</span></div>`).join('')}</div>` : ''}
           ${Object.keys(usage.byModel || {}).length ? `<div class="muted" style="font-size:12px">${Object.entries(usage.byModel).map(([mm, v]) => `${esc(mm)} ${usd(v)}`).join(' · ')}</div>` : ''}
           <span class="muted" style="font-size:12px">실제 청구액은 OpenAI 대시보드(platform.openai.com › Usage)가 기준입니다.</span></div></div>
+      <div class="srow" style="align-items:start"><div class="lbl">프로젝트별<small>회차 수 상한(설정 › 실행)을 정하는 근거 — 최근 사용 순</small></div>
+        ${arr(usage.byProject).length ? `<table class="tbl cost-tbl"><thead><tr><th>프로젝트</th><th>호출</th><th>입력</th><th>출력</th><th>비용</th></tr></thead><tbody>${usage.byProject.slice(0, 30).map((x) => `<tr class="${x.deleted ? 'dim-row' : ''}"><td>${esc(x.name)}<small class="muted mono"> ${esc((x.last || '').slice(0, 10))}</small></td><td class="mono">${x.calls}</td><td class="mono">${tk(x.input)}</td><td class="mono">${tk(x.output)}</td><td class="mono">${usd(x.usd)} · ${krw(x.usd)}</td></tr>`).join('')}</tbody></table>` : '<span class="muted">아직 실제 호출이 없습니다</span>'}</div>
+      <div class="srow" style="align-items:start"><div class="lbl">일별<small>최근 60일</small></div>
+        ${arr(usage.byDay).length ? `<table class="tbl cost-tbl"><thead><tr><th>날짜</th><th>호출</th><th>입력</th><th>출력</th><th>비용</th></tr></thead><tbody>${usage.byDay.map((x) => `<tr><td class="mono">${esc(x.day)}</td><td class="mono">${x.calls}</td><td class="mono">${tk(x.input)}</td><td class="mono">${tk(x.output)}</td><td class="mono">${usd(x.usd)} · ${krw(x.usd)}</td></tr>`).join('')}</tbody></table>` : '<span class="muted">아직 실제 호출이 없습니다</span>'}</div>
       <div class="srow"><div class="lbl">미션당 예산 (USD)<small>넘으면 경고</small></div><div class="inline"><input class="input box" type="number" step="0.5" min="0" data-k="run.budgetUsd" value="${s.run.budgetUsd}" style="max-width:120px"/><span class="muted">환율</span><input class="input box" type="number" data-k="krwPerUsd" value="${s.krwPerUsd}" style="max-width:120px"/><span class="muted">원/달러</span></div></div>
       <div class="srow" style="align-items:start"><div class="lbl">단가 (USD / 1M tokens)<small>OpenAI 가격이 바뀌면 고친다</small></div>
         <div class="stack" style="gap:6px"><div class="price-row muted"><span>모델</span><span>입력</span><span>캐시 입력</span><span>출력</span></div>

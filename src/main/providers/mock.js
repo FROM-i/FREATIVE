@@ -99,6 +99,8 @@ const builders = {
   },
   '12_round': (ctx) => {
     const n = ctx.round || 1;
+    if (process.env.CT_MOCK_FAIL_ROUND && +process.env.CT_MOCK_FAIL_ROUND === n) throw new Error('mock: 회차 실패 흉내');
+    const lazy = n === 3 && !ctx.retryNote; // 3회차 첫 출력은 회차 규칙을 어긴다 — 코드 검사가 다시 두게 하는지 시험
     const R = [
       { idea: '외벽 사인이 원두 이름 대신 "제주에서 이 컵까지 487km"를 크게 보여 준다', snag: '이 안은 아직 "산지 정보를 크게 쓴 간판"의 변주다. 숫자를 읽고 지나가면 끝이다.', move: '깊이', how: '왜 숫자를 읽고도 멈추지 않나 → 거리가 몸으로 느껴지지 않아서', result: '거리는 숫자가 아니라 걸음으로 느껴질 때 멈춤이 된다' },
       { idea: '보도 위 487걸음 구간에 원두의 이동 경로를 깔아, 걷는 사람이 산지 거리를 몸으로 지나오게 한다', snag: '경로를 까는 것만으로는 걸음을 멈출 이유가 끝에 없다. 끝에 무엇이 있는지가 비어 있다.', move: '비틀기', how: '방향 — 사람이 팝업으로 오는 것이 아니라, 팝업이 걷는 사람의 경로 위로 나간다', result: '시음은 매장 안이 아니라 경로의 끝, 보도 위에서 일어난다' },
@@ -109,13 +111,13 @@ const builders = {
       current: { idea: R.idea, from: n === 1 ? '터널 출구 · 사조(일본 미학)' : '지난 회차의 최선과 사람의 답' },
       snag: R.snag,
       moves: [
-        { move: R.move, how: R.how, result: R.result, substitute: { who: '성수동을 걷는 20~30대', changes: '팝업 앞 5m에서 걸음을 멈추고 30초 머문다' }, keep: true },
+        { move: lazy ? '비틀기' : R.move, how: R.how, result: R.result, substitute: { who: '성수동을 걷는 20~30대', changes: '팝업 앞 5m에서 걸음을 멈추고 30초 머문다' }, keep: true },
         { move: '넓이', how: '다른 업계 — 마라톤 거리 표지', result: '거리 표지는 숫자보다 남은 거리를 느끼게 한다', substitute: { who: '', changes: '' }, keep: true },
       ],
       best: { idea: R.idea, why: '근본 이슈(멈출 이유)를 맛 이전에 몸으로 만든다', root_change: '지나가던 사람이 경로를 따라 걷다 팝업 앞에서 멈춘다', map: { novelty: 2 + n, use: 3 }, pieces: ['마라톤 거리 표지의 "남은 거리"'] },
       questions: [
         { type: '전제 빼기', question: '사인을 아예 세우지 않고, 보도 자체를 사인으로 쓰면 어떨까?', attacks: '팝업에는 간판이 있어야 한다는 전제', leads_to: '비틀기', gain: '보행 동선 전체가 접점이 된다', loss: '멀리서 팝업을 알아보는 얼굴을 잃는다' },
-        { type: '실패 먼저', question: '한 달 뒤 이 팝업이 실패했다면, 사람들이 숫자만 찍고 지나갔기 때문 아닐까?', attacks: '정보를 크게 쓰면 멈춘다는 가정', leads_to: '깊이', gain: '멈춤의 진짜 원인을 다시 찾는다', loss: '지금 안의 시각적 단순함' },
+        { type: lazy ? '전제 빼기' : '실패 먼저', question: '한 달 뒤 이 팝업이 실패했다면, 사람들이 숫자만 찍고 지나갔기 때문 아닐까?', attacks: '정보를 크게 쓰면 멈춘다는 가정', leads_to: '깊이', gain: '멈춤의 진짜 원인을 다시 찾는다', loss: '지금 안의 시각적 단순함' },
         { type: '반대편 서기', question: '빨리 지나가고 싶은 출근길 사람에게 487걸음 경로는 방해가 아닐까?', attacks: '경로가 누구에게나 즐겁다는 가정', leads_to: '조합', gain: '시간대별로 다른 경로를 설계한다', loss: '하나의 강한 경험' },
       ],
       room: n >= 3 ? 'less' : 'more',
