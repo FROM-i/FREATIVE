@@ -179,6 +179,9 @@ app.whenReady().then(async () => {
         ['회차 · 찌르는 질문', R.think.rounds[0].card.question, ['12_round', '07_positioning', '08_forpop']],
         ['회차 · 최선', R.think.final.idea, ['07_positioning', '08_forpop', '09_concepts', '10_bp_section', '10_blueprint']],
         ['터널 → 회차', R.tunnel.synth.exit_light, ['12_round']],
+        ['사조 처리 → 콘텐츠', R.airplane.synth.treatments && R.airplane.synth.treatments[0].becomes, ['10_content']],
+        ['콘텐츠 → 장면', R.creative.contents && R.creative.contents[0] && R.creative.contents[0].title, ['10_creative']],
+        ['터널 인사이트 → 콘텐츠', R.tunnel.layers[0].insights[0].detail, ['10_content']],
         ['브레인 방향 · 캔버스', run.brain.canvas && run.brain.canvas.direct && run.brain.canvas.direct.direction, ['02_canvas']],
       ];
       const miss = [];
@@ -201,6 +204,9 @@ app.whenReady().then(async () => {
       console.log('isms', [...ids].join(','), '| contrast', contrast ? `${contrast.id}↔${contrast.contrast.with}` : '-', '| ism redo', redo.map((t) => t.id).join(',') || '-', '| ledger rules', ledger && ledger.rules.length, '| section calls', crCalls, '/', anatN, '| factStats', JSON.stringify(Object.fromEntries(Object.entries(run.factStats || {}).map(([k, v]) => [k, v.numbers]))));
       if (!contrast && !R.brief.plan.isms.some((x) => /대립/.test(x.why || ''))) { /* 화가가 이미 짝을 골랐으면 통과 */ }
       if (!ledger || !ledger.rules.length) fail('설계 원장이 없음');
+      if (!(R.creative.contents || []).length) fail('콘텐츠가 생성되지 않음');
+      if (!/## 8\.5 콘텐츠/.test(md)) fail('보고서에 콘텐츠 장이 없음');
+      if (!/일반 유형을 어떻게 다뤘나/.test(md)) fail('보고서에 일반 유형 처리가 없음');
       if (!redo.length) fail('겹친 사조 조작을 다시 두지 않음');
       if (crCalls > anatN * 2) fail(`설계 절 호출이 너무 많음 (${crCalls})`);
       if (/예비 판정입니다/.test(md.split('\n').slice(3).join('\n'))) fail('본문에 예비 판정 고지가 남음');

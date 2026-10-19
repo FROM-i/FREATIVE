@@ -325,7 +325,7 @@ class Controller {
     const chosen = p && arr(p.territories).find((x) => p.final && x.id === p.final.id);
     return {
       canvas: R.canvas && { from_me: R.canvas.from_me, tension: R.canvas.tension, inertia: R.canvas.inertia, concept_draft: R.canvas.concept_draft },
-      airplane: s && { hybrid: s.hybrid, suitcase: s.suitcase, leave: s.leave_together, selected: s.selected, travels: arr(R.airplane.travels).filter((t) => !t.error && (!arr(s.selected).length || arr(s.selected).includes(t.id))).map((t) => ({ id: t.id, name: t.name, take: t.take, apply: t.apply, form_moves: t.form_moves, leave: t.leave })) },
+      airplane: s && { hybrid: s.hybrid, split: s.split, suitcase: s.suitcase, treatments: s.treatments, leave: s.leave_together, selected: s.selected, travels: arr(R.airplane.travels).filter((t) => !t.error && (!arr(s.selected).length || arr(s.selected).includes(t.id))).map((t) => ({ id: t.id, name: t.name, take: t.take, apply: t.apply, treatments: t.treatments, form_moves: t.form_moves, leave: t.leave })) },
       tunnel: t && { exit_light: t.exit_light, keep: t.keep, change: t.change, conflicts: t.conflicts },
       positioning: p && { whitespace: p.whitespace, chosen, reason: p.final && p.final.reason },
       root: this.root(),
@@ -884,7 +884,7 @@ ${o.dups.map((d) => `- ${d.move.slice(0, 100)} ↔ ${d.with}`).join('\n')}
   /** 뒤 단계용 계보 요약 — 사조는 코어·조형 조작 이름만 */
   lineageBrief() {
     const L = this.lineage();
-    if (L.airplane) L.airplane = { hybrid: L.airplane.hybrid, selected: L.airplane.selected, travels: arr(L.airplane.travels).map((t) => ({ id: t.id, core: t.core, form_moves: arr(t.form_moves).map((m) => (m.move || '').slice(0, 120)) })) };
+    if (L.airplane) L.airplane = { hybrid: L.airplane.hybrid, split: L.airplane.split, treatments: L.airplane.treatments, selected: L.airplane.selected, travels: arr(L.airplane.travels).map((t) => ({ id: t.id, core: t.core, form_moves: arr(t.form_moves).map((m) => (m.move || '').slice(0, 120)) })) };
     if (L.think) L.think = { final: L.think.final };
     return L;
   }
@@ -1321,23 +1321,40 @@ ${o.dups.map((d) => `- ${d.move.slice(0, 100)} ↔ ${d.with}`).join('\n')}
     this.setStage('creative', { progress: 0.45 });
     this.send('progress', { stage: 'creative' });
 
-    // ② 핵심 장면 — 설계서에서 서로 다른 접점을 고른다. 재작업이면 장면을 짚은 지적이 있을 때만 다시 그린다
-    const sceneFix = fixes.filter((f) => /장면|대표|핵심 장면|헤드라인|시각화|이미지|앵글|구도/.test(f));
-    if (!rework || sceneFix.length || !arr(prev.examples).length) {
+    // ② 콘텐츠 — 사람이 실제로 보고 하는 것. 설계서는 그릇(체계·규칙)이고, 사조의 처리·인사이트·노하우가 가장 잘 드러나는 곳은 담을 것이다
+    const contentFix = fixes.filter((f) => /콘텐츠|컨텐츠|문구|예시|이야기|프로그램/.test(f));
+    let contents = rework && arr(prev.contents).length && !contentFix.length ? prev.contents : null;
+    if (!contents) {
+      const nC = Math.max(3, Math.min(6, (b.plan.example_count || 3) + 1));
+      const cj = await this.call({
+        role: 'director', prompt: '10_content', stage: 'creative',
+        agent: { key: 'painter', name: '화가', task: `콘텐츠 ${nC}개 — 사람이 실제로 보고 하는 것` },
+        ctx: { ...common, lineage: this.lineageBrief(), tunnel: this.tunnelDigest(), blueprint: { summary: blueprint.summary, form_language: blueprint.form_language, content_modules: arr(blueprint.content_modules).map((m) => ({ name: m.name, for: m.for })), journey: blueprint.journey, ledger: { terms: ledger.terms } }, root: this.root(), now: this.nowNote(), contentCount: nC },
+      }).catch((e) => { this.line('시스템', `콘텐츠 생성 실패 — 장면은 설계서에서만 고릅니다 (${e.message})`, 'creative'); return { contents: [] }; });
+      contents = arr(cj.contents).slice(0, 6);
+      if (cj.line) this.line('화가', cj.line, 'creative');
+    }
+    this.run.results.creative.contents = contents;
+    this.setStage('creative', { progress: 0.55 });
+    this.send('progress', { stage: 'creative' });
+
+    // ③ 핵심 장면 — 콘텐츠가 보이는 순간. 재작업이면 장면·콘텐츠를 짚은 지적이 있을 때만 다시 그린다
+    const sceneFix = fixes.filter((f) => /장면|대표|핵심 장면|헤드라인|시각화|이미지|앵글|구도|형태|조형/.test(f));
+    if (!rework || sceneFix.length || contentFix.length || !arr(prev.examples).length) {
       const mustN = scope.filter((x) => x.must).length;
       const n = Math.max(3, Math.min(5, Math.max(b.plan.example_count || 3, mustN)));
       const json = await this.call({
         role: 'director', prompt: '10_creative', stage: 'creative',
         agent: { key: 'painter', name: '화가', task: `핵심 장면 ${n}곳` },
         // 장면은 설계서에서 고른다 — 계보·터널 원문은 설계서에 이미 녹아 있으니 요약만 준다 (입력 토큰이 가장 큰 호출)
-        ctx: { ...common, lineage: this.lineageBrief(), tunnel: this.tunnelBrief(), blueprint: this.blueprintDigest(blueprint, { specMax: 260 }), exampleCount: n },
+        ctx: { ...common, lineage: this.lineageBrief(), tunnel: this.tunnelBrief(), blueprint: this.blueprintDigest(blueprint, { specMax: 260 }), contents, exampleCount: n },
       });
       json.examples = (json.examples || []).slice(0, 5);
       // 다시 그린 장면은 앞 이미지를 이어받지 않는다
-      this.run.results.creative = { ...json, blueprint };
+      this.run.results.creative = { ...json, blueprint, contents };
       this.line('화가', json.painter_line, 'creative');
     } else {
-      this.run.results.creative = { ...prev, blueprint };
+      this.run.results.creative = { ...prev, blueprint, contents };
     }
     await this.polish('creative', this.run.results.creative, { skip: ['headline', 'sections', 'content_modules', 'spec', 'what', 'where', 'shows', 'becomes', 'form_language'] });
   }
@@ -1413,6 +1430,7 @@ ${o.dups.map((d) => `- ${d.move.slice(0, 100)} ↔ ${d.with}`).join('\n')}
     const pr = arr(bp.form_language && bp.form_language.principles).filter((x) => x.from && x.becomes);
     if (pr.length < 2) gaps.push({ key: null, text: '조형 언어 — 사조 원리·조형 조작이 무엇으로 바뀌는지 두 개 이상' });
     else if (sel.size && !pr.some((x) => [...sel].some((id) => String(x.from).includes(id)))) gaps.push({ key: null, text: `조형 언어 — 고른 사조(${[...sel].join(', ')})의 조작에서 나온 결정이 없음` });
+    if (anatomy.some((a) => a.key === 'placement') && !arr(bp.form_language && bp.form_language.departures).length) gaps.push({ key: null, text: '조형 언어 — 일반 유형(토템·사각 패널·기둥형 키오스크)을 사조의 처리로 어떻게 다뤘는지(departures)' });
     if (anatomy.some((a) => a.key === 'content') && arr(bp.content_modules).length < 2) gaps.push({ key: null, text: '콘텐츠 모듈 — 화면·면에 실제로 보이는 것을 두 개 이상' });
     if (arr(this.run.results.brief && this.run.results.brief.rfp && this.run.results.brief.rfp.eval_criteria).length && !arr(bp.eval_map).length) gaps.push({ key: null, text: '평가 항목마다 설계의 어디서 응답하는지(eval_map)' });
     return gaps;
@@ -1489,7 +1507,7 @@ ${o.dups.map((d) => `- ${d.move.slice(0, 100)} ↔ ${d.with}`).join('\n')}
       tunnel: () => this.tunnelDigest(),
       think: () => this.thinkDigest(),
       positioning: () => this.run.results.positioning,
-      creative: () => ({ blueprint: this.run.results.creative.blueprint && { ...this.blueprintDigest(this.run.results.creative.blueprint), baseline_gap: undefined }, examples: (this.run.results.creative.examples || []).map(({ image, imageFile, image_prompt, ...e }) => e), selection: this.run.results.creative.selection }),
+      creative: () => ({ blueprint: this.run.results.creative.blueprint && { ...this.blueprintDigest(this.run.results.creative.blueprint, { specMax: 200 }), baseline_gap: undefined }, contents: this.run.results.creative.contents, examples: (this.run.results.creative.examples || []).map(({ image, imageFile, image_prompt, ...e }) => e), selection: this.run.results.creative.selection }),
     }[id] || (() => null);
     this.run.stage = id;
     this.run.status = 'running';

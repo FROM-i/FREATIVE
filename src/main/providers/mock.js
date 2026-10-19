@@ -163,14 +163,15 @@ const builders = {
     const d = lib[id] || { take: ['원리를 이 미션의 언어로 옮긴다'], leave: ['형태 인용'], core: '원리 한 줄', postcard: '이 시대는 당연함에 반대했다.' };
     return { id, name: ctx.ismBody ? ctx.ismBody.split('·')[1].trim().split('(')[0].trim() : id, era: '', postcard: d.postcard, take: d.take, leave: d.leave, apply: `${d.core} — 사이니지의 첫 3초에 적용`, a3: { pass: true, check: d.take[0] }, form_moves: ctx.retryNote
       // 다시 두면 이 사조만의 조작으로 — 겹침 검사·재시도 흐름을 시험한다
-      ? [{ move: `${id} 고유 조작 — ${d.take[0]}`, only_here: `${id}만 이 원리에서 출발한다`, costume: `${id} 겉모양`, scope_ids: ['S1'] }]
-      : [{ move: `${d.core} — 거리마다 정보의 해상도를 3단계로 나눈다(5m·1m·0.3m)`, costume: `${id} 양식을 겉모양만 흉내 낸 패널`, scope_ids: ['S1', 'S2'] }, { move: '구조체의 이음매를 감추지 않고 드러낸다 — 공정이 곧 장식', costume: '나무결 시트를 붙인 사각 판', scope_ids: ['S1'] }], against_given: '정해진 전술의 사각 패널', core: d.core, fit: 0.6 + Math.random() * 0.35 };
+      ? [{ move: `${id} 고유 조작 — ${d.take[0]}`, on: '입구 사각 패널', trace: d.take[0], costume: `${id} 겉모양`, scope_ids: ['S1'] }]
+      : [{ move: `${d.core} — 거리마다 정보의 해상도를 3단계로 나눈다(5m·1m·0.3m)`, costume: `${id} 양식을 겉모양만 흉내 낸 패널`, scope_ids: ['S1', 'S2'] }, { move: '구조체의 이음매를 감추지 않고 드러낸다 — 공정이 곧 장식', costume: '나무결 시트를 붙인 사각 판', scope_ids: ['S1'] }], treatments: [{ existing: '입구 사각 패널', treat: '다시 읽는다', principle: d.take[0], becomes: `${d.core} — 같은 패널의 쓰임을 바꾼다`, why: '멀리서 먼저 읽힌다' }], core: d.core, fit: 0.6 + Math.random() * 0.35 };
   },
   '04_airplane_synth': () => ({
     selected: ['ISM-JP', 'ISM-SWISS', 'ISM-ARTCRAFT'],
     dropped: [{ id: 'ISM-POSTMOD', why: '성격은 브랜드 레이어에서 다시 본다' }, { id: 'ISM-KR', why: '설치 제약상 날씨 변수 반영이 어렵다' }],
     hybrid: '일본 미학의 "유보된 완결" × 스위스의 "크기 하나의 위계" × 미술공예의 "공정이 곧 장식"',
     suitcase: ['비워 둔 한 조각', '크기 하나의 위계', '공정이 곧 장식', '다가가야 완성된다'],
+    treatments: [{ existing: '입구 사각 패널', by: 'ISM-JP', treat: '덜어낸다', becomes: '한 조각을 비워 다가가게 한다' }],
     leave_together: ['크라프트·손글씨 룩', '정보를 지우다 입구까지 지우기'],
     painter_line: '가방이 꽤 묵직해졌어. 이제 차로 갈아타자.',
   }),
@@ -380,7 +381,7 @@ const builders = {
     return {
       summary: '멀리서는 이름 하나, 가까이 올수록 원두가 온 길이 선명해지는 세 층의 사인 체계입니다. 외벽·대기열·컵이 같은 원리로 이어지고, 슬리브 좌표가 참여와 보상으로 연결됩니다.',
       baseline_gap: { same: ['5m에서 읽히는 브랜드명(최소한 갖출 것)'], new: ['거리마다 해상도가 달라지는 면', '대기 3분을 원두 이야기로 바꾼 패널', '슬리브 좌표로 이어지는 참여'] },
-      form_language: { principles: [{ from: 'ISM-JP', principle: '유보된 완결', becomes: '가까이 와야 선명해지는 망점 해상도 3단계' }, { from: 'ISM-SWISS', principle: '크기 하나의 위계', becomes: '브랜드명만 600mm, 나머지는 모두 1/5 이하' }, { from: 'EMP-SIZE', principle: '크기의 강조', becomes: '거리별 글자 높이 600 · 120 · 24mm' }], shape: '얇은 프레임의 직사각 면 — 가장자리 3mm 오크', material: '무광 종이 · 오크 프레임', light: '측면 웜 라이트 2700K', color: '웜 뉴트럴 60 · 원두 브라운 30 · 원본 로고 10', type: '큰 산세리프 한 단어 + 작은 본문', scale: '사람 눈높이 1500mm 기준' },
+      form_language: { principles: [{ from: 'ISM-JP', principle: '유보된 완결', becomes: '가까이 와야 선명해지는 망점 해상도 3단계' }, { from: 'ISM-SWISS', principle: '크기 하나의 위계', becomes: '브랜드명만 600mm, 나머지는 모두 1/5 이하' }, { from: 'EMP-SIZE', principle: '크기의 강조', becomes: '거리별 글자 높이 600 · 120 · 24mm' }], departures: [{ typology: '사각 입간판', by: 'ISM-JP 덜어낸다', becomes: '한 모서리를 비운 판 — 다가가야 원두 사진이 채워진다', keep: '정면 판독 면' }], shape: '얇은 프레임의 직사각 면 — 가장자리 3mm 오크', material: '무광 종이 · 오크 프레임', light: '측면 웜 라이트 2700K', color: '웜 뉴트럴 60 · 원두 브라운 30 · 원본 로고 10', type: '큰 산세리프 한 단어 + 작은 본문', scale: '사람 눈높이 1500mm 기준' },
       section_notes: [],
       content_modules: [{ name: '원두의 길', for: '줄 선 사람 · 3분', shows: '농장 사진 → 412km → 로스터리 → 이 컵', update: '원두 바뀔 때', from: '브랜드 레이어', scope_ids: ['S2'] }, { name: '오늘의 한 잔', for: '지나가는 사람 · 3초', shows: '원두 이름 한 단어', update: '매일', from: '타겟 레이어', scope_ids: ['S1'] }],
       journey: [{ step: '도착', touchpoint: '외벽', does: '멀리서 이름을 본다', gets: '무엇의 팝업인지 3초에 안다', scope_ids: ['S1'] }, { step: '대기', touchpoint: '대기열 패널', does: '줄을 서며 패널을 본다', gets: '원두가 온 길을 안다', scope_ids: ['S2'] }, { step: '시음', touchpoint: '카운터·슬리브', does: '마시고 슬리브를 벗긴다', gets: '산지 좌표를 가져간다', scope_ids: ['S3', 'S4'] }, { step: '운영', touchpoint: '현장', does: '주 1회 원두 카드 교체', gets: '다시 올 이유', scope_ids: ['S5'] }],
@@ -489,6 +490,18 @@ const builders = {
       painter_line: '새 캔버스야. 이번엔 다가가야 보이게.',
     };
   },
+  '10_content': (ctx) => ({
+    contents: Array.from({ length: ctx.contentCount || 3 }, (_, i) => ({
+      title: ['원두가 온 길 지도', '가까이 와야 읽히는 산지 엽서', '기다리는 줄에서 맡는 향 카드', '시음 순서 카드'][i % 4],
+      touchpoint: ['외벽', '대기열', '대기열', '카운터'][i % 4], moment: '대기', for: '혼자·일행',
+      existing: '팝업 메뉴판의 원산지 표기', treatment: { by: 'ISM-JP', treat: '다시 읽는다', principle: '유보된 완결', becomes: '한 줄만 보이고 다가가면 나머지가 읽힌다' },
+      insight: '타겟: 기다리는 시간이 길다', knowhow: [{ id: 'EMP-SIZE', how: '산지명 하나만 크게' }],
+      what_people_see: '산지명 한 단어 → 가까이 오면 농장 → 로스터리까지의 길', what_people_do: '줄을 서며 한 장씩 넘긴다',
+      samples: [{ label: '앞면', text: '[산지명]에서 왔습니다' }, { label: '뒷면', text: '[농장]에서 [로스터리]까지, 이 원두가 온 길' }],
+      vs_convention: '보통은 원산지를 메뉴 옆에 작게 → 우리는 기다리는 줄에서 한 단어부터 읽게 한다', update: '바리스타 · 원두가 바뀔 때', scope_ids: [['S1', 'S2', 'S3'][i % 3]], status: '제안',
+    })),
+    line: '그릇은 됐어. 이제 담을 걸 만들자.',
+  }),
   '10_creative': () => {
     const g = (direction, title, headline, method, img, extra = {}) => ({
       direction, touchpoint: extra.tp || '외벽 5m', scope_ids: extra.sids || ['S1'], blueprint_ref: extra.ref || '사인 체계 · 대표 사인', title, one_liner: extra.one || '', derived_from_core: extra.derive || '"다가가면 완성된다"를 거리 단계로 나눔', headline, subcopy: extra.sub || '가까이 오세요. 원두가 온 길이 보입니다.', cta: '한 모금 시음',

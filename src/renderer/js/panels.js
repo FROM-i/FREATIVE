@@ -594,6 +594,22 @@ function blueprintBlock(bp, run) {
   </div>`;
 }
 
+/** 콘텐츠 — 사람이 실제로 보고 하는 것. 기존의 무엇을 어느 원리로 어떻게 다뤘는지가 함께 보인다 */
+function contentBlock(list) {
+  const L = arr(list);
+  if (!L.length) return '';
+  return `<div style="margin-top:28px"><span class="kicker">콘텐츠 ${L.length}개 — 사람이 실제로 보고 하는 것</span></div>
+  <div class="grid ${L.length >= 3 ? 'g3' : 'g2'}" style="align-items:start;margin-top:10px">${L.map((x) => {
+    const tr = x.treatment || {};
+    return `<div class="card"><b style="font-size:15px">${esc(x.title)}</b>${x.status === '후보' ? ' <span class="tag">후보</span>' : ''}
+      <span class="muted" style="font-size:12px">${esc([x.touchpoint, x.moment, x.for].filter(Boolean).join(' · '))}</span>
+      <div style="font-size:13px;margin-top:6px">${esc(x.what_people_see)}</div>
+      ${arr(x.samples).length ? `<div style="font-size:13px;margin-top:6px">${arr(x.samples).map((y) => `<div><span class="tag">${esc(y.label)}</span> “${esc(y.text)}”</div>`).join('')}</div>` : ''}
+      <div style="font-size:12px;margin-top:8px;border-top:1px solid var(--line,#ddd);padding-top:6px"><b>기존의 것을 다룬 방식</b> — ${esc(x.existing)} → ${esc(tr.by || '')} ${esc(tr.treat || '')} → ${esc(tr.becomes || '')}</div>
+      ${x.vs_convention ? `<div style="font-size:12px;margin-top:4px" class="muted">${esc(x.vs_convention)}</div>` : ''}</div>`;
+  }).join('')}</div>`;
+}
+
 function creative(p, run) {
   const c = run.results.creative;
   if (!c) {
@@ -631,7 +647,8 @@ function creative(p, run) {
   }).join('');
   return `${head('creative', 'Creative — 설계 · 핵심 장면', '컨셉 하나에서 사업 범위 전체로 펼친 설계서와, 그 설계의 핵심 접점 장면', c.painter_line)}
   ${blueprintBlock(c.blueprint, run)}
-  ${ex.length ? `<div style="margin-top:28px"><span class="kicker">핵심 장면 ${ex.length}곳 — 설계서에서 서로 다른 접점</span></div>
+  ${contentBlock(c.contents)}
+  ${ex.length ? `<div style="margin-top:28px"><span class="kicker">핵심 장면 ${ex.length}곳 — 콘텐츠가 보이는 순간</span></div>
   <div class="grid ${ex.length >= 3 ? 'g3' : 'g2'}" style="align-items:start;margin-top:10px">${cards}</div>` : waiting('설계서에서 핵심 장면을 고르는 중')}
   <div class="grid g3" style="margin-top:20px">
     <div class="card ink"><span class="kicker" style="color:#BDB9AF">권장 — 예비</span><b style="font-size:18px">${esc(rec || '')}</b><span>${esc(c.selection && c.selection.why)}</span></div>

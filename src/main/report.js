@@ -23,6 +23,7 @@ function atAGlance(p) {
   if (c) lines.push(`- **컨셉**: ${c.theme || ''} — ${c.concept || ''}`);
   if (f && f.core_pod && f.core_pod.item) lines.push(`- **코어 PoD**: ${f.core_pod.item}`);
   if (bp && bp.baseline_gap && (bp.baseline_gap.new || []).length) lines.push(`- **기본안에 없는 것**: ${bp.baseline_gap.new.slice(0, 3).join(' / ')}`);
+  if (cr && (cr.contents || []).length) lines.push(`- **콘텐츠**: ${cr.contents.map((x) => x.title).join(' · ')}`);
   if (cr && (cr.examples || []).length) lines.push(`- **핵심 장면**: ${cr.examples.map((e) => e.title).join(' · ')}`);
   const vp = verifyItems(p);
   if (vp.length) lines.push(`- **검증할 것**: ${vp.length}가지 (맨 끝 검증 계획)`);
@@ -82,8 +83,10 @@ function build(p) {
     out.push('\n## 3. Airplane — 사조 여행');
     out.push(table(['사조', '가져올 것', '두고 올 것', '코어', 'A3'], (a.travels || []).filter((t) => !t.error).map((t) => [`${t.name} (${t.id})`, (t.take || []).join(' / '), (t.leave || []).join(' / '), t.core, t.a3 && t.a3.pass ? '통과' : '확인'])));
     if (a.synth) out.push(`\n**하이브리드**: ${a.synth.hybrid}${a.synth.split && a.synth.split.structure ? `\n\n**대립을 나눈 방법** — 구조: ${a.synth.split.structure} · 해석: ${a.synth.split.interpretation}${a.synth.split.how ? ` — ${a.synth.split.how}` : ''}` : ''}${a.synth.risk ? `\n\n**위험**: ${a.synth.risk}` : ''}\n\n**여행 가방**\n${list(a.synth.suitcase)}`);
+    const tr = (a.synth && a.synth.treatments || []).length ? a.synth.treatments : (a.travels || []).filter((t) => !t.error).flatMap((t) => (t.treatments || []).map((x) => ({ ...x, by: t.id })));
+    if (tr.length) out.push('\n**기존의 것을 어떻게 다루는가**\n' + table(['기존 요소', '사조', '다루는 방식', '무엇이 되나'], tr.map((x) => [x.existing, x.by || '', `${x.treat || ''}${x.principle ? ` — ${x.principle}` : ''}`, x.becomes || ''])));
     const ov = (a.overlap || []).filter((x) => x.ratio >= 0.4);
-    if (ov.length) out.push(`\n_사조끼리 조작이 겹침: ${ov.map((x) => `${x.id} ${Math.round(x.ratio * 100)}%`).join(' · ')} — 이 사조들은 차이를 만들지 못했다._`);
+    if (ov.length) out.push(`\n_사조끼리 조작이 겹침: ${ov.map((x) => `${x.id} ${Math.round(x.ratio * 100)}%`).join(' · ')} — 같은 재료를 같은 방식으로 다뤘다._`);
   }
   if (r.tunnel) {
     const t = r.tunnel;
@@ -177,6 +180,7 @@ function build(p) {
       if (bp.baseline_gap) out.push(`\n**기본안과 같은 것**\n${list(bp.baseline_gap.same)}\n\n**기본안에 없는 것**\n${list(bp.baseline_gap.new)}`);
       const fl = bp.form_language || {};
       out.push('\n**조형 언어 — 사조 원리가 무엇이 되었나**\n' + table(['근거', '원리', '무엇이 되었나'], (fl.principles || []).map((x) => [x.from, x.principle, x.becomes])));
+      if ((fl.departures || []).length) out.push('\n**일반 유형을 어떻게 다뤘나**\n' + table(['일반 유형', '처리', '무엇이 되나', '지키는 것'], fl.departures.map((x) => [x.typology, x.by, x.becomes, x.keep || ''])));
       out.push(table(['항목', '내용'], [['형태·비례', fl.shape], ['재료·마감', fl.material], ['빛', fl.light], ['색', fl.color], ['서체', fl.type], ['스케일', fl.scale]].filter((x) => x[1])));
       const L = bp.ledger;
       if (L && ((L.rules || []).length || (L.terms || []).length)) out.push('\n**공통 원장 — 모든 절이 따르는 규칙**\n' + list(L.rules, (x) => `**${x.name}** — ${x.rule}`) + ((L.terms || []).length ? `\n- 용어: ${L.terms.map((t) => `${t.term}(${t.means})`).join(' · ')}` : ''));
@@ -198,9 +202,16 @@ function build(p) {
       if ((bp.scope_coverage || []).length) out.push('\n**범위 커버리지**\n' + table(['범위', '어떻게'], bp.scope_coverage.map((x) => [x.scope_id, x.how])));
       // 확인할 것은 맨 끝 '검증 계획'에 한 번만
     }
+    if ((c.contents || []).length) {
+      out.push('\n## 8.5 콘텐츠 — 사람이 실제로 보고 하는 것');
+      c.contents.forEach((x, i) => {
+        const tr = x.treatment || {};
+        out.push(`\n### ${i + 1}. ${x.title}${x.status === '후보' ? ' (후보)' : ''}\n- 어디서·언제·누구: ${[x.touchpoint, x.moment, x.for].filter(Boolean).join(' · ')}\n- 보이는 것: ${x.what_people_see || ''}\n- 하는 것: ${x.what_people_do || ''}${(x.samples || []).length ? `\n- 예시: ${x.samples.map((y) => `${y.label} “${y.text}”`).join(' / ')}` : ''}\n- 기존의 것을 다룬 방식: ${x.existing || ''} → ${tr.by || ''} ${tr.treat || ''}${tr.principle ? `(${tr.principle})` : ''} → ${tr.becomes || ''}${x.insight ? `\n- 겹친 인사이트: ${x.insight}` : ''}${(x.knowhow || []).length ? `\n- 노하우: ${x.knowhow.map((k) => `${k.id} — ${k.how}`).join(' / ')}` : ''}\n- 흔한 방식과 다른 점: ${x.vs_convention || ''}`);
+      });
+    }
     out.push('\n## 9. 핵심 장면');
     (c.examples || []).forEach((e, i) => {
-      out.push(`\n### ${i + 1}. ${e.touchpoint ? `${e.touchpoint} — ` : ''}${e.title} (${e.direction})\n${e.one_liner}\n\n- 헤드라인: **${e.headline || ''}**\n- 서브: ${e.subcopy || ''}\n- CTA: ${e.cta || ''}\n- 방법론이 드러나는 곳: ${e.method_shows_in || ''}`);
+      out.push(`\n### ${i + 1}. ${e.touchpoint ? `${e.touchpoint} — ` : ''}${e.title} (${e.direction})${e.content_ref ? `\n_콘텐츠: ${e.content_ref}_` : ''}\n${e.one_liner}\n\n- 헤드라인: **${e.headline || ''}**\n- 서브: ${e.subcopy || ''}\n- CTA: ${e.cta || ''}\n- 방법론이 드러나는 곳: ${e.method_shows_in || ''}`);
       if (e.image) out.push(`\n![${e.title}](${e.image.replace(/^ct:\/\/project\/[^/]+\//, '')})`);
       out.push('\n' + table(['단위', '이름', '내용', '비고'], (e.structure || []).map((s) => [s.unit, s.name, s.content, s.note])));
       const d = e.detail || {};
