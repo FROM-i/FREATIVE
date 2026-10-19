@@ -210,6 +210,42 @@ app.whenReady().then(async () => {
       if (!global.__reaches(R3.concept.theme, '11_report') || !global.__reaches(tm, '11_report')) fail('리포트에 컨셉·톤앤매너 누락'); console.log('handoff report ok'); }
     console.log('ppt', ppt.exists, fs.statSync(ppt.file).size, 'bytes');
 
+    // 프로젝트 파일(.freative) — 내보내기 → 가져오기 → 과정 다시 보기
+    {
+      const pkg = require(path.join(src, 'package'));
+      const buf = await pkg.exportPackage(p.id, { withAttachments: false, by: '테스터', appVersion: 'test' });
+      const user2 = await require(path.join(src, 'services/auth')).current();
+      const imp = await pkg.importPackage(buf, user2);
+      const src0 = store.get(p.id), got = store.get(imp.id);
+      const img = got.run.results.creative.examples.find((e) => e.image);
+      const imgFile = img && store.resolveProjectFile(imp.id, img.image.replace(`ct://project/${imp.id}/`, ''));
+      console.log('package', buf.length, 'bytes | imported', imp.id, '| image rewired', !!(img && img.image.includes(imp.id)), '| file', !!imgFile, '| attachments', got.attachments.map((a) => a.excluded ? 'excluded' : a.name).join(','));
+      if (!img || !img.image.includes(`ct://project/${imp.id}/`) || !imgFile) fail('가져온 프로젝트의 이미지 주소·파일이 이어지지 않음');
+      if (JSON.stringify(got).includes(`ct://project/${p.id}/`)) fail('원래 프로젝트 주소가 남음');
+      if (!got.imported || got.imported.exportedBy !== '테스터' || got.attachments.some((a) => a.rel)) fail('가져온 정보·첨부 제외 처리 이상');
+      if (got.run.agents.length !== src0.run.agents.length || got.run.results.think.rounds.length !== src0.run.results.think.rounds.length) fail('실행 기록이 그대로 옮겨지지 않음');
+      try { await pkg.importPackage(Buffer.from('not a zip'), user2); fail('잘못된 파일을 받아들임'); } catch (e) { if (!/FREATIVE 프로젝트 파일이 아닙니다/.test(e.message)) fail('잘못된 파일 오류 문구'); }
+      // 과정 다시 보기 — 렌더러 모듈을 그대로 불러 시각별 상태를 확인
+      const tmp = path.join(os.tmpdir(), `replay-${Date.now()}`); fs.mkdirSync(tmp);
+      fs.writeFileSync(path.join(tmp, 'util.mjs'), fs.readFileSync(path.join(src, '../renderer/js/util.js'), 'utf8'));
+      fs.writeFileSync(path.join(tmp, 'replay.mjs'), fs.readFileSync(path.join(src, '../renderer/js/replay.js'), 'utf8').replace("'./util.js'", "'./util.mjs'"));
+      const rp = await import(require('url').pathToFileURL(path.join(tmp, 'replay.mjs')).href);
+      const run = got.run, tl = rp.buildTimeline(run);
+      const at = (f) => rp.snapshot(run, rp.realAt(tl, tl.total * f));
+      const s0 = at(0), sMid = at(0.5), sEnd = at(1);
+      const doneN = (x) => Object.values(x.stages).filter((v) => v.status === 'done').length;
+      console.log('replay events', tl.r.length, '| virtual', Math.round(tl.total / 1000) + 's | done stages 0%', doneN(s0), '50%', doneN(sMid), '100%', doneN(sEnd), '| agents', s0.agents.length, sMid.agents.length, sEnd.agents.length, '| think rounds mid', (sMid.results.think || { rounds: [] }).rounds.length);
+      if (!(doneN(s0) < doneN(sMid) && doneN(sMid) <= doneN(sEnd)) || doneN(sEnd) < 8) fail('다시 보기 단계 진행이 시간 순서와 맞지 않음');
+      if (s0.results.creative || !sEnd.results.creative || sEnd.agents.some((a) => a.status === 'working')) fail('다시 보기 결과 노출 시점 이상');
+      // 영감으로 다시 그리기 전 — 그때의 결과(versions)와 단계 상태가 보여야 한다
+      const vAt = Date.parse(run.versions[0].at) - 1, sV = rp.snapshot(run, vAt);
+      console.log('replay before inspire', 'concept', sV.stages.concept.status, '| tunnel exit', (sV.results.tunnel && sV.results.tunnel.synth && sV.results.tunnel.synth.exit_light || '').slice(0, 20), '| stageLog', run.stageLog.length);
+      if (!['done', 'waiting'].includes(sV.stages.concept.status) || !sV.results.concept) fail('다시 보기 — 영감 전 상태가 복원되지 않음');
+      const firstTunnel = run.stageLog.find((e) => e.id === 'tunnel' && e.ev === 'start');
+      const tTunnel = Date.parse(firstTunnel.at) + 1, sT = rp.snapshot(run, tTunnel);
+      if (sT.results.positioning || sT.stages.tunnel.status !== 'running') fail('다시 보기 — 터널 진행 중에 뒤 단계 결과가 보임');
+    }
+
     // 라이브러리 — 사조 추가
     const lib = require(path.join(src, 'library'));
     const mat = path.join(os.tmpdir(), 'ct-zen.md'); fs.writeFileSync(mat, '# 선 미학\n비움은 집중이다.');

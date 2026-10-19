@@ -178,7 +178,16 @@ class Controller {
     this.run.lines.push({ at: now(), who, text, stage: stage || this.run.stage });
     if (this.run.lines.length > 300) this.run.lines.shift();
   }
-  setStage(id, patch) { this.run.stages[id] = { ...this.run.stages[id], ...patch }; }
+  setStage(id, patch) {
+    const prev = this.run.stages[id] || {};
+    this.run.stages[id] = { ...prev, ...patch };
+    // 단계 기록 — '과정 다시 보기'가 다시 그린 단계(영감·수정 요청)까지 순서대로 보이도록 시각을 남긴다
+    const log = (ev) => { (this.run.stageLog = this.run.stageLog || []).push({ id, ev, at: now() }); if (this.run.stageLog.length > 400) this.run.stageLog.shift(); };
+    if ((patch.startedAt && patch.startedAt !== prev.startedAt) || (patch.status === 'running' && prev.status !== 'running')) log('start');
+    if (patch.status === 'done' && prev.status !== 'done') log('end');
+    else if (patch.status === 'waiting' && prev.status !== 'waiting') log('wait');
+    else if (['error', 'canceled'].includes(patch.status) && prev.status !== patch.status) log(patch.status);
+  }
 
   async prepareMedia() {
     if (this.media) return this.media;
@@ -1253,7 +1262,9 @@ class Controller {
     }[id] || (() => null);
     this.run.stage = id;
     this.run.status = 'running';
-    this.setStage(id, { status: 'running', progress: 0.08, startedAt: now(), error: null, redo: 0 });
+    // 생각의 회차는 리뷰 답마다 이어서 돈다 — 처음 시작한 시각을 지켜야 '과정 다시 보기'가 회차를 순서대로 보인다
+    const resumeThink = id === 'think' && this.run.results.think && arr(this.run.results.think.rounds).length && this.run.stages.think && this.run.stages.think.startedAt;
+    this.setStage(id, { status: 'running', progress: 0.08, startedAt: resumeThink ? this.run.stages.think.startedAt : now(), error: null, redo: 0 });
     this.send('stage-start', { stage: id });
     if (BASELINE_STAGES.has(id) && !this.run.results.baseline && this.run.results.brief) await this.baseline();
     if (SELF_BRAIN.has(id)) await fn(); else await this.withBrain(id, fn, out);
@@ -1423,6 +1434,7 @@ async function inspire(projectId, stage, text, emit) {
   c.run.inspirations.push({ at: now(), stage, text, by: (c.project.brief && c.project.brief.worker) || '' });
   for (const id of ORDER.slice(idx)) {
     c.run.stages[id] = { status: 'pending', progress: 0, cost: c.run.stages[id] ? c.run.stages[id].cost || 0 : 0 };
+    (c.run.stageLog = c.run.stageLog || []).push({ id, ev: 'reset', at: now() });
     if (id !== 'brief') delete c.run.results[id];
     delete c.run.brain[id];
   }

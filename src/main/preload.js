@@ -47,6 +47,8 @@ contextBridge.exposeInMainWorld('api', {
     exportReport: (id) => invoke('projects:export', id),
     duplicate: (id) => invoke('projects:duplicate', id),
     exportPpt: (id, force) => invoke('projects:exportPpt', id, force),
+    exportPackage: (id) => invoke('projects:exportPackage', id),
+    importPackage: (paths) => invoke('projects:importPackage', paths),
   },
   run: {
     start: (id) => invoke('run:start', id),

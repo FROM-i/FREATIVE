@@ -61,6 +61,7 @@ function list() {
       deliverable: p.brief && p.brief.deliverables, status: p.run ? p.run.status : 'draft',
       worker: (p.brief && p.brief.worker) || p.ownerName, cost: p.run && p.run.usage ? p.run.usage.cost || 0 : 0,
       concept: p.run && p.run.results && p.run.results.concept ? p.run.results.concept.theme : '',
+      imported: p.imported ? { by: p.imported.exportedBy, at: p.imported.at } : null,
       cover: p.run && p.run.results && p.run.results.creative && p.run.results.creative.examples
         ? (p.run.results.creative.examples.find((e) => e.image) || {}).image || null : null,
     }))
@@ -142,4 +143,7 @@ function resolveProjectFile(id, rel) {
 
 function projectDir(id) { return dirOf(id); }
 
-module.exports = { init, list, get: read, create, update, saveRun, remove, duplicate, writeOutput, resolveProjectFile, projectDir };
+/** 빈 프로젝트 자리 — 가져오기(.freative)가 내용을 채운다 */
+function createEmpty(user) { return create(user, { projectName: '가져오는 중' }, []); }
+
+module.exports = { init, list, get: read, create, createEmpty, update, saveRun, remove, duplicate, writeOutput, resolveProjectFile, projectDir };

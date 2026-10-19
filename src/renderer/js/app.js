@@ -4,6 +4,7 @@ import { renderIntake } from './intake.js';
 import { Journey } from './journey.js';
 import { RENDER, gateBar } from './panels.js';
 import { renderLibrary } from './library-view.js';
+import { buildTimeline, realAt, snapshot } from './replay.js';
 
 const api = window.api;
 const S = {
@@ -56,7 +57,8 @@ function renderTop() {
   $('#railFoot').innerHTML = `v${esc(S.info.version)}`;
 }
 
-function go(v, arg) {
+function go(v, arg, opts = {}) {
+  if (S.replay) stopReplay(true);
   if (S.journey && v !== 'run') { S.journey.destroy(); S.journey = null; }
   S.view = v;
   $$('.rail-btn').forEach((b) => b.classList.toggle('on', b.dataset.nav === v));
@@ -67,7 +69,7 @@ function go(v, arg) {
   if (v === 'library') renderLibrary(view, { api, toast, onChange: loadCatalog });
   if (v === 'projects') renderProjects();
   if (v === 'settings') renderSettings();
-  if (v === 'run') openRun(arg);
+  if (v === 'run') openRun(arg, opts);
 }
 
 /* ---------- 새 미션 ---------- */
@@ -83,26 +85,43 @@ async function renderProjects() {
   const list = await api.projects.list();
   view.innerHTML = `<div class="projects">
     <div class="intake-head"><div><span class="kicker">PROJECTS</span><h1 class="h1" style="margin-top:8px">여행 기록</h1><p class="lead">미션마다 화가의 여정과 결과가 남습니다. 지금은 이 PC에 저장되고, 이후 조직·팀 단위로 통합 관리됩니다.</p></div>
-      <button class="btn primary" data-act="new">새 미션 →</button></div>
+      <div class="row"><button class="btn" data-act="import" title="다른 PC에서 내보낸 .freative 파일">프로젝트 파일 열기</button><button class="btn primary" data-act="new">새 미션 →</button></div></div>
+    <div class="import-drop" id="importDrop">.freative 프로젝트 파일을 여기에 끌어다 놓으면 결과와 과정을 그대로 열어 봅니다</div>
     ${list.length ? `<div class="pgrid">${list.map((p) => `
       <button class="pcard" data-id="${esc(p.id)}">
         <div class="cv">${p.cover ? `<img src="${esc(p.cover)}" alt=""/>` : '<svg viewBox="0 0 160 90"><path d="M0 70 H160"/><path d="M20 70 V40 L40 26 L60 40 V70"/><circle cx="96" cy="44" r="4"/><path d="M96 48 V62 L90 70 M96 62 L102 70 M96 52 L106 46"/><rect x="112" y="22" width="34" height="26"/></svg>'}</div>
         <div class="bd"><b>${esc(p.name)}</b><span class="muted" style="font-size:13px">${esc(p.concept || (S.types.types.find((t) => t.id === (p.deliverable || [])[0]) || {}).label || '')}</span>
-          <div class="meta"><span>${esc(STATUS_KO[p.status] || p.status)} · ${esc(p.worker || '')}</span><span>${p.cost ? usd(p.cost) + ' · ' : ''}${fmtDate(p.updatedAt)}</span></div></div>
+          <div class="meta"><span>${p.imported ? '<span class="tag">가져옴</span> ' : ''}${esc(STATUS_KO[p.status] || p.status)} · ${esc(p.worker || '')}</span><span>${p.cost ? usd(p.cost) + ' · ' : ''}${fmtDate(p.updatedAt)}</span></div></div>
       </button>`).join('')}</div>` : '<div class="empty">아직 미션이 없습니다.</div>'}
   </div>`;
   view.querySelector('[data-act="new"]').addEventListener('click', () => go('intake'));
+  view.querySelector('[data-act="import"]').addEventListener('click', () => importProjects());
+  const drop = $('#importDrop', view);
+  view.ondragover = (e) => { if ([...e.dataTransfer.items].some((i) => i.kind === 'file')) { e.preventDefault(); drop.classList.add('on'); } };
+  view.ondragleave = (e) => { if (!view.contains(e.relatedTarget)) drop.classList.remove('on'); };
+  view.ondrop = (e) => { e.preventDefault(); drop.classList.remove('on'); const paths = [...e.dataTransfer.files].map((f) => api.files.pathFor(f)).filter((x) => x && /\.freative$/i.test(x)); if (!paths.length) { toast('.freative 파일만 열 수 있습니다'); return; } importProjects(paths); };
   $$('.pcard', view).forEach((c) => c.addEventListener('click', () => go('run', c.dataset.id)));
 }
 
+/** .freative 가져오기 — 하나면 바로 열어 과정을 다시 보여 준다 */
+async function importProjects(paths) {
+  const r = await api.projects.importPackage(paths);
+  if (r.canceled) return;
+  for (const e of arr(r.errors)) toast(`${e.file} — ${e.error}`, 7000);
+  if (!r.projects.length) return;
+  toast(r.projects.length === 1 ? `가져왔습니다 — ${r.projects[0].name}` : `${r.projects.length}개 프로젝트를 가져왔습니다`, 5000);
+  if (r.projects.length === 1) go('run', r.projects[0].id, { replay: true }); else renderProjects();
+}
+
 /* ---------- 실행 화면 ---------- */
-async function openRun(id) {
+async function openRun(id, opts = {}) {
   S.project = await api.projects.get(id);
   S.run = S.project.run;
   S.selStage = null; S.pinnedStage = false;
   view.innerHTML = `<div class="runview">
     <div class="run-head"><div class="t"><span class="kicker">MISSION</span><h2 id="runTitle"></h2><span class="stage-status" id="runStatus"></span><div class="run-activity" id="runActivity"></div></div>
       <div class="acts" id="runActs"></div></div>
+    <div class="replay-bar" id="replayBar" hidden></div>
     <div class="journey-wrap"><div id="journeyHost"></div>
       <div class="journey-tools"><label class="toggle" style="background:var(--paper);padding:2px 8px;border-radius:999px"><input type="checkbox" id="follow" ${S.settings.ui.followCamera ? 'checked' : ''}/> 화가 따라가기</label></div>
       <div class="lane" id="lane"></div></div>
@@ -117,6 +136,60 @@ async function openRun(id) {
   $('#ruler').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; S.selStage = b.dataset.stage; S.pinnedStage = true; S.journey.focus(b.dataset.stage); renderDetail(true); renderRuler(); $('#detail').scrollTop = 0; });
   $('#detail').addEventListener('click', onDetailClick);
   $('#detail').addEventListener('submit', onDetailSubmit);
+  renderRunAll();
+  if (opts.replay && S.run && arr(S.run.agents).length) startReplay();
+}
+
+/* ---------- 과정 다시 보기 — 실행 기록의 시각으로 그때의 화면을 다시 만든다 ---------- */
+async function startReplay() {
+  S.project = await api.projects.get(S.project.id); // 화면을 연 뒤 진행된 기록까지 — 저장된 최신 실행 기록으로
+  const base = S.project.run;
+  const tl = base && buildTimeline(base);
+  if (!tl) { toast('다시 볼 실행 기록이 없습니다'); return; }
+  S.replay = { base, tl, vt: 0, playing: true, speed: 2, last: performance.now(), lastRender: 0, dirty: true, follow: S.journey && S.journey.follow };
+  S.pinnedStage = false;
+  if (S.journey) { S.journey.follow = true; S.journey.inited = false; }
+  $('#replayBar').hidden = false;
+  $('#replayBar').innerHTML = `<button class="btn sm" data-r="play" id="rpPlay">❚❚</button>
+    <input type="range" id="rpRange" min="0" max="${Math.round(tl.total)}" step="50" value="0"/>
+    <div class="seg" id="rpSpeed">${[1, 2, 4, 8].map((v) => `<button data-v="${v}" class="${v === 2 ? 'on' : ''}">${v}×</button>`).join('')}</div>
+    <span class="rp-label" id="rpLabel"></span>
+    <button class="btn sm ghost" data-r="end">다시 보기 끝 ✕</button>`;
+  const bar = $('#replayBar');
+  bar.onclick = (e) => {
+    const b = e.target.closest('button'); if (!b || !S.replay) return;
+    if (b.dataset.r === 'play') { if (S.replay.vt >= S.replay.tl.total) S.replay.vt = 0; S.replay.playing = !S.replay.playing; S.replay.last = performance.now(); }
+    if (b.dataset.r === 'end') stopReplay();
+    if (b.dataset.v) { S.replay.speed = +b.dataset.v; $$('#rpSpeed button').forEach((x) => x.classList.toggle('on', x === b)); }
+  };
+  $('#rpRange').oninput = (e) => { S.replay.vt = +e.target.value; S.replay.dirty = true; };
+  S.replay.raf = requestAnimationFrame(replayTick);
+}
+function replayTick(now) {
+  const R = S.replay; if (!R) return;
+  if (R.playing) { R.vt = Math.min(R.tl.total, R.vt + (now - R.last) * R.speed); if (R.vt >= R.tl.total) { R.playing = false; R.dirty = true; } }
+  R.last = now;
+  if (R.dirty || (R.playing && now - R.lastRender > 140)) {
+    R.lastRender = now; R.dirty = false;
+    const t = realAt(R.tl, R.vt);
+    S.run = snapshot(R.base, t);
+    renderRunAll();
+    const st = S.info.stages.find((x) => x.id === S.run.stage) || {};
+    const d = new Date(t);
+    $('#rpLabel').textContent = `${String(S.info.stages.indexOf(st) + 1).padStart(2, '0')} ${st.label || ''} · ${d.toLocaleDateString('ko-KR')} ${d.toLocaleTimeString('ko-KR', { hour12: false })}`;
+    $('#rpRange').value = Math.round(R.vt);
+    $('#rpPlay').textContent = R.playing ? '❚❚' : '▶';
+  }
+  R.raf = requestAnimationFrame(replayTick);
+}
+function stopReplay(leaving = false) {
+  const R = S.replay; if (!R) return;
+  cancelAnimationFrame(R.raf);
+  S.replay = null;
+  if (leaving) return;
+  if (S.journey) S.journey.follow = R.follow;
+  $('#replayBar').hidden = true; $('#replayBar').innerHTML = '';
+  S.run = S.project.run; S.pinnedStage = false;
   renderRunAll();
 }
 
@@ -133,13 +206,23 @@ function renderRunAll() {
   const st = r ? r.status : 'draft';
   const stg = S.info.stages.find((s) => s.id === currentStage());
   $('#runStatus').innerHTML = st === 'running' ? `<span class="pulse"></span>${esc(stg.label)} — ${esc(stg.sub)}` : st === 'paused' ? `<span class="dot y"></span>${{ C: 'C 게이트 — 사람의 판정을 기다립니다', root: '근본 이슈 — 하나를 골라 확정해 주세요', review: '중간 리뷰 — 카드를 읽고 방향을 정해 주세요' }[r.pausedAt] || '브리프 게이트 — 질문에 답해 주세요'}` : `<span class="dot"></span>${esc(STATUS_KO[st] || st)}${r && r.error ? ` — ${esc(r.error)}` : ''}`;
+  if (S.replay) {
+    $('#runStatus').innerHTML = `<span class="dot y"></span>과정 다시 보기 — ${esc(stg ? stg.label : '')}${p.imported ? ` · ${esc(p.imported.exportedBy || '')}의 기록` : ''}`;
+    $('#runActs').innerHTML = '';
+    if (S.journey && r) S.journey.update(r);
+    renderLane(); renderRuler(); renderDetail();
+    return;
+  }
+  if (p.imported) $('#runStatus').innerHTML += ` <span class="tag" title="${esc(`내보낸 사람 ${p.imported.exportedBy || ''} · ${(p.imported.exportedAt || '').slice(0, 10)} · 앱 v${p.imported.appVersion || ''}${p.imported.withAttachments ? '' : ' · 첨부 제외'}`)}">가져온 프로젝트</span>`;
   const acts = [];
+  if (r && arr(r.agents).length && st !== 'running') acts.push('<button class="btn sm" data-act="replay" title="실행 기록의 시각대로 여정과 단계를 처음부터 다시 봅니다">과정 다시 보기</button>');
   if (!r || ['error', 'canceled', 'interrupted'].includes(st)) acts.push(`<button class="btn sm primary" data-act="start">${r ? '이어서 진행' : '여행 시작'}</button>`);
   if (st === 'running') acts.push('<button class="btn sm ghost" data-act="cancel">멈춤</button>');
   if (r && ['done', 'stopped'].includes(st)) acts.push('<button class="btn sm ghost" data-act="restart">처음부터 다시</button>');
   if (r && r.usage) { const over = S.settings.run.budgetUsd && r.usage.cost > S.settings.run.budgetUsd; acts.push(`<span class="cost-badge ${over ? 'over' : ''}" title="추정치 · 설정에서 단가 수정 · 호출 ${r.usage.calls} · 이미지 ${r.usage.images || 0}">${usd(r.usage.cost)} · ${krw(r.usage.cost)}</span>`); }
   if (r && r.results && r.results.concept && st !== 'running') acts.push('<button class="btn sm primary" data-act="ppt">PPT 리포트</button>');
   if (r) acts.push('<button class="btn sm" data-act="export">보고서 (.md)</button>');
+  if (r && st !== 'running') acts.push('<button class="btn sm" data-act="package" title="결과와 과정을 담은 .freative 파일 — 다른 PC에서 열어 그대로 다시 봅니다">프로젝트 파일로 내보내기</button>');
   acts.push('<button class="btn sm ghost" data-act="dup">사본으로 새 미션</button>');
   acts.push('<button class="btn sm ghost" data-act="del" title="삭제">삭제</button>');
   $('#runActs').innerHTML = acts.join('');
@@ -173,7 +256,7 @@ function renderLane() {
   const cur = currentStage();
   const agents = arr(r.agents).filter((a) => a.stage === cur || a.status === 'working').slice(-8);
   $('#lane').innerHTML = agents.map((a) => {
-    const li = a.status === 'working' ? liveInfo(a) : null;
+    const li = a.status === 'working' && !S.replay ? liveInfo(a) : null;
     const tip = `${a.task || ''}${a.why ? ' · ' + a.why : ''}${li && li.summary ? '\n— ' + li.summary : ''}`;
     return `<span class="agent ${a.key === 'painter' ? 'painter' : ''} ${a.key === 'brain' ? 'brain' : ''} ${a.status} ${li && li.stale ? 'stale' : ''}" title="${esc(tip)}"><span class="av">${a.key === 'painter' ? '화' : a.key === 'brain' ? '' : a.role === 'image' ? '이' : '조'}</span>${esc(a.name)}<span class="md">${esc(a.model || '')}${a.cost ? ' · ' + usd(a.cost) : ''}</span>${li ? `<span class="live">${li.stale ? `신호 없음 ${Math.round(li.quiet)}초 · ` : ''}${esc(li.text)}</span>` : ''}</span>`;
   }).join('');
@@ -217,6 +300,7 @@ function renderDetail(force = false) {
 let raf = 0;
 function onRunEvent(e) {
   if (S.view !== 'run' || !S.project || e.projectId !== S.project.id) return;
+  if (S.replay) return; // 다시 보는 중에는 실시간 신호로 화면을 덮지 않는다
   if (e.kind === 'agent-progress') {
     const a = S.run && arr(S.run.agents).find((x) => x.id === e.agentId);
     if (a) { a.live = e.live; a.live.seenAt = Date.now(); renderLane(); renderActivity(); }
@@ -240,6 +324,8 @@ async function onRunAction(e) {
   if (a === 'start') { S.pinnedStage = false; await api.run.start(id); }
   if (a === 'restart') { S.pinnedStage = false; await api.run.start(id); }
   if (a === 'cancel') await api.run.cancel(id);
+  if (a === 'replay') startReplay();
+  if (a === 'package') { const r = await api.projects.exportPackage(id); if (!r.canceled) toast(`프로젝트 파일을 저장했습니다${r.withAttachments ? '' : ' (첨부 제외)'} — ${r.file}`, 6000); }
   if (a === 'export') { const r = await api.projects.exportReport(id); toast(`보고서를 저장했습니다 — ${r.reportPath}`, 5000); }
   if (a === 'ppt') { b.disabled = true; b.textContent = '코어 추출 중…'; try { const r = await api.projects.exportPpt(id); toast(`PPT를 저장했습니다 — ${r.file}`, 6000); } catch (e) { toast(e.message, 6000); } b.disabled = false; b.textContent = 'PPT 리포트'; }
   if (a === 'dup') { const p = await api.projects.duplicate(id); go('run', p.id); }

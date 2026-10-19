@@ -175,7 +175,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .gate-note { font-size: var(--t-1); color: var(--ink-2); line-height: 1.55; }
 
 /* ---------- run view ---------- */
-.runview { display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); height: 100%; min-height: 0; }
+.runview { display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); height: 100%; min-height: 0; }
 .run-head { display: flex; align-items: center; justify-content: space-between; gap: calc(var(--u) * 2); padding: calc(var(--u) * 1.5) calc(var(--u) * 3); border-bottom: var(--line) solid var(--hair); }
 .run-head .t { display: flex; align-items: baseline; gap: calc(var(--u) * 1.5); min-width: 0; }
 .run-head .t h2 { font-size: var(--t-5); margin: 0; font-weight: 750; letter-spacing: -.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -720,3 +720,16 @@ dl.rv dd.rq { font-weight: 800; font-size: 17px; }
 .cost-tbl { max-width: 720px; font-size: 13px; }
 .cost-tbl td.mono, .cost-tbl th { white-space: nowrap; }
 .cost-tbl tr.dim-row td { color: var(--mute, #8A867D); }
+
+/* 프로젝트 파일 · 과정 다시 보기 */
+.import-drop { margin: 0 0 calc(var(--u) * 3); padding: calc(var(--u) * 2); border: 1.5px dashed var(--hair-2); border-radius: 10px; text-align: center; color: #6B6862; font-size: 13px; transition: background .15s, border-color .15s; }
+.import-drop.on { border-color: var(--ink); background: rgba(255, 210, 60, .25); color: var(--ink); }
+.replay-bar { display: flex; align-items: center; gap: calc(var(--u) * 1.5); padding: 8px calc(var(--u) * 5); background: var(--ink); color: var(--paper); }
+.replay-bar[hidden] { display: block; height: 0; padding: 0; overflow: hidden; }
+.replay-bar input[type=range] { flex: 1; accent-color: var(--yellow); }
+.replay-bar .btn { background: var(--paper); color: var(--ink); border-color: var(--paper); min-width: 40px; }
+.replay-bar .btn.ghost { background: transparent; color: var(--paper); border-color: rgba(255, 255, 255, .4); }
+.replay-bar .seg button { color: var(--paper); border-color: rgba(255, 255, 255, .4); background: transparent; }
+.replay-bar .seg button.on { background: var(--yellow); color: var(--ink); border-color: var(--yellow); }
+.replay-bar .rp-label { font-family: var(--mono); font-size: 12px; white-space: nowrap; min-width: 250px; }
+.replay-bar .seg { border-color: rgba(255, 255, 255, .4); } .replay-bar .seg button + button { border-left-color: rgba(255, 255, 255, .4); }

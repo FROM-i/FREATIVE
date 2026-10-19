@@ -13,6 +13,9 @@ const updater = require('./updater');
 const library = require('./library');
 const cost = require('./cost');
 const reportPpt = require('./report-ppt');
+const pkg = require('./package');
+const fs = require('fs');
+const path = require('path');
 
 function register(win, { isMock }) {
   providers.setMock(isMock);
@@ -99,6 +102,40 @@ function register(win, { isMock }) {
     const r = report.exportProject(id);
     shell.showItemInFolder(r.reportPath);
     return r;
+  });
+
+  // 프로젝트 파일(.freative) — 어느 PC에서든 결과와 과정을 그대로 열어 본다
+  h('projects:exportPackage', async (id) => {
+    const p = meta(id); const user = await guard('project:read', p);
+    const n = (p.attachments || []).filter((a) => a.rel).length;
+    let withAttachments = false;
+    if (n) {
+      const c = await dialog.showMessageBox(win, { type: 'question', buttons: ['첨부 포함', '첨부 빼고', '취소'], defaultId: 0, cancelId: 2, message: `첨부 ${n}개를 함께 넣을까요?`, detail: '제안요청서처럼 밖으로 나가면 안 되는 첨부라면 빼고 내보내세요. 빼도 결과와 과정은 그대로 볼 수 있고, 첨부는 이름만 남습니다.' });
+      if (c.response === 2) return { canceled: true };
+      withAttachments = c.response === 0;
+    }
+    const safe = String(p.name || 'project').replace(/[\\/:*?"<>|]/g, ' ').trim().slice(0, 60) || 'project';
+    const r = await dialog.showSaveDialog(win, { defaultPath: path.join(app.getPath('documents'), `${safe}.freative`), filters: [{ name: 'FREATIVE 프로젝트', extensions: ['freative'] }] });
+    if (r.canceled || !r.filePath) return { canceled: true };
+    const buf = await pkg.exportPackage(id, { withAttachments, by: (p.brief && p.brief.worker) || user.name || '', appVersion: app.getVersion(), knowledgeVersion: knowledge.status().version });
+    fs.writeFileSync(r.filePath, buf);
+    shell.showItemInFolder(r.filePath);
+    return { file: r.filePath, bytes: buf.length, withAttachments };
+  });
+  h('projects:importPackage', async (paths) => {
+    const user = await guard('project:create');
+    let files = (paths || []).filter((f) => /\.freative$/i.test(f));
+    if (!files.length) {
+      const r = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'], filters: [{ name: 'FREATIVE 프로젝트', extensions: ['freative'] }] });
+      if (r.canceled) return { canceled: true, projects: [] };
+      files = r.filePaths;
+    }
+    const projects = [], errors = [];
+    for (const f of files) {
+      try { const p = await pkg.importPackage(fs.readFileSync(f), user); projects.push({ id: p.id, name: p.name }); }
+      catch (e) { errors.push({ file: path.basename(f), error: e.message }); }
+    }
+    return { projects, errors };
   });
 
   h('run:start', async (id) => { const p = meta(id); await guard('run:execute', p); return orchestrator.start(id, emit); });
