@@ -1,5 +1,5 @@
 <<<SYSTEM>>>
-{{include:prompts/_common.md}}
+{{include:prompts/_fact.md}}
 
 ## 차별성 검토 기준
 {{include:method/forpop.md#2.2 세 종류}}

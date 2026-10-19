@@ -161,7 +161,10 @@ const builders = {
       'ISM-KR': { take: ['변수(날씨·시간)를 결과로 받아들이는 설계'], leave: ['무맥락 오방색'], core: '날씨가 완성한다', postcard: '바람이 그려 주는 그림도 그림이야.' },
     };
     const d = lib[id] || { take: ['원리를 이 미션의 언어로 옮긴다'], leave: ['형태 인용'], core: '원리 한 줄', postcard: '이 시대는 당연함에 반대했다.' };
-    return { id, name: ctx.ismBody ? ctx.ismBody.split('·')[1].trim().split('(')[0].trim() : id, era: '', postcard: d.postcard, take: d.take, leave: d.leave, apply: `${d.core} — 사이니지의 첫 3초에 적용`, a3: { pass: true, check: d.take[0] }, form_moves: [{ move: `${d.core} — 거리마다 정보의 해상도를 3단계로 나눈다(5m·1m·0.3m)`, costume: `${id} 양식을 겉모양만 흉내 낸 패널`, scope_ids: ['S1', 'S2'] }, { move: '구조체의 이음매를 감추지 않고 드러낸다 — 공정이 곧 장식', costume: '나무결 시트를 붙인 사각 판', scope_ids: ['S1'] }], core: d.core, fit: 0.6 + Math.random() * 0.35 };
+    return { id, name: ctx.ismBody ? ctx.ismBody.split('·')[1].trim().split('(')[0].trim() : id, era: '', postcard: d.postcard, take: d.take, leave: d.leave, apply: `${d.core} — 사이니지의 첫 3초에 적용`, a3: { pass: true, check: d.take[0] }, form_moves: ctx.retryNote
+      // 다시 두면 이 사조만의 조작으로 — 겹침 검사·재시도 흐름을 시험한다
+      ? [{ move: `${id} 고유 조작 — ${d.take[0]}`, only_here: `${id}만 이 원리에서 출발한다`, costume: `${id} 겉모양`, scope_ids: ['S1'] }]
+      : [{ move: `${d.core} — 거리마다 정보의 해상도를 3단계로 나눈다(5m·1m·0.3m)`, costume: `${id} 양식을 겉모양만 흉내 낸 패널`, scope_ids: ['S1', 'S2'] }, { move: '구조체의 이음매를 감추지 않고 드러낸다 — 공정이 곧 장식', costume: '나무결 시트를 붙인 사각 판', scope_ids: ['S1'] }], against_given: '정해진 전술의 사각 패널', core: d.core, fit: 0.6 + Math.random() * 0.35 };
   },
   '04_airplane_synth': () => ({
     selected: ['ISM-JP', 'ISM-SWISS', 'ISM-ARTCRAFT'],
@@ -337,6 +340,12 @@ const builders = {
     why_tempting: '빠르고 안전하다. 발주처도 이미 머릿속에 이 그림이 있다.',
     bar: ['접점마다 사람이 무엇을 얻는지가 기본안보다 분명할 것', '세 접점이 따로 노는 장식이 아니라 하나의 원리로 이어질 것'],
     line: '이 정도는 누구나 낸다. 여기서 출발하지 않는다.',
+  }),
+  '10_ledger': (ctx) => ({
+    rules: [{ name: '거리별 정보 층', rule: '먼 곳·중간·가까운 곳에서 읽는 정보를 나눈다', from: '컨셉' }, { name: '원두 경로 표기', rule: '산지→로스터리 순서로 쓴다', from: '브리프' }],
+    owners: [{ topic: '거리별 정보 층', section: (ctx.anatomy[0] || {}).key, others: '이름으로 참조' }],
+    to_measure: [{ what: '대표 사인 크기', how: '현장 목업', pass: '10m에서 브랜드명 판독' }],
+    terms: [{ term: '정보 층', means: '거리별로 나눈 정보 묶음' }],
   }),
   '10_bp_section': (ctx) => {
     const k = ctx.sectionKey;

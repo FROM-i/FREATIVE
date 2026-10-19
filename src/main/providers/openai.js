@@ -190,7 +190,8 @@ async function respond(body, { signal, onProgress }) {
       if (/summary/i.test(msg) && body.reasoning && body.reasoning.summary) { delete body.reasoning.summary; continue; }
       if (/stream|verif/i.test(msg) && !body.__nostream) { body.__nostream = true; continue; }
       if (/include/.test(msg) && body.include) { delete body.include; continue; }
-      if (/text\.format|json_object|response_format/.test(msg) && body.text) { delete body.text; continue; }
+      if (/text\.format|json_object|response_format|JSON mode/i.test(msg) && body.text) { delete body.text; continue; }
+      if (/max_tool_calls/.test(msg) && body.max_tool_calls) { delete body.max_tool_calls; continue; }
       if (/reasoning/.test(msg) && body.reasoning) { delete body.reasoning; continue; }
       if (body.tools) {
         const tool = body.tools[0];
@@ -282,19 +283,23 @@ async function search({ role = 'sub', model: override, effort, system, content, 
   const model = override || c.models[role] || c.models.sub || c.models.director;
   let eff = effortFor(model, effort || c.roleEfforts[role] || c.reasoningEffort);
   if (eff === 'minimal' || eff === 'none') eff = 'low'; // web_search는 minimal·none 추론을 지원하지 않는다
+  const so = (settings.get().run && settings.get().run.search) || {};
   const body = {
     model,
     instructions: system,
     input: [{ role: 'user', content: toInput(content).filter((x) => x.type === 'input_text') }],
-    tools: [{ type: 'web_search', search_context_size: 'medium', user_location: { type: 'approximate', country: 'KR' } }],
+    // 검색 도구는 JSON 모드와 같이 쓸 수 없다(OpenAI 400: Web Search cannot be used with JSON mode) — 형식은 지시문으로 받고 본문에서 JSON을 꺼낸다
+    tools: [{ type: 'web_search', search_context_size: so.context || 'low', user_location: { type: 'approximate', country: 'KR' } }],
     tool_choice: 'auto',
     include: ['web_search_call.action.sources'],
-    text: { format: { type: 'json_object' } },
+    max_tool_calls: so.maxCalls || 4,
   };
   if (eff) body.reasoning = { effort: eff, summary: 'auto' };
   const r = await respond(body, { signal, onProgress });
   const out = readResponse(r);
-  return { json: parseJSON(out.text), model, usage: r.usage || null, citations: out.citations, searches: out.searches };
+  let json;
+  try { json = parseJSON(out.text); } catch (e) { throw new Error(`검색 결과를 JSON으로 읽지 못함 — ${e.message}`); }
+  return { json, model, usage: r.usage || null, citations: out.citations, searches: out.searches };
 }
 
 async function image({ prompt, size = '1536x1024', model: override, signal }) {

@@ -188,6 +188,41 @@ app.whenReady().then(async () => {
     }
     const r = report.exportProject(p.id);
     console.log('report', fs.statSync(r.reportPath).size, 'bytes');
+    // 비용·중복·사실 가드
+    {
+      const R = run.results;
+      const md = fs.readFileSync(r.reportPath, 'utf8');
+      const ids = new Set(R.brief.plan.isms.map((x) => x.id));
+      const contrast = R.brief.plan.isms.find((x) => x.contrast);
+      const redo = R.airplane.travels.filter((t) => t.redo);
+      const ledger = R.creative.blueprint.ledger;
+      const crCalls = run.agents.filter((a) => a.stage === 'creative' && /설계 \(/.test(a.name)).length;
+      const anatN = R.creative.blueprint.sections.length;
+      console.log('isms', [...ids].join(','), '| contrast', contrast ? `${contrast.id}↔${contrast.contrast.with}` : '-', '| ism redo', redo.map((t) => t.id).join(',') || '-', '| ledger rules', ledger && ledger.rules.length, '| section calls', crCalls, '/', anatN, '| factStats', JSON.stringify(Object.fromEntries(Object.entries(run.factStats || {}).map(([k, v]) => [k, v.numbers]))));
+      if (!contrast && !R.brief.plan.isms.some((x) => /대립/.test(x.why || ''))) { /* 화가가 이미 짝을 골랐으면 통과 */ }
+      if (!ledger || !ledger.rules.length) fail('설계 원장이 없음');
+      if (!redo.length) fail('겹친 사조 조작을 다시 두지 않음');
+      if (crCalls > anatN * 2) fail(`설계 절 호출이 너무 많음 (${crCalls})`);
+      if (/예비 판정입니다/.test(md.split('\n').slice(3).join('\n'))) fail('본문에 예비 판정 고지가 남음');
+      if (!/## 11\. 검증 계획/.test(md)) fail('검증 계획이 보고서에 없음');
+      if ((md.match(/\*\*확인할 것\*\*/g) || []).length) fail('확인할 것이 본문에 흩어져 있음');
+      // 대립 사조 — 기능주의 넷만 고르면 반대편이 들어간다
+      {
+        const md2 = knowledge.load().files['skill/references/catalog-ism.md'];
+        const pairs = [];
+        for (const line of (md2.split(/^## A-99/m)[1] || '').split('\n')) { const m = line.match(/^\|\s*([^|]+?)\s*\|\s*`(ISM-[A-Z]+)`\s*([^|]*)\|\s*`(ISM-[A-Z]+)`\s*([^|]*)\|/); if (m) pairs.push({ issue: m[1], a: m[2], aSays: m[3], b: m[4], bSays: m[5] }); }
+        const plan = { isms: [{ id: 'ISM-SWISS' }, { id: 'ISM-BAUHAUS' }, { id: 'ISM-ARTCRAFT' }, { id: 'ISM-NOUVEAU' }] };
+        const added = orch.ensureContrast(plan, pairs, new Set(knowledge.load().isms.map((i) => i.id)));
+        console.log('contrast pairs', pairs.length, '| added', added && `${added.id} (${added.contrast.issue})`);
+        if (pairs.length < 6 || !added) fail('대립 사조를 넣지 않음');
+      }
+      // 수치 가드 단위 시험
+      const facts = require(path.join(src, 'facts'));
+      const g = facts.guardText('몸체 900~1200mm, 경사 3~5°, 보관 30일, WCAG 4.5:1 대비, 브리프의 2.4m 폭', facts.sourceIndex(['통로 폭 2.4m']));
+      console.log('fact guard', g.text, '| hits', g.hits.join(','));
+      if (/900|3~5°|30일/.test(g.text) || !/2\.4m/.test(g.text) || !/4\.5:1/.test(g.text)) fail('수치 가드 오동작');
+      if (facts.stripBoiler('FREATIVE의 예비 판정입니다. T4를 고른다. 출처: 브리프·추론.') !== 'T4를 고른다.') fail('고지 문구 정리 오동작');
+    }
 
     // 영감 → 터널부터 다시 (이번엔 중간 리뷰 자동 진행)
     require(path.join(src, 'settings')).set({ run: { midReview: 'auto', maxRounds: 3 } });

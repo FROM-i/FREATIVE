@@ -27,6 +27,7 @@ const attachments = require('../attachments');
 const providers = require('../providers');
 const cost = require('../cost');
 const models = require('../models');
+const facts = require('../facts');
 const { render } = require('./prompts');
 const voice = require('../voice');
 
@@ -211,6 +212,38 @@ class Controller {
     return def;
   }
 
+  /** 근거 자료 — 사람이 쓴 것(의뢰서·답·영감) · 첨부 원문 · 웹 정찰. 화가가 만든 결과는 근거가 아니다 */
+  async factSources() {
+    if (!this._factSrc) {
+      const m = await this.prepareMedia().catch(() => ({ texts: [] }));
+      this._factSrc = [formatBrief(this.brief), ...arr(m.texts).map((t) => t.text)];
+    }
+    const R = this.run.results;
+    const human = [
+      JSON.stringify(this.run.gates || {}), JSON.stringify(this.run.root || {}), JSON.stringify(arr(this.run.inspirations)),
+      ...arr(R.think && R.think.rounds).map((r) => JSON.stringify(r.answer || {})),
+    ];
+    // PDF 첨부(제안요청서)는 원문 텍스트가 없다 — 화가가 첨부에서 옮겨 적은 발주 사실·범위·첨부 요약을 근거로 함께 쓴다
+    const rfp = R.brief ? [JSON.stringify(R.brief.rfp || {}), JSON.stringify(arr(R.brief.attachment_insights)), JSON.stringify(arr(R.brief.scope))] : [];
+    const web = [...rfp, JSON.stringify(arr(R.forpop && R.forpop.scan && R.forpop.scan.scopes)), ...arr(R.tunnel && R.tunnel.layers).filter((l) => arr(l.citations).length).map((l) => JSON.stringify(l))];
+    return [...this._factSrc, ...human, ...web];
+  }
+
+  /** 사실 가드 — 근거 없는 수치는 '(값 미정 · 목업)'으로, 문장 끝 고지는 지운다 (src/main/facts.js) */
+  async factGuard(stage) {
+    const GUARD = { airplane: 'airplane', tunnel: 'tunnel', think: 'think', positioning: 'positioning', forpop: 'forpop', concept: 'concept', creative: 'creative', canvas: 'canvas' };
+    const obj = GUARD[stage] && this.run.results[GUARD[stage]];
+    if (!obj || settings.get().run.factGuard === false) return;
+    const src = await this.factSources();
+    // 웹 정찰 결과(scan)는 확인한 사실이라 건드리지 않는다
+    const scan = stage === 'forpop' ? obj.scan : null;
+    if (scan) delete obj.scan;
+    const st = facts.guard(obj, src);
+    if (scan) obj.scan = scan;
+    (this.run.factStats = this.run.factStats || {})[stage] = st;
+    if (st.numbers) this.line('시스템', `근거 없는 수치 ${st.numbers}개를 '값 미정 · 목업'으로 바꿨습니다 — 예: ${st.samples.slice(0, 4).join(', ')}`, stage);
+  }
+
   /** 이미지 모델 — '직접 지정'에서 이미지 칸이 비었거나 글 모델이 들어가 있으면 글 모델로 이미지를 부르게 된다. 그때는 추천 이미지 모델로 */
   imageModel() {
     const pick = this.modelFor('creative', 'image');
@@ -377,7 +410,17 @@ class Controller {
       for (const im of m.images) { content.push({ type: 'text', text: `[첨부 이미지: ${im.name}]` }); content.push({ type: 'image_url', image_url: { url: im.dataUrl } }); }
       for (const p of m.pdfs) content.push({ type: 'file', file: { filename: p.name, file_data: p.dataUrl } });
     }
-    const pick = this.modelFor(stage, role);
+    let pick = this.modelFor(stage, role);
+    // 정찰은 찾아 옮기는 일이다 — 깊은 추론을 쓰지 않는다 (설정 › run.search.effort)
+    if (search) pick = { ...pick, effort: (settings.get().run.search || {}).effort || 'low' };
+    // 같은 검색을 다시 하지 않는다 — 영감·재작업으로 단계를 다시 돌려도 같은 정찰은 저장된 결과를 쓴다
+    const cacheKey = search ? require('crypto').createHash('sha1').update(`${pick.model}\n${system}\n${content[0].text}`).digest('hex') : null;
+    if (cacheKey && this.run.searchCache && this.run.searchCache[cacheKey]) {
+      const hit = this.run.searchCache[cacheKey];
+      const a0 = { id: `${stage}:${agent.key}:${this.run.agents.length}`, stage, role, name: agent.name, task: `${agent.task || ''} (저장된 정찰 재사용)`, key: agent.key, model: (providers.isMock() ? 'mock:' : '') + pick.model, why: '같은 정찰 — 다시 검색하지 않음', status: 'done', startedAt: now(), endedAt: now(), cost: 0, cached: true };
+      this.run.agents.push(a0); this.send('agent-start', { agent: a0 }); this.send('agent-done', { agent: a0 });
+      return JSON.parse(JSON.stringify(hit));
+    }
     const a = {
       id: `${stage}:${agent.key}:${this.run.agents.length}`,
       stage, role, name: agent.name, task: agent.task || '', key: agent.key,
@@ -401,7 +444,10 @@ class Controller {
         if (sc.usd) { a.cost += sc.usd; this.addCost(stage, sc.usd, { model: 'web_search', role, searches: sc.searches }); }
         a.searches = r.searches || 0;
         this.run.usage.searches = (this.run.usage.searches || 0) + (r.searches || 0);
-        return { ...r.json, _citations: r.citations || [], _searches: r.searches || 0 };
+        const res = { ...r.json, _citations: r.citations || [], _searches: r.searches || 0 };
+        this.run.searchCache = this.run.searchCache || {};
+        this.run.searchCache[cacheKey] = res;
+        return res;
       }
       return r.json;
     } catch (e) {
@@ -524,9 +570,10 @@ class Controller {
     const v = await this.call({
       role: 'brain', prompt: 'b_verify', stage, extras: false,
       agent: { key: 'brain', name: '판단 브레인', task: `검증 · ${LABEL[stage]}` },
-      ctx: { ...this.brainCtx(stage), directive: (this.run.brain[stage] || {}).direct || null, output, baseline: BASELINE_FLOOR.has(stage) ? this.run.results.baseline || null : null, scope: SCOPE_STAGES.has(stage) ? this.scope() : null },
+      ctx: { ...this.brainCtx(stage), directive: (this.run.brain[stage] || {}).direct || null, output, baseline: BASELINE_FLOOR.has(stage) ? this.run.results.baseline || null : null, scope: SCOPE_STAGES.has(stage) ? this.scope() : null, known: this.knownIssues(stage) },
       meta: { stage, mode: 'verify' },
     });
+    this.logIssues(stage, v);
     // 기본안과 다르지 않으면 렌즈 점수와 무관하게 재작업 — 우리 이름을 건 결과가 뻔한 답이면 안 된다
     const gap = v.baseline_gap && Number(v.baseline_gap.score);
     if (BASELINE_FLOOR.has(stage) && this.run.results.baseline && (!Number.isFinite(gap) || gap <= 2) && v.verdict !== '재작업') {
@@ -544,6 +591,28 @@ class Controller {
     return v;
   }
 
+  /* ---------- 지적 원장 — 같은 지적이 단계마다 기계적으로 되풀이되지 않게 ---------- */
+  knownIssues(stage) {
+    const L = arr(this.run.issueLog).filter((x) => x.stage !== stage);
+    return L.length ? L.map((x, i) => `${i}. [${LABEL[x.stage] || x.stage}] ${x.text}`).join('\n') : '(없음)';
+  }
+  logIssues(stage, v) {
+    const L = (this.run.issueLog = this.run.issueLog || []);
+    const others = L.filter((x) => x.stage !== stage);
+    const known = (t) => others.find((x) => facts.similar(x.text, t) >= 0.5);
+    // 브레인이 이미 있는 지적을 다시 썼으면 걸러 낸다 — 다음 단계로 '반드시 반영'이 되풀이되는 것을 막는다
+    v.issues = arr(v.issues).map(facts.stripBoiler).filter((t) => t && t.length > 4);
+    v.fixes = arr(v.fixes).map(facts.stripBoiler).filter((t) => t && t.length > 4);
+    const fresh = (list) => arr(list).filter((t) => { const k = known(t); if (k) { k.n = (k.n || 1) + 1; return false; } return true; });
+    v.issues = fresh(v.issues);
+    v.fixes = fresh(v.fixes);
+    for (const i of arr(v.still_open)) { const x = others[Number(i)]; if (x) x.n = (x.n || 1) + 1; }
+    for (const t of arr(v.issues).slice(0, 3)) if (!L.some((x) => x.stage === stage && facts.similar(x.text, t) >= 0.5)) L.push({ stage, text: String(t).slice(0, 200), n: 1, at: now() });
+    // 현장·도면이 있어야 풀리는 것 — 검증 계획 하나로 모은다
+    const plan = (this.run.verifyPlan = this.run.verifyPlan || []);
+    for (const x of arr(v.verify)) if (x && x.what && !plan.some((y) => facts.similar(y.what, x.what) >= 0.5)) plan.push({ ...x, stage });
+  }
+
   /** 단계 실행을 브레인으로 감싼다: 방향 → 실행 → 검증 (→ 재작업) */
   async withBrain(stage, fn, outputOf) {
     if (!this.brainEnabled(stage)) return fn();
@@ -554,6 +623,11 @@ class Controller {
       await fn();
       const v = await this.brainVerify(stage, outputOf());
       if (v.verdict !== '재작업') break;
+      if (!arr(v.fixes).length) {
+        // 고칠 곳을 짚지 못한 재작업(이미 기록된 지적의 반복)은 다시 그리지 않는다 — 같은 결과에 비용만 든다
+        this.line('시스템', `${LABEL[stage]} — 브레인이 재작업을 냈지만 새로 고칠 곳이 없어 다시 그리지 않습니다.`, stage);
+        break;
+      }
       if (attempt >= retry) {
         (this.run.warnings = this.run.warnings || []).push({ stage, at: now(), text: `판단 브레인이 '재작업'으로 판정했지만 재작업 횟수(${retry})를 다 썼습니다 — ${arr(v.issues)[0] || ''}` });
         this.line('시스템', `${LABEL[stage]} — 브레인 판정은 재작업이지만 횟수를 다 써서 진행합니다. 결과를 꼭 확인하세요.`, stage);
@@ -566,6 +640,21 @@ class Controller {
     }
     if (this.run.brain[stage]) delete this.run.brain[stage].fixPending;
   }
+
+  /** 사조 교차 참조(A-99) — 같은 문제에 반대 답을 내는 짝 */
+  ismPairs() {
+    const md = knowledge.load().files['skill/references/catalog-ism.md'] || '';
+    const sec = md.split(/^## A-99/m)[1] || '';
+    const pairs = [];
+    for (const line of sec.split('\n')) {
+      const m = line.match(/^\|\s*([^|]+?)\s*\|\s*`(ISM-[A-Z]+)`\s*([^|]*)\|\s*`(ISM-[A-Z]+)`\s*([^|]*)\|/);
+      if (m) pairs.push({ issue: m[1].trim(), a: m[2], aSays: m[3].trim(), b: m[4], bSays: m[5].trim() });
+    }
+    return pairs;
+  }
+
+  /** 같은 편 사조만 고르면 넷이 같은 답을 낸다 — 짝이 하나도 없으면 첫 사조의 반대편을 넣는다 */
+  ensureContrast(plan) { ensureContrast(plan, this.ismPairs(), new Set(knowledge.load().isms.map((i) => i.id))); }
 
   ismIndex() { return knowledge.load().isms.map((i) => `- ${i.id} · ${i.name} (${i.era}) — ${i.summary}`).join('\n'); }
 
@@ -594,6 +683,7 @@ class Controller {
       if (json.plan.isms.length >= 3) break;
       if (!json.plan.isms.find((x) => x.id === d)) json.plan.isms.push({ id: d, why: '기본 후보' });
     }
+    this.ensureContrast(json.plan);
     const typeLayers = [...arr(this.type.layers), ...arr(this.type.also).flatMap((a) => arr((typeById(a.id) || {}).layers))];
     const allowed = [...LAYER_DEFAULTS, ...typeLayers];
     let layers = (json.plan.layers || []).filter((l) => allowed.find((d) => d.key === l.key)).map((l) => ({ ...allowed.find((d) => d.key === l.key), ...l }));
@@ -660,15 +750,31 @@ class Controller {
     const max = settings.get().run.maxParallel || 4;
     let done = 0;
     this.run.results.airplane = { travels: [], synth: null, plan };
+    if (!this.run.results.baseline && this.run.results.brief) await this.baseline();
+    const bl = this.run.results.baseline || {};
+    // 이미 정해진 전술 — 사조 이름으로 다시 쓰지 않게 (첨부 전략·제약·기본안)
+    const given = { attachment: arr(b.attachment_insights).map((x) => x.takeaway).filter(Boolean).slice(0, 12), constraints: arr(b.mission && b.mission.constraints).slice(0, 12) };
+    const baseline = { overall: bl.overall, cliches: arr(bl.cliches) };
+    const pairs = this.ismPairs();
+    const roleOf = (p) => {
+      const pr = pairs.find((x) => (x.a === p.id && plan.some((y) => y.id === x.b)) || (x.b === p.id && plan.some((y) => y.id === x.a)));
+      if (!pr) return '이번 여행에서 이 사조의 원리를 가져온다. 다른 사조와 겹치는 조작은 버린다.';
+      const other = pr.a === p.id ? pr.b : pr.a;
+      return `'${pr.issue}'에서 ${other}와 반대 답을 내는 쪽이다(${pr.a === p.id ? pr.aSays : pr.bSays}). 그 반대를 흐리지 말고 끝까지 밀어라 — 하이브리드에서 ${p.contrast ? '해석' : '구조 또는 해석'} 쪽을 맡는다.`;
+    };
+    const visit = (p, retryNote = '') => {
+      const card = isms.find((i) => i.id === p.id);
+      return this.call({
+        role: 'sub', prompt: '03_ism', stage: 'airplane',
+        agent: { key: p.id, name: `조수 · ${card.name} 여행자`, task: retryNote ? `${p.why} (겹친 조작 다시)` : p.why },
+        ctx: { mission: b.mission, canvas: this.run.results.canvas, ismBody: card.body, ismId: card.id, typeLabel: [this.type.label, ...arr(this.type.also).map((x) => x.label)].join(' + '), scope: this.scope(), anatomy: arr(this.type.anatomy).map((a) => `${a.label} — ${a.ask}`), trip: plan.filter((x) => x.id !== p.id).map((x) => ({ id: x.id, why: x.why })), given, baseline, tripRole: roleOf(p), retryNote },
+        meta: { ism: card },
+      });
+    };
     const travels = await pLimit(plan, max, async (p) => {
       const card = isms.find((i) => i.id === p.id);
       if (!card) return { id: p.id, name: p.id, error: '카탈로그에 없음' };
-      const json = await this.call({
-        role: 'sub', prompt: '03_ism', stage: 'airplane',
-        agent: { key: p.id, name: `조수 · ${card.name} 여행자`, task: p.why },
-        ctx: { mission: b.mission, canvas: this.run.results.canvas, ismBody: card.body, ismId: card.id, typeLabel: [this.type.label, ...arr(this.type.also).map((x) => x.label)].join(' + '), scope: this.scope(), anatomy: arr(this.type.anatomy).map((a) => `${a.label} — ${a.ask}`) },
-        meta: { ism: card },
-      }).catch((e) => ({ id: p.id, error: e.message }));
+      const json = await visit(p).catch((e) => ({ id: p.id, error: e.message }));
       json.id = p.id; json.name = card.name; json.era = card.era; json.custom = !!card.custom;
       this.run.results.airplane.travels.push(json);
       done++;
@@ -677,8 +783,24 @@ class Controller {
       this.send('progress', { stage: 'airplane' });
       return json;
     });
-    const ok = travels.filter((t) => !t.error);
+    let ok = travels.filter((t) => !t.error);
     if (!ok.length) throw new Error('사조 여행이 모두 실패했습니다');
+    // 사조가 달라도 같은 조작을 냈다면(브리프 전술의 재진술) 그 사조만 한 번 더 — 겹친 조작을 보여 주고 다른 답을 요구한다
+    const overlap = this.travelOverlap(ok, [...given.attachment, ...given.constraints, ...baseline.cliches]);
+    for (const o of overlap.filter((x) => x.ratio >= 0.4).sort((a, b2) => b2.ratio - a.ratio).slice(0, 2)) {
+      const p = plan.find((x) => x.id === o.id);
+      const note = `## 다시 두는 이유 — 반드시 고친다
+이 조작들은 다른 사조의 조작이나 이미 정해진 전술과 같다: 
+${o.dups.map((d) => `- ${d.move.slice(0, 100)} ↔ ${d.with}`).join('\n')}
+이 사조만 하는 조작으로 바꿔라(A4 바꿔치기 시험).`;
+      const again = await visit(p, note).catch(() => null);
+      if (again && arr(again.form_moves).length) {
+        const i = travels.findIndex((t) => t.id === o.id);
+        travels[i] = { ...again, id: o.id, name: travels[i].name, era: travels[i].era, custom: travels[i].custom, redo: { reason: '조작 겹침', before: o.ratio } };
+      }
+    }
+    ok = travels.filter((t) => !t.error);
+    this.run.results.airplane.overlap = this.travelOverlap(ok, [...given.attachment, ...given.constraints, ...baseline.cliches]).map(({ id, ratio }) => ({ id, ratio }));
     this.run.results.airplane.travels = travels;
     const synth = await this.call({
       role: 'director', prompt: '04_airplane_synth', stage: 'airplane',
@@ -687,6 +809,21 @@ class Controller {
     });
     this.run.results.airplane.synth = synth;
     this.line('화가', synth.painter_line, 'airplane');
+  }
+
+  /** 사조별 조형 조작이 서로(또는 이미 정해진 전술과) 얼마나 겹치는가 — { id, ratio, dups } */
+  travelOverlap(travels, given) {
+    return travels.map((t) => {
+      const mine = arr(t.form_moves).map((m) => m.move || '').filter(Boolean);
+      const others = travels.filter((x) => x.id !== t.id).flatMap((x) => arr(x.form_moves).map((m) => ({ move: m.move || '', from: x.id })));
+      const dups = [];
+      for (const mv of mine) {
+        const hitO = others.find((o) => facts.similar(o.move, mv) >= 0.4);
+        const hitG = !hitO && given.find((g) => facts.similar(g, mv) >= 0.5);
+        if (hitO || hitG) dups.push({ move: mv, with: hitO ? hitO.from : '이미 정해진 전술' });
+      }
+      return { id: t.id, ratio: mine.length ? dups.length / mine.length : 0, dups };
+    });
   }
 
   async stageTunnel() {
@@ -698,12 +835,19 @@ class Controller {
     const s = this.run.results.airplane.synth;
     const airplane = { hybrid: s.hybrid, suitcase: s.suitcase, leave: s.leave_together };
     const res = await pLimit(layers, max, async (layer) => {
-      const json = await this.call({
+      const web = !!layer.search && settings.get().run.webSearch !== false && !!this.provider.search;
+      const req = (search) => this.call({
         role: 'sub', prompt: '05_layer', stage: 'tunnel',
-        agent: { key: layer.key, name: `조수 · ${layer.label} 레이어`, task: layer.question },
-        search: !!layer.search && settings.get().run.webSearch !== false && !!this.provider.search,
+        agent: { key: layer.key, name: `조수 · ${layer.label} 레이어`, task: search ? layer.question : `${layer.question} (웹 없이)` },
+        search,
         ctx: { mission: b.mission, canvas: this.run.results.canvas, airplane, attachment_insights: b.attachment_insights, rfp: b.rfp || null, scope: this.scope(), layer, layerKey: layer.key, layerLabel: layer.label, type: this.typeBrief() },
         meta: { layer },
+      });
+      // 웹 정찰이 실패해도 레이어는 남긴다 — 웹 근거 없이 한 번 더 (근거 칸은 '확인 필요'로 남는다)
+      const json = await req(web).catch((e) => {
+        if (!web || this.abort.signal.aborted) throw e;
+        this.line('시스템', `${layer.label} 레이어 웹 정찰 실패 — 웹 없이 다시 둔다 (${e.message})`, 'tunnel');
+        return req(false);
       }).catch((e) => ({ key: layer.key, label: layer.label, error: e.message, insights: [] }));
       json.key = layer.key;
       json.label = json.label || layer.label;
@@ -730,6 +874,19 @@ class Controller {
   tunnelDigest() {
     const t = this.run.results.tunnel;
     return { synth: t.synth, layers: t.layers.filter((l) => !l.error).map((l) => ({ label: l.label, headline: l.headline, insights: l.insights, keep: l.keep, change: l.change, boundary: l.boundary })) };
+  }
+  /** 뒤 단계용 터널 요약 — 종합과 레이어 제목·인사이트 이름만 (원문은 설계 절에서 이미 썼다) */
+  tunnelBrief() {
+    const t = this.run.results.tunnel || {};
+    const sy = t.synth || {};
+    return { exit_light: sy.exit_light, keep: sy.keep, change: sy.change, narrowed: sy.narrowed, layers: arr(t.layers).filter((l) => !l.error).map((l) => ({ label: l.label, headline: l.headline, insights: arr(l.insights).map((i) => i.title || i.name || (typeof i === 'string' ? i : '')).filter(Boolean) })) };
+  }
+  /** 뒤 단계용 계보 요약 — 사조는 코어·조형 조작 이름만 */
+  lineageBrief() {
+    const L = this.lineage();
+    if (L.airplane) L.airplane = { hybrid: L.airplane.hybrid, selected: L.airplane.selected, travels: arr(L.airplane.travels).map((t) => ({ id: t.id, core: t.core, form_moves: arr(t.form_moves).map((m) => (m.move || '').slice(0, 120)) })) };
+    if (L.think) L.think = { final: L.think.final };
+    return L;
   }
 
   /* ---------- 생각의 회차 — 걸림 → 수 → 대입 → 고르기 → 중간 리뷰 (method/thinking.md) ---------- */
@@ -933,6 +1090,12 @@ class Controller {
       },
     });
     fp.compare = this.normalizeCompare(cmp, scan);
+    // 정찰에서 아무것도 확인하지 못한 범위에는 점수를 매기지 않는다 — 근거 없는 3·3·2가 표에 남지 않게
+    for (const x of arr(fp.compare.scopes)) {
+      const sc = arr(scan && scan.scopes).find((y) => y.scope === x.scope || y.title === x.title);
+      const seen = sc && (arr(sc.players).length || arr(sc.conventions).length || arr(sc.taken).length);
+      if (!seen) { x.series = []; x.verdict = '정찰 없음'; x.note = sc && sc.error ? `웹 정찰 실패 — 판정하지 않음` : '웹 정찰에서 확인한 사례가 없어 판정하지 않음'; }
+    }
     const cmpOk = fp.compare.verdict !== '보완';
     const verdict = r2.verdict === '통과' && cmpOk ? '통과' : '보완';
     fp.verdict = verdict;
@@ -1095,51 +1258,92 @@ class Controller {
     const concept = { concept: c.concept, theme: c.theme, keywords: c.keywords, metaphor: c.metaphor, philosophy_core: c.philosophy_core, tone_manner: c.tone_manner, interpretation: c.interpretation, benefit: c.benefit, rough: c.rough, scope_map: c.scope_map };
     const scope = this.scope();
     const common = { mission: b.mission, scope, rfp: b.rfp || null, type: this.typeBrief(), baseline: this.run.results.baseline || null, concept, forpop: this.forpopHandoff(), lineage: this.lineage(), tunnel: this.tunnelDigest(), feedback };
-
-    // ① 설계 — 하나에서 사업 범위 전체로 펼친다. 해부도 절마다 조수가 병렬로 깊게 그리고, 화가가 통합한다
     const anatomy = arr(this.type.anatomy);
-    let drafts = await this.draftSections(anatomy, common, {});
+
+    // 재작업이면 고칠 곳만 다시 그린다 — 절 12개 · 통합 · 장면을 통째로 다시 부르면 비용이 두 배가 된다
+    const prev = this.run.results.creative;
+    const fixes = arr((this.run.brain.creative || {}).fixPending);
+    const rework = !!(fixes.length && prev && prev.blueprint && arr(prev.blueprint.sections).length);
+    const hit = (sec) => fixes.filter((f) => f.includes(sec.label) || f.includes(sec.key) || arr(sec.topics).some((t) => f.includes(t)));
+
+    // ⓪ 공통 원장 — 절들이 같은 규칙을 각자 다르게 쓰지 않도록 (중복·충돌 → 재작업의 가장 큰 원인)
+    let ledger = rework ? prev.blueprint.ledger : null;
+    if (!ledger) {
+      ledger = await this.call({
+        role: 'sub', prompt: '10_ledger', stage: 'creative',
+        agent: { key: 'ledger', name: '조수 · 설계 원장', task: `공통 규칙 · 주제의 주인 · 정할 값 — ${anatomy.length}절` },
+        ctx: { mission: b.mission, scope, rfp: b.rfp || null, concept: { concept: c.concept, theme: c.theme, interpretation: c.interpretation }, tunnel: this.tunnelBrief(), anatomy: anatomy.map((x) => ({ key: x.key, label: x.label, ask: x.ask })), sectionList: anatomy.map((x) => x.label).join(' · ') },
+      }).catch((e) => { this.line('시스템', `설계 원장 실패 — 원장 없이 진행 (${e.message})`, 'creative'); return { rules: [], owners: [], to_measure: [], terms: [] }; });
+      const keys = new Set(anatomy.map((x) => x.key));
+      ledger.owners = arr(ledger.owners).filter((o) => keys.has(o.section));
+    }
+    const ownedOf = (key) => arr(ledger.owners).filter((o) => o.section === key).map((o) => o.topic);
+    const secCommon = { ...common, ledger: { rules: ledger.rules, owners: ledger.owners, to_measure: arr(ledger.to_measure).map((x) => x.what), terms: ledger.terms } };
+
+    // ① 설계 — 절마다 조수가 병렬로 깊게 그리고, 화가가 통합한다
+    let drafts;
+    if (rework) {
+      drafts = arr(prev.blueprint.sections);
+      const redo = anatomy.map((a) => ({ ...a, topics: ownedOf(a.key) })).filter((a) => hit(a).length);
+      if (redo.length) {
+        const byKey = Object.fromEntries(redo.map((a) => [a.key, hit(a)]));
+        const again = await this.draftSections(redo, secCommon, byKey, Object.fromEntries(drafts.map((d) => [d.key, d])), ownedOf);
+        drafts = drafts.map((d) => again.find((x) => x.key === d.key && !x.error) || d);
+      }
+      this.line('화가', `브레인의 지적 ${fixes.length}개 — 절 ${redo.length}개만 다시 그리고 통합을 고칩니다.`, 'creative');
+    } else {
+      drafts = await this.draftSections(anatomy, secCommon, {}, {}, ownedOf);
+    }
     this.setStage('creative', { progress: 0.25 });
     this.send('progress', { stage: 'creative' });
-    let blueprint = await this.integrateBlueprint(drafts, common, null, []);
+    const intCommon = { ...common, ledger, tunnel: this.tunnelBrief() };
+    let blueprint = await this.integrateBlueprint(drafts, intCommon, rework ? prev.blueprint : null, rework ? fixes : []);
     let gaps = this.blueprintGaps(blueprint, scope);
-    if (gaps.length) {
+    if (gaps.length && !rework) {
       // 빈 곳만 다시 — 앞 초안을 주고 보완하게 한다 (처음부터 다시 그리지 않는다)
       this.line('판단 브레인', `설계에서 빈 곳 ${gaps.length}곳 — ${gaps.slice(0, 2).map((g) => g.text).join(' · ')}`, 'creative');
       const byKey = {};
       for (const g of gaps) if (g.key) (byKey[g.key] = byKey[g.key] || []).push(g.text);
       const redo = anatomy.filter((a) => byKey[a.key]);
       if (redo.length) {
-        const prev = Object.fromEntries(drafts.map((d) => [d.key, d]));
-        const again = await this.draftSections(redo, common, byKey, prev);
+        const prevBy = Object.fromEntries(drafts.map((d) => [d.key, d]));
+        const again = await this.draftSections(redo, secCommon, byKey, prevBy, ownedOf);
         drafts = drafts.map((d) => again.find((x) => x.key === d.key && arr(x.items).length >= arr(d.items).length) || d);
       }
       const cross = gaps.filter((g) => !g.key).map((g) => g.text);
-      blueprint = await this.integrateBlueprint(drafts, common, blueprint, cross.length ? cross : gaps.map((g) => g.text));
+      blueprint = await this.integrateBlueprint(drafts, intCommon, blueprint, cross.length ? cross : gaps.map((g) => g.text));
       gaps = this.blueprintGaps(blueprint, scope);
     }
     blueprint.gaps = gaps.map((g) => g.text);
-    this.run.results.creative = { blueprint, examples: [] };
+    blueprint.ledger = ledger;
+    this.run.results.creative = { blueprint, examples: rework ? arr(prev.examples) : [] };
     this.line('화가', blueprint.painter_line, 'creative');
     this.setStage('creative', { progress: 0.45 });
     this.send('progress', { stage: 'creative' });
 
-    // ② 핵심 장면 — 설계서에서 서로 다른 접점을 고른다
-    const mustN = scope.filter((x) => x.must).length;
-    const n = Math.max(3, Math.min(5, Math.max(b.plan.example_count || 3, mustN)));
-    const json = await this.call({
-      role: 'director', prompt: '10_creative', stage: 'creative',
-      agent: { key: 'painter', name: '화가', task: `핵심 장면 ${n}곳` },
-      ctx: { ...common, blueprint: this.blueprintDigest(blueprint), exampleCount: n },
-    });
-    json.examples = (json.examples || []).slice(0, 5);
-    this.run.results.creative = { ...json, blueprint };
-    this.line('화가', json.painter_line, 'creative');
+    // ② 핵심 장면 — 설계서에서 서로 다른 접점을 고른다. 재작업이면 장면을 짚은 지적이 있을 때만 다시 그린다
+    const sceneFix = fixes.filter((f) => /장면|대표|핵심 장면|헤드라인|시각화|이미지|앵글|구도/.test(f));
+    if (!rework || sceneFix.length || !arr(prev.examples).length) {
+      const mustN = scope.filter((x) => x.must).length;
+      const n = Math.max(3, Math.min(5, Math.max(b.plan.example_count || 3, mustN)));
+      const json = await this.call({
+        role: 'director', prompt: '10_creative', stage: 'creative',
+        agent: { key: 'painter', name: '화가', task: `핵심 장면 ${n}곳` },
+        // 장면은 설계서에서 고른다 — 계보·터널 원문은 설계서에 이미 녹아 있으니 요약만 준다 (입력 토큰이 가장 큰 호출)
+        ctx: { ...common, lineage: this.lineageBrief(), tunnel: this.tunnelBrief(), blueprint: this.blueprintDigest(blueprint, { specMax: 260 }), exampleCount: n },
+      });
+      json.examples = (json.examples || []).slice(0, 5);
+      // 다시 그린 장면은 앞 이미지를 이어받지 않는다
+      this.run.results.creative = { ...json, blueprint };
+      this.line('화가', json.painter_line, 'creative');
+    } else {
+      this.run.results.creative = { ...prev, blueprint };
+    }
     await this.polish('creative', this.run.results.creative, { skip: ['headline', 'sections', 'content_modules', 'spec', 'what', 'where', 'shows', 'becomes', 'form_language'] });
   }
 
   /** 해부도 절마다 조수가 병렬로 설계한다 */
-  async draftSections(list, common, fixesByKey = {}, prevByKey = {}) {
+  async draftSections(list, common, fixesByKey = {}, prevByKey = {}, ownedOf = () => []) {
     const all = arr(this.type.anatomy);
     const scopeText = this.scope().map((x) => x.item).join(' ');
     return pLimit(list, settings.get().run.maxParallel || 4, async (sec) => {
@@ -1152,6 +1356,7 @@ class Controller {
           ctx: {
             ...common, sectionKey: sec.key, sectionLabel: sec.label, sectionAsk: sec.ask, minItems: sec.min || 2,
             otherSections: all.filter((a) => a.key !== sec.key).map((a) => a.label).join(' · '),
+            ownedTopics: ownedOf(sec.key).join(' · ') || '(원장에 정한 주제 없음 — 이 절의 질문에만 답한다)',
             mustNote: must.length ? `- **이 절에 반드시 들어갈 것**: ${must.join(' / ')}` : '',
             fixes: fixes.length ? `## 지난 초안 — 빠진 것을 채워 다시 낸다 (좋은 항목은 그대로 둔다)\n${fixes.map((f) => `- ${f}`).join('\n')}\n\n지난 초안:\n${JSON.stringify(prevByKey[sec.key] || null)}` : '',
           },
@@ -1173,7 +1378,11 @@ class Controller {
     });
     const anatomy = arr(this.type.anatomy);
     bp.sections = anatomy.map((a) => drafts.find((d) => d.key === a.key) || { key: a.key, label: a.label, items: [] });
-    bp.open_questions = [...new Set([...arr(bp.open_questions), ...drafts.flatMap((d) => arr(d.open_questions))])];
+    // 절마다 같은 질문이 반복된다(공식 로고·색·서체 ×11) — 비슷한 것은 하나로, 원장의 '정할 값'과 겹치면 뺀다
+    const measured = arr(common.ledger && common.ledger.to_measure).map((x) => x.what || x);
+    // 화가가 절의 질문을 합쳐 낸 목록을 쓴다(의미로 묶는 일은 화가가 한다) — 비었을 때만 절의 질문을 모은다
+    const pool = arr(bp.open_questions).length ? arr(bp.open_questions) : drafts.flatMap((d) => arr(d.open_questions));
+    bp.open_questions = facts.dedupe(pool.filter((q) => !measured.some((m) => facts.similar(m, q) >= 0.6)), { threshold: 0.45, max: 10 });
     bp.section_vs_baseline = drafts.filter((d) => d.vs_baseline).map((d) => ({ key: d.key, label: d.label, vs_baseline: d.vs_baseline }));
     return bp;
   }
@@ -1210,8 +1419,9 @@ class Controller {
   }
 
   /** 장면 단계로 넘길 설계 요약 */
-  blueprintDigest(bp) {
-    return { summary: bp.summary, baseline_gap: bp.baseline_gap, form_language: bp.form_language, sections: arr(bp.sections).map((s) => ({ key: s.key, label: s.label, items: arr(s.items).map((it) => ({ name: it.name, what: it.what, where: it.where, spec: it.spec, scope_ids: it.scope_ids })) })), content_modules: bp.content_modules, journey: bp.journey, scope_coverage: bp.scope_coverage };
+  blueprintDigest(bp, { specMax = 0 } = {}) {
+    const cut = (t) => (specMax && typeof t === 'string' && t.length > specMax ? `${t.slice(0, specMax)}…` : t);
+    return { summary: bp.summary, baseline_gap: bp.baseline_gap, form_language: bp.form_language, ledger: bp.ledger && { rules: bp.ledger.rules, terms: bp.ledger.terms }, sections: arr(bp.sections).map((s) => ({ key: s.key, label: s.label, items: arr(s.items).map((it) => ({ name: it.name, what: it.what, where: it.where, spec: cut(it.spec), scope_ids: it.scope_ids })) })), content_modules: bp.content_modules, journey: bp.journey, scope_coverage: bp.scope_coverage };
   }
 
   /** 자동 이미지 생성이 꺼진 이유 — 켜져 있으면 null */
@@ -1288,7 +1498,9 @@ class Controller {
     this.setStage(id, { status: 'running', progress: 0.08, startedAt: resumeThink ? this.run.stages.think.startedAt : now(), error: null, redo: 0 });
     this.send('stage-start', { stage: id });
     if (BASELINE_STAGES.has(id) && !this.run.results.baseline && this.run.results.brief) await this.baseline();
-    if (SELF_BRAIN.has(id)) await fn(); else await this.withBrain(id, fn, out);
+    // 단계 결과마다 사실 가드 — 근거 없는 수치 · 문장 끝 고지를 정리한 뒤에 브레인이 검증한다
+    const run = async () => { await fn(); await this.factGuard(id); };
+    if (SELF_BRAIN.has(id)) await run(); else await this.withBrain(id, run, out);
     if (id === 'think' && this.run.results.think && this.run.results.think.awaiting) return;
     if (id === 'creative') { this.setStage('creative', { progress: 0.8 }); this.send('progress', { stage: id }); await this.generateImages(); }
     this.setStage(id, { status: 'done', progress: 1, endedAt: now() });
@@ -1357,6 +1569,21 @@ class Controller {
 
 function emitterFor(win) {
   return (payload) => { if (win && !win.isDestroyed()) win.webContents.send('run:event', payload); };
+}
+
+/** 사조 계획에 대립 짝(A-99)이 없으면 첫 사조의 반대편을 넣는다 (5개면 마지막을 바꾼다) */
+function ensureContrast(plan, pairs, valid) {
+  const ids = new Set(plan.isms.map((x) => x.id));
+  if (!pairs.length || pairs.some((p) => ids.has(p.a) && ids.has(p.b))) return null;
+  for (const first of plan.isms) {
+    const p = pairs.find((x) => (x.a === first.id && !ids.has(x.b) && valid.has(x.b)) || (x.b === first.id && !ids.has(x.a) && valid.has(x.a)));
+    if (!p) continue;
+    const other = p.a === first.id ? { id: p.b, says: p.bSays } : { id: p.a, says: p.aSays };
+    const item = { id: other.id, why: `대립 사조 — '${p.issue}'에서 ${first.id}와 반대 답(${other.says}). 해석 쪽을 맡는다`, contrast: { with: first.id, issue: p.issue } };
+    if (plan.isms.length >= 5) plan.isms[plan.isms.length - 1] = item; else plan.isms.push(item);
+    return item;
+  }
+  return null;
 }
 
 function isImageModel(id) { return /^(gpt-image|dall-e|chatgpt-image)/.test(String(id || '')); }
@@ -1515,4 +1742,4 @@ function markInterrupted() {
   }
 }
 
-module.exports = { STAGES, ORDER, start, answerBrief, answerRoot, answerReview, gate, inspire, cancel, regenerateImage, reportCore, emitterFor, markInterrupted, formatBrief };
+module.exports = { ensureContrast, STAGES, ORDER, start, answerBrief, answerRoot, answerReview, gate, inspire, cancel, regenerateImage, reportCore, emitterFor, markInterrupted, formatBrief };

@@ -20,8 +20,11 @@ function lint(text) {
   const t = String(text || '');
   const hits = [];
   for (const [kind, re] of PATTERNS) for (const m of t.matchAll(re)) hits.push({ kind, phrase: m[0].trim() });
-  if (t.length > 100) hits.push({ kind: '긴 문장', phrase: `${t.length}자` });
-  for (const sent of t.split(/(?<=[.!?。])\s+/)) { const c = (sent.match(/,/g) || []).length; if (c >= 3) hits.push({ kind: '절이 많은 문장', phrase: `쉼표 ${c}개` }); } // writing.md 3장 6 — 절은 두 개까지
+  // 길이·절 수는 칸 전체가 아니라 문장마다 센다 — 교열이 두 문장으로 나눠도 칸 길이로 계속 '긴 문장'이 되던 문제
+  for (const sent of t.split(/(?<=[.!?。])\s+|\n+/)) {
+    if (sent.length > 100) hits.push({ kind: '긴 문장', phrase: `${sent.length}자` });
+    const c = (sent.match(/,/g) || []).length; if (c >= 3) hits.push({ kind: '절이 많은 문장', phrase: `쉼표 ${c}개` }); // writing.md 3장 6 — 절은 두 개까지
+  }
   return hits;
 }
 

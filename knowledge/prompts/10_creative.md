@@ -28,7 +28,7 @@
 {{include:skill/references/catalog-form.md#B-15. 디테일 3층}}
 
 - `image_prompt`는 그 접점을 **실제 환경 안에서** 보여 주는 콘셉트 비주얼 초안용 영어 프롬프트다. 빈 배경에 사물 하나를 세우지 않는다 — 공간(예: 온실 동선·식물·천장 구조), 사람(스케일), 시간대, 설계서의 재료·형태·빛을 담는다. 고른 앵글·뷰·빛·질감을 구체적인 촬영·렌더 언어로 옮기고, 구도와 색 역할을 적는다. 글자는 넣지 말고 카피 자리만 비워 두도록 지시한다("leave clean negative space for headline, no text"). 실존 로고·인물·캐릭터 금지.
-- `prelim_review`는 G1·G4·G7 중심의 **예비 판정**이다.
+- `prelim_review`는 G1·G4·G7 중심의 점검이다. 문장에 '예비'를 다시 쓰지 않는다.
 
 ### 조형 완성도 G7 (원문)
 {{include:skill/references/core.md#6.6 G7 조형 완성도}}

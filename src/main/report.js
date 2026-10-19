@@ -7,16 +7,54 @@ const store = require('./services/storage');
 const { formatBrief } = require('./orchestrator');
 
 const list = (arr, f = (x) => x) => (arr || []).map((x) => `- ${f(x)}`).join('\n');
+const facts = require('./facts');
 const table = (head, rows) => rows && rows.length
   ? `| ${head.join(' | ')} |\n|${head.map(() => '---').join('|')}|\n${rows.map((r) => `| ${r.map((c) => String(c ?? '').replace(/\|/g, '/').replace(/\n/g, ' ')).join(' | ')} |`).join('\n')}`
   : '';
+
+/** 맨 앞 한눈에 — 근본 이슈 · 컨셉 · 코어 PoD · 기본안에 없는 것 · 핵심 장면 (모델 호출 없이 결과에서) */
+function atAGlance(p) {
+  const r = (p.run && p.run.results) || {};
+  const root = p.run && p.run.root;
+  const c = r.concept, f = r.forpop, cr = r.creative, bp = cr && cr.blueprint;
+  if (!c && !bp) return '';
+  const lines = ['\n## 한눈에'];
+  if (root && root.issue) lines.push(`- **근본 이슈**: ${root.issue}`);
+  if (c) lines.push(`- **컨셉**: ${c.theme || ''} — ${c.concept || ''}`);
+  if (f && f.core_pod && f.core_pod.item) lines.push(`- **코어 PoD**: ${f.core_pod.item}`);
+  if (bp && bp.baseline_gap && (bp.baseline_gap.new || []).length) lines.push(`- **기본안에 없는 것**: ${bp.baseline_gap.new.slice(0, 3).join(' / ')}`);
+  if (cr && (cr.examples || []).length) lines.push(`- **핵심 장면**: ${cr.examples.map((e) => e.title).join(' · ')}`);
+  const vp = verifyItems(p);
+  if (vp.length) lines.push(`- **검증할 것**: ${vp.length}가지 (맨 끝 검증 계획)`);
+  return lines.join('\n');
+}
+
+/** 검증 계획 — 단계마다 흩어진 '확인 필요'·보완점·정할 값·발주처 질문을 한 곳에, 겹치지 않게 */
+function verifyItems(p) {
+  const r = (p.run && p.run.results) || {};
+  const bp = r.creative && r.creative.blueprint;
+  const items = [];
+  for (const x of (p.run && p.run.verifyPlan) || []) items.push({ what: x.what, how: x.how, pass: x.pass, kind: '현장·도면' });
+  for (const x of (bp && bp.ledger && bp.ledger.to_measure) || []) items.push({ what: x.what, how: x.how, pass: x.pass, kind: '정할 값' });
+  for (const q of (bp && bp.open_questions) || []) items.push({ what: q, how: '발주처 확인', pass: '', kind: '발주처' });
+  for (const t of (r.creative && r.creative.human_todo) || []) items.push({ what: t, how: '', pass: '', kind: '사람' });
+  for (const x of (r.forpop && r.forpop.compare && r.forpop.compare.fixes) || []) if (x) items.push({ what: x, how: '', pass: '', kind: '차별성' });
+  return facts.dedupe(items.map((x) => ({ ...x, what: facts.stripBoiler(String(x.what || '')) })), { key: (x) => x.what, threshold: 0.5, max: 24 });
+}
+function verifyPlan(p) {
+  const items = verifyItems(p);
+  if (!items.length) return '';
+  return '\n## 11. 검증 계획 — 다음에 할 일\n' + table(['구분', '무엇을', '어떻게', '통과 기준'], items.map((x) => [x.kind, x.what, x.how || '', x.pass || '']));
+}
 
 function build(p) {
   const r = (p.run && p.run.results) || {};
   const out = [];
   out.push(`# ${p.name} — THE FROM FREATIVE`);
   out.push(`> 생성 ${new Date().toLocaleString('ko-KR')} · 작업자 ${(p.brief && p.brief.worker) || p.ownerName || ''} · 지식 v${p.run ? p.run.knowledge : '-'} · 모델 ${p.run ? Object.values(p.run.models || {}).join(' / ') : ''}`);
-  out.push('> AI가 내린 판정은 모두 **예비 판정**입니다. C 게이트·완성도의 최종 판정은 사람이 합니다.');
+  out.push('> 이 보고서의 판정은 모두 **예비 판정**입니다 — 본문에서는 다시 적지 않습니다. C 게이트·완성도의 최종 판정은 사람이 합니다. 아직 확인하지 못한 것은 책임을 미루는 문구가 아니라, 맨 끝 **검증 계획**에 할 일로 한 번씩 모았습니다.');
+  const glance = atAGlance(p);
+  if (glance) out.push(glance);
   out.push('\n## 0. 접수 브리프\n' + formatBrief(p.brief));
   if (r.brief) {
     const b = r.brief;
@@ -43,15 +81,18 @@ function build(p) {
     const a = r.airplane;
     out.push('\n## 3. Airplane — 사조 여행');
     out.push(table(['사조', '가져올 것', '두고 올 것', '코어', 'A3'], (a.travels || []).filter((t) => !t.error).map((t) => [`${t.name} (${t.id})`, (t.take || []).join(' / '), (t.leave || []).join(' / '), t.core, t.a3 && t.a3.pass ? '통과' : '확인'])));
-    if (a.synth) out.push(`\n**하이브리드**: ${a.synth.hybrid}\n\n**여행 가방**\n${list(a.synth.suitcase)}`);
+    if (a.synth) out.push(`\n**하이브리드**: ${a.synth.hybrid}${a.synth.split && a.synth.split.structure ? `\n\n**대립을 나눈 방법** — 구조: ${a.synth.split.structure} · 해석: ${a.synth.split.interpretation}${a.synth.split.how ? ` — ${a.synth.split.how}` : ''}` : ''}${a.synth.risk ? `\n\n**위험**: ${a.synth.risk}` : ''}\n\n**여행 가방**\n${list(a.synth.suitcase)}`);
+    const ov = (a.overlap || []).filter((x) => x.ratio >= 0.4);
+    if (ov.length) out.push(`\n_사조끼리 조작이 겹침: ${ov.map((x) => `${x.id} ${Math.round(x.ratio * 100)}%`).join(' · ')} — 이 사조들은 차이를 만들지 못했다._`);
   }
   if (r.tunnel) {
     const t = r.tunnel;
     out.push('\n## 4. Tunnel — 레이어링');
     for (const l of (t.layers || []).filter((x) => !x.error)) {
-      out.push(`\n### ${l.label} — ${l.headline}\n${list(l.insights, (i) => `**${i.title}** ${i.detail} _(${i.source})_`)}\n- 지킬 것: ${(l.keep || []).join(', ')}\n- 바꿀 것: ${(l.change || []).join(', ')}\n- 경계: ${l.boundary || ''}`);
+      // 레이어마다 지킬 것·바꿀 것을 다시 적지 않는다 — 종합에 한 번
+      out.push(`\n### ${l.label} — ${l.headline}\n${list(l.insights, (i) => `**${i.title}** ${i.detail} _(${i.source})_`)}${l.boundary ? `\n- 경계: ${l.boundary}` : ''}`);
     }
-    if (t.synth) out.push(`\n**좁혀진 범위**: ${t.synth.narrowed}\n\n**출구의 빛**: ${t.synth.exit_light}`);
+    if (t.synth) out.push(`\n**좁혀진 범위**: ${t.synth.narrowed}\n\n**출구의 빛**: ${t.synth.exit_light}${(t.synth.keep || []).length ? `\n\n- 지킬 것: ${[].concat(t.synth.keep).join(' · ')}` : ''}${(t.synth.change || []).length ? `\n- 바꿀 것: ${[].concat(t.synth.change).join(' · ')}` : ''}`);
   }
   if (r.think && (r.think.rounds || []).length) {
     const T = r.think;
@@ -70,7 +111,7 @@ function build(p) {
     out.push(`\n## 5. Creative Positioning Map\n- X축: ${p2.axes.x.low} ↔ ${p2.axes.x.high} (${p2.axes.x.name})\n- Y축: ${p2.axes.y.low} ↔ ${p2.axes.y.high} (${p2.axes.y.name})\n- 빈자리: **${p2.whitespace.label}** — ${p2.whitespace.why}`);
     out.push(table(['ID', '영역', '설명'], (p2.territories || []).map((t) => [t.id, t.name, t.desc])));
     out.push('\n**좁히기**\n' + list(p2.rounds, (x) => `${x.from} → ${x.to}: ${[].concat(x.cut).join(', ')} 제외 — ${x.criterion} · ${x.reason}`));
-    out.push(`\n**선택 (예비)**: ${p2.final.id} — ${p2.final.reason}`);
+    out.push(`\n**선택**: ${p2.final.id} — ${p2.final.reason}`);
   }
   if (r.forpop) {
     const f = r.forpop;
@@ -78,14 +119,16 @@ function build(p) {
     out.push('\n**앞선 단계 최종 검증**\n' + table(['단계', '핵심', '판정', '이유', '연결'], (f.audit || []).map((x) => [x.stage, x.core, x.verdict, x.note, x.link])));
     out.push(`\n연결성 — ${f.coherence || ''}`);
     const F = f.for || {};
-    if (F.target_view) out.push(`\n타겟은 이것을 “${F.target_view}”에 빗대어 본다.`);
+    if (F.target_view) out.push(`\n**타겟이 빗대어 보는 것**: ${F.target_view}`);
     if ((F.options || []).length) out.push('\n**FoR — 네 방식**\n' + table(['방식', '틀', '경쟁 구도', '얻는 것', '치르는 것'], F.options.map((o) => [o.kind + (o.kind === F.chosen ? ' ●' : ''), o.frame, (o.competitors || []).join(', '), o.gain, o.cost])));
     out.push(`\n**FoR**: ${F.frame || ''}${F.why ? ` — ${F.why}` : ''}\n\n**PoP — 최소한 무조건 갖춰야 하는 것**\n${list(f.pop, (x) => `${x.kind ? `[${POPK[x.kind] || x.kind}] ` : ''}${x.item} — ${x.why}`)}\n\n**PoD 후보 5** (원하는가 · 보여줄 수 있는가 · 우리만의 것인가)\n${list(f.pod_candidates, (x) => `${x.id} ${x.item} — ${x.gain} (${[x.desirable, x.deliverable, x.defensible].map((v) => v ?? '-').join(' · ')})`)}`);
     const sc = (f.scan && f.scan.scopes) || [];
-    if (sc.length) {
+    const seen = sc.filter((x) => (x.players || []).length || (x.conventions || []).length || (x.taken || []).length);
+    if (sc.length && !seen.length) out.push(`\n**웹 정찰** — 확인한 사례 없음${sc.some((x) => x.error) ? ` (실패: ${sc.find((x) => x.error).error.slice(0, 80)})` : ''}. 차별성은 판정하지 않았다.`);
+    if (seen.length) {
       out.push('\n**웹 정찰 — 세 범위** (조수)');
-      sc.forEach((x) => {
-        out.push(`\n*${x.title}* — ${x.summary || (x.skipped ? '웹 정찰 꺼짐' : '')}`);
+      seen.forEach((x) => {
+        out.push(`\n*${x.title}* — ${x.summary || ''}`);
         if ((x.players || []).length) out.push(list(x.players, (pl) => `${pl.name} — ${pl.what}${pl.url ? ` ([출처](${pl.url}))` : ''}`));
         if ((x.taken || []).length) out.push('이미 점유: ' + x.taken.map((t) => `${t.item}${t.pod ? `(${t.pod})` : ''}`).join(' · '));
         if ((x.citations || []).length) out.push('근거: ' + x.citations.slice(0, 8).map((c) => `[${c.title || c.url}](${c.url})`).join(' · '));
@@ -100,15 +143,16 @@ function build(p) {
     const cmp = f.compare;
     if (cmp) {
       const axes = (cmp.legend && cmp.legend.axes) || [];
-      if (axes.length) {
+      const scored = (cmp.scopes || []).filter((x) => (x.series || []).length);
+      if (axes.length && scored.length) {
         out.push(`\n**차별성 판정 — 공통 범례 (${axes.length === 5 ? '오각형' : '삼각형'} · 0~5)**\n` + list(axes, (a) => `${a.id} ${a.name}${a.from_us ? ' (나로부터)' : ''} — 0 ${a.low} → 5 ${a.high}`));
         const rows = [];
         (cmp.scopes || []).forEach((x) => (x.series || []).forEach((se) => rows.push([x.title, se.name + (se.kind === 'us' ? ' ●' : ''), ...se.values.map(String), x.verdict || ''])));
         out.push(table(['범위', '계열', ...axes.map((a) => a.id), '판정'], rows));
       }
-      (cmp.scopes || []).forEach((x) => out.push(`\n*${x.title} · ${x.verdict || ''}* — ${x.note || ''}\n- 유사성: ${(x.similar || []).map((y) => y.item).join(' · ')}\n- 차별점: ${(x.different || []).map((y) => y.item).join(' · ')}`));
+      scored.forEach((x) => out.push(`\n*${x.title} · ${x.verdict || ''}* — ${x.note || ''}\n- 유사성: ${(x.similar || []).map((y) => y.item).join(' · ')}\n- 차별점: ${(x.different || []).map((y) => y.item).join(' · ')}`));
       if (cmp.positioning) out.push(`\n**포지셔닝 진술문**\n\n> ${cmp.positioning.sentence || ''}`);
-      if ((cmp.fixes || []).filter(Boolean).length) out.push('\n**보완할 것**\n' + list(cmp.fixes.filter(Boolean), (x) => x));
+      // 보완할 것은 맨 끝 '검증 계획'에 한 번만 모은다
     }
   }
   if (r.concept) {
@@ -134,11 +178,25 @@ function build(p) {
       const fl = bp.form_language || {};
       out.push('\n**조형 언어 — 사조 원리가 무엇이 되었나**\n' + table(['근거', '원리', '무엇이 되었나'], (fl.principles || []).map((x) => [x.from, x.principle, x.becomes])));
       out.push(table(['항목', '내용'], [['형태·비례', fl.shape], ['재료·마감', fl.material], ['빛', fl.light], ['색', fl.color], ['서체', fl.type], ['스케일', fl.scale]].filter((x) => x[1])));
-      (bp.sections || []).forEach((sec) => out.push(`\n**${sec.label}**\n` + table(['이름', '내용', '위치', '사양', '범위', '근거'], (sec.items || []).map((it) => [it.name, it.what, it.where, it.spec, (it.scope_ids || []).join(','), it.from]))));
+      const L = bp.ledger;
+      if (L && ((L.rules || []).length || (L.terms || []).length)) out.push('\n**공통 원장 — 모든 절이 따르는 규칙**\n' + list(L.rules, (x) => `**${x.name}** — ${x.rule}`) + ((L.terms || []).length ? `\n- 용어: ${L.terms.map((t) => `${t.term}(${t.means})`).join(' · ')}` : ''));
+      // 절 사이에 같은 항목이 다시 나오면 처음 나온 절만 싣고 나머지는 참조로 — 같은 내용 반복이 보고서 길이의 절반이었다
+      const shown = [];
+      (bp.sections || []).forEach((sec) => {
+        const rows = [], refs = [];
+        for (const it of sec.items || []) {
+          const dup = shown.find((x) => facts.similar(`${x.it.name} ${x.it.what}`, `${it.name} ${it.what}`) >= 0.6);
+          if (dup) { refs.push(`${it.name} → 「${dup.sec}」`); continue; }
+          shown.push({ it, sec: sec.label });
+          rows.push([it.name, it.what, it.where, it.spec, (it.scope_ids || []).join(','), it.from]);
+        }
+        if (!rows.length && !refs.length) return;
+        out.push(`\n**${sec.label}**\n` + table(['이름', '내용', '위치', '사양', '범위', '근거'], rows) + (refs.length ? `\n\n_다른 절과 같은 항목: ${refs.join(' · ')}_` : ''));
+      });
       if ((bp.content_modules || []).length) out.push('\n**콘텐츠 모듈**\n' + table(['모듈', '누구·언제', '보이는 것', '갱신', '근거'], bp.content_modules.map((x) => [x.name, x.for, x.shows, x.update, x.from])));
       if ((bp.journey || []).length) out.push('\n**여정**\n' + table(['단계', '접점', '하는 것', '얻는 것'], bp.journey.map((j) => [j.step, j.touchpoint, j.does, j.gets])));
       if ((bp.scope_coverage || []).length) out.push('\n**범위 커버리지**\n' + table(['범위', '어떻게'], bp.scope_coverage.map((x) => [x.scope_id, x.how])));
-      if ((bp.open_questions || []).length) out.push('\n**확인할 것**\n' + list(bp.open_questions));
+      // 확인할 것은 맨 끝 '검증 계획'에 한 번만
     }
     out.push('\n## 9. 핵심 장면');
     (c.examples || []).forEach((e, i) => {
@@ -150,18 +208,20 @@ function build(p) {
       out.push('\n' + table(['결정', '명분', '효익'], (e.rationale || []).map((x) => [x.decision, x.reason, x.gain || '— (개살구)'])));
     });
     if (c.selection) out.push(`\n**권장**: ${c.selection.recommended} — ${c.selection.why}`);
-    out.push('\n**예비 판정**\n' + list(c.prelim_review, (x) => `${x.gate} · ${x.status} — ${x.note}`));
-    out.push('\n**사람이 할 일**\n' + list(c.human_todo));
+    if ((c.prelim_review || []).length) out.push('\n**점검**\n' + list(c.prelim_review, (x) => `${x.gate} · ${x.status} — ${facts.stripBoiler(x.note || '')}`));
   }
   const brain = Object.entries((p.run && p.run.brain) || {}).filter(([, v]) => v);
   if (brain.length) {
-    out.push('\n## 9. 더프롬 판단 브레인');
+    out.push('\n## 10. 더프롬 판단 브레인');
     out.push(table(['단계', '방향 제시', '판정', '핵심 지적'], brain.map(([k, v]) => [k, (v.direct || {}).direction || '', (v.verify || {}).verdict || '', ((v.verify || {}).issues || [])[0] || ''])));
   }
+  const vp = verifyPlan(p);
+  if (vp) out.push(vp);
+  if (p.run && (p.run.inspirations || []).length) out.push('\n## 12. 디자이너의 영감\n' + list(p.run.inspirations, (i) => `${i.stage} · ${i.text}`));
   if (p.run && p.run.polishStats && Object.keys(p.run.polishStats).length) {
     out.push('\n## 부록 · 교열 — AI투 검사기 (writing.md 4장)\n' + table(['단계', '검토 / 전체 문장', 'AI투 전 → 후', '많이 나온 것'], Object.entries(p.run.polishStats).map(([k, v]) => [k, `${v.sent} / ${v.sentences}`, `${v.before} → ${v.after}`, Object.entries(v.byKindBefore || {}).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([kk, n]) => `${kk} ${n}`).join(', ')])));
   }
-  if (p.run && (p.run.inspirations || []).length) out.push('\n## 10. 디자이너의 영감\n' + list(p.run.inspirations, (i) => `${i.stage} · ${i.text}`));
+  if (p.run && p.run.factStats && Object.values(p.run.factStats).some((x) => x.numbers)) out.push('\n## 부록 · 사실 가드 — 근거 없는 수치\n' + table(['단계', "'값 미정 · 목업'으로 바꾼 수치", '예'], Object.entries(p.run.factStats).filter(([, v]) => v.numbers).map(([k, v]) => [k, String(v.numbers), (v.samples || []).slice(0, 5).join(', ')])));
   if (p.run && p.run.usage) out.push(`\n---\nAPI 비용(추정) $${(p.run.usage.cost || 0).toFixed(3)} · 호출 ${p.run.usage.calls} · 이미지 ${p.run.usage.images || 0}`);
   return out.filter(Boolean).join('\n');
 }
