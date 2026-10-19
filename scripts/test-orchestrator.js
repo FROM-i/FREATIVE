@@ -246,6 +246,24 @@ app.whenReady().then(async () => {
       if (sT.results.positioning || sT.stages.tunnel.status !== 'running') fail('다시 보기 — 터널 진행 중에 뒤 단계 결과가 보임');
     }
 
+    // 이미지 그리기 — 자동 생성이 꺼져 있어도 '그리기'는 그린다 · 직접 지정에서 이미지 칸에 글 모델이 들어가도 이미지 모델로 부른다
+    {
+      const settings = require(path.join(src, 'settings'));
+      const before = JSON.parse(JSON.stringify(settings.get()));
+      settings.set({ run: { generateImages: false }, openai: { followRecommended: false, autoModel: false, stages: {}, imagePool: [], models: { ...before.openai.models, image: 'gpt-6-astra' } } });
+      const pr = store.get(p.id);
+      const ex0 = pr.run.results.creative.examples[0];
+      const oldImg = ex0.image;
+      const r = await orch.regenerateImage(p.id, 0, emit);
+      const after = store.get(p.id);
+      const img = after.run.agents.filter((a) => a.role === 'image').pop();
+      console.log('regen', JSON.stringify(r), '| model', img.model, '|', img.why, '| changed', after.run.results.creative.examples[0].image !== oldImg);
+      if (!r.ok || !/gpt-image/.test(img.model) || after.run.results.creative.examples[0].image === oldImg) fail('그리기 — 이미지가 다시 그려지지 않음');
+      let threw = false; try { await orch.regenerateImage(p.id, 99, emit); } catch { threw = true; }
+      if (!threw) fail('없는 예시 그리기가 조용히 지나감');
+      settings.set({ run: { generateImages: before.run.generateImages }, openai: { followRecommended: before.openai.followRecommended, autoModel: before.openai.autoModel, stages: before.openai.stages || {}, imagePool: before.openai.imagePool || [], models: before.openai.models } });
+    }
+
     // 라이브러리 — 사조 추가
     const lib = require(path.join(src, 'library'));
     const mat = path.join(os.tmpdir(), 'ct-zen.md'); fs.writeFileSync(mat, '# 선 미학\n비움은 집중이다.');

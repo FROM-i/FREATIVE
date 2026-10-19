@@ -211,6 +211,15 @@ class Controller {
     return def;
   }
 
+  /** 이미지 모델 — '직접 지정'에서 이미지 칸이 비었거나 글 모델이 들어가 있으면 글 모델로 이미지를 부르게 된다. 그때는 추천 이미지 모델로 */
+  imageModel() {
+    const pick = this.modelFor('creative', 'image');
+    if (isImageModel(pick.model)) return pick;
+    const e = models.effective();
+    const fb = [(e.imagePool[0] || {}).id, settings.DEFAULTS && settings.DEFAULTS.openai.models.image, 'gpt-image-1'].find(isImageModel);
+    return { model: fb, effort: '', why: `이미지 모델 칸이 '${pick.model || '비어 있음'}'이라 ${fb}로 대신 그림` };
+  }
+
   /** 화가에게 보여줄 모델 구성 — 역할 기본값 · 단계 지정 · 고를 수 있는 풀(모델 × 추론 강도) · 이미지 풀 */
   modelPoolForPainter() {
     const e = models.effective();
@@ -1205,16 +1214,28 @@ class Controller {
     return { summary: bp.summary, baseline_gap: bp.baseline_gap, form_language: bp.form_language, sections: arr(bp.sections).map((s) => ({ key: s.key, label: s.label, items: arr(s.items).map((it) => ({ name: it.name, what: it.what, where: it.where, spec: it.spec, scope_ids: it.scope_ids })) })), content_modules: bp.content_modules, journey: bp.journey, scope_coverage: bp.scope_coverage };
   }
 
-  imagesEnabled() {
-    return settings.get().run.generateImages && this.brief.images !== false && this.type.image !== false;
+  /** 자동 이미지 생성이 꺼진 이유 — 켜져 있으면 null */
+  imagesOff() {
+    if (!settings.get().run.generateImages) return '설정에서 가이드 이미지 생성이 꺼져 있음';
+    if (this.brief.images === false) return '이 프로젝트의 의뢰서에서 이미지 생성을 끔';
+    const ids = this.brief.deliverables || [];
+    const types = ids.map(typeById).filter(Boolean);
+    // 여러 유형이면 하나라도 이미지를 쓰는 유형이면 그린다 (첫 유형만 보면 UI/UX + KV 조합에서 꺼진다)
+    if (types.length ? !types.some((t) => t.image !== false) : this.type.image === false) return '결과물 유형이 이미지를 쓰지 않음';
+    return null;
   }
+  imagesEnabled() { return !this.imagesOff(); }
 
   async generateImages(only = null) {
     const c = this.run.results.creative;
-    if (!c || !this.imagesEnabled()) return;
+    if (!c) return;
+    // 자동 생성은 스위치를 따른다. 사람이 '그리기'를 누른 것(only)은 스위치와 상관없이 그린다 — 예전에는 여기서 조용히 끝나 버튼이 아무 일도 안 했다
+    const off = only === null ? this.imagesOff() : null;
+    if (off) { c.imageSkip = off; this.line('시스템', `가이드 이미지를 그리지 않음 — ${off}. 카드의 '그리기'로 한 장씩 그릴 수 있다`, 'creative'); return; }
+    delete c.imageSkip;
     const list = c.examples.map((e, i) => ({ e, i })).filter(({ e, i }) => e.image_prompt && (only === null || only === i));
     await pLimit(list, 2, async ({ e, i }) => {
-      const pick = this.modelFor('creative', 'image');
+      const pick = this.imageModel();
       const a = { id: `creative:image:${i}:${Date.now()}`, stage: 'creative', role: 'image', key: 'image', name: `조수 · 이미지 (${e.title || i + 1})`, task: e.title, model: (providers.isMock() ? 'mock:' : '') + pick.model, why: pick.why, status: 'working', startedAt: now() };
       this.run.agents.push(a);
       this.send('agent-start', { agent: a });
@@ -1338,6 +1359,8 @@ function emitterFor(win) {
   return (payload) => { if (win && !win.isDestroyed()) win.webContents.send('run:event', payload); };
 }
 
+function isImageModel(id) { return /^(gpt-image|dall-e|chatgpt-image)/.test(String(id || '')); }
+
 function controller(projectId, emit, { reset = false } = {}) {
   if (runs.has(projectId)) return runs.get(projectId);
   const c = new Controller(projectId, emit);
@@ -1445,12 +1468,17 @@ async function inspire(projectId, stage, text, emit) {
 }
 
 async function regenerateImage(projectId, index, emit) {
-  const c = controller(projectId, emit);
+  // 진행 중인 실행이 있으면 그 컨트롤러를 쓰고 지우지 않는다 — 예전에는 실행 중에 누르면 진행 중인 실행을 목록에서 지워 버렸다
+  const live = runs.has(projectId);
+  const c = live ? runs.get(projectId) : new Controller(projectId, emit);
+  if (!c.run.results.creative) throw new Error('아직 Creative 결과가 없습니다');
+  const e = (c.run.results.creative.examples || [])[index];
+  if (!e) throw new Error('해당 예시를 찾을 수 없습니다');
+  if (!e.image_prompt) throw new Error('이 예시에는 이미지 프롬프트가 없습니다');
   await c.generateImages(index);
   c.save();
-  runs.delete(projectId);
   c.send('progress', { stage: 'creative' });
-  return { ok: true };
+  return e.image && !e.imageError ? { ok: true } : { ok: false, error: e.imageError || '이미지를 만들지 못했습니다' };
 }
 
 /** 최종 리포트용 코어 추출 (PPT) — 한 번 만든 것은 다시 쓰고, force면 새로 */

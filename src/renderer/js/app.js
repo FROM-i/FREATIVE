@@ -356,7 +356,14 @@ async function onDetailClick(e) {
     S.pinnedStage = false;
     try { await api.run.answerReview(S.project.id, { choice: b.dataset.c, text: text.trim() }); } catch (err) { toast(err.message, 5000); $$('[data-act="review"]').forEach((x) => { x.disabled = false; }); }
   }
-  if (b.dataset.act === 'regen') { b.disabled = true; await api.run.regenerateImage(S.project.id, +b.dataset.i); }
+  if (b.dataset.act === 'regen') {
+    b.disabled = true; const label = b.textContent; b.textContent = '그리는 중…';
+    try {
+      const r = await api.run.regenerateImage(S.project.id, +b.dataset.i);
+      if (r && r.ok === false) toast(`이미지를 만들지 못했습니다 — ${r.error}`);
+    } catch (err) { toast(`이미지를 만들지 못했습니다 — ${err.message || err}`); }
+    finally { b.disabled = false; b.textContent = label; }
+  }
 }
 
 async function onDetailSubmit(e) {

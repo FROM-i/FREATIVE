@@ -608,7 +608,7 @@ function creative(p, run) {
     const gen = agents.some((a) => a.task === e.title);
     const v = e.visual || {}, d = e.detail || {};
     return `<article class="ex ${isRec ? 'rec' : ''}">
-      <div class="ex-img">${e.image ? `<img src="${esc(e.image)}" alt="${esc(e.title)} 콘셉트 비주얼 초안"/>` : `<div class="ph">${gen ? '이미지 조수가 그리는 중…' : e.imageError ? `이미지 생성 실패 — ${esc(e.imageError).slice(0, 80)}` : '이미지 없음'}</div>`}
+      <div class="ex-img">${e.image ? `<img src="${esc(e.image)}" alt="${esc(e.title)} 콘셉트 비주얼 초안"/>` : `<div class="ph">${gen ? '이미지 조수가 그리는 중…' : e.imageError ? `이미지 생성 실패 — ${esc(String(e.imageError).slice(0, 160))}` : c.imageSkip ? `자동으로 그리지 않음 — ${esc(c.imageSkip)}` : '이미지 없음'}</div>`}
         ${e.image_prompt ? `<button class="btn xs regen" data-act="regen" data-i="${i}" ${gen ? 'disabled' : ''}>${e.image ? '다시 그리기' : '그리기'}</button>` : ''}</div>
       <div class="ex-body">
         ${e.touchpoint ? `<div class="ex-tp"><b>${esc(e.touchpoint)}</b>${arr(e.scope_ids).map((x) => ` <span class="tag">${esc(x)}</span>`).join('')}</div>` : ''}
