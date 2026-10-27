@@ -247,10 +247,10 @@ class Controller {
   /** 이미지 모델 — '직접 지정'에서 이미지 칸이 비었거나 글 모델이 들어가 있으면 글 모델로 이미지를 부르게 된다. 그때는 추천 이미지 모델로 */
   imageModel() {
     const pick = this.modelFor('creative', 'image');
-    if (isImageModel(pick.model)) return pick;
+    if (isImageModel(pick.model) && !models.retired(pick.model)) return pick;
     const e = models.effective();
-    const fb = [(e.imagePool[0] || {}).id, settings.DEFAULTS && settings.DEFAULTS.openai.models.image, 'gpt-image-1'].find(isImageModel);
-    return { model: fb, effort: '', why: `이미지 모델 칸이 '${pick.model || '비어 있음'}'이라 ${fb}로 대신 그림` };
+    const fb = [(e.imagePool[0] || {}).id, settings.DEFAULTS && settings.DEFAULTS.openai.models.image, 'gpt-image-2.5-flare'].find((id) => isImageModel(id) && !models.retired(id));
+    return { model: fb, effort: '', why: `이미지 모델 칸이 '${pick.model || '비어 있음'}'${models.retired(pick.model) ? '(API에서 내려간 모델)' : ''}이라 ${fb}로 대신 그림` };
   }
 
   /** 화가에게 보여줄 모델 구성 — 역할 기본값 · 단계 지정 · 고를 수 있는 풀(모델 × 추론 강도) · 이미지 풀 */
@@ -325,7 +325,7 @@ class Controller {
     const chosen = p && arr(p.territories).find((x) => p.final && x.id === p.final.id);
     return {
       canvas: R.canvas && { from_me: R.canvas.from_me, tension: R.canvas.tension, inertia: R.canvas.inertia, concept_draft: R.canvas.concept_draft },
-      airplane: s && { hybrid: s.hybrid, split: s.split, suitcase: s.suitcase, treatments: s.treatments, leave: s.leave_together, selected: s.selected, travels: arr(R.airplane.travels).filter((t) => !t.error && (!arr(s.selected).length || arr(s.selected).includes(t.id))).map((t) => ({ id: t.id, name: t.name, take: t.take, apply: t.apply, treatments: t.treatments, form_moves: t.form_moves, leave: t.leave })) },
+      airplane: s && { hybrid: s.hybrid, split: s.split, suitcase: s.suitcase, treatments: s.treatments, aesthetic: s.aesthetic, leave: s.leave_together, selected: s.selected, travels: arr(R.airplane.travels).filter((t) => !t.error && (!arr(s.selected).length || arr(s.selected).includes(t.id))).map((t) => ({ id: t.id, name: t.name, take: t.take, apply: t.apply, treatments: t.treatments, aesthetic: t.aesthetic && t.aesthetic.take ? t.aesthetic : undefined, form_moves: t.form_moves, leave: t.leave })) },
       tunnel: t && { exit_light: t.exit_light, keep: t.keep, change: t.change, conflicts: t.conflicts },
       positioning: p && { whitespace: p.whitespace, chosen, reason: p.final && p.final.reason },
       root: this.root(),
@@ -884,7 +884,7 @@ ${o.dups.map((d) => `- ${d.move.slice(0, 100)} ↔ ${d.with}`).join('\n')}
   /** 뒤 단계용 계보 요약 — 사조는 코어·조형 조작 이름만 */
   lineageBrief() {
     const L = this.lineage();
-    if (L.airplane) L.airplane = { hybrid: L.airplane.hybrid, split: L.airplane.split, treatments: L.airplane.treatments, selected: L.airplane.selected, travels: arr(L.airplane.travels).map((t) => ({ id: t.id, core: t.core, form_moves: arr(t.form_moves).map((m) => (m.move || '').slice(0, 120)) })) };
+    if (L.airplane) L.airplane = { hybrid: L.airplane.hybrid, split: L.airplane.split, treatments: L.airplane.treatments, aesthetic: L.airplane.aesthetic, selected: L.airplane.selected, travels: arr(L.airplane.travels).map((t) => ({ id: t.id, core: t.core, form_moves: arr(t.form_moves).map((m) => (m.move || '').slice(0, 120)) })) };
     if (L.think) L.think = { final: L.think.final };
     return L;
   }
@@ -1255,7 +1255,7 @@ ${o.dups.map((d) => `- ${d.move.slice(0, 100)} ↔ ${d.with}`).join('\n')}
     const hist = this.run.gates.C.history;
     const feedback = hist.map((h) => `${h.decision === 'go' ? 'go' : '수정'}: ${h.note || ''}`).join('\n') || '(없음)';
     const c = this.run.results.concept;
-    const concept = { concept: c.concept, theme: c.theme, keywords: c.keywords, metaphor: c.metaphor, philosophy_core: c.philosophy_core, tone_manner: c.tone_manner, interpretation: c.interpretation, benefit: c.benefit, rough: c.rough, scope_map: c.scope_map };
+    const concept = { concept: c.concept, theme: c.theme, keywords: c.keywords, creative_edge: c.creative_edge, visual_idea: c.visual_idea, metaphor: c.metaphor, philosophy_core: c.philosophy_core, tone_manner: c.tone_manner, interpretation: c.interpretation, benefit: c.benefit, rough: c.rough, scope_map: c.scope_map };
     const scope = this.scope();
     const common = { mission: b.mission, scope, rfp: b.rfp || null, type: this.typeBrief(), baseline: this.run.results.baseline || null, concept, forpop: this.forpopHandoff(), lineage: this.lineage(), tunnel: this.tunnelDigest(), feedback };
     const anatomy = arr(this.type.anatomy);
@@ -1338,6 +1338,14 @@ ${o.dups.map((d) => `- ${d.move.slice(0, 100)} ↔ ${d.with}`).join('\n')}
     this.setStage('creative', { progress: 0.55 });
     this.send('progress', { stage: 'creative' });
 
+    // ③ 설계론 — 이 Creative는 어떻게 보이는가. 설계서·콘텐츠는 기획이고, 사조의 원리·미감과 노하우가 표현으로 바뀌는 곳은 여기다
+    const langFix = fixes.filter((f) => /설계론|스타일|컴포넌트|레이아웃|비주얼|그림|조형|미감|시그니처|아트|엣지|이미지/.test(f));
+    let language = rework && prev.language && !langFix.length ? prev.language : null;
+    if (!language) language = await this.designLanguage({ common, blueprint, contents, fixes: langFix });
+    this.run.results.creative.language = language;
+    this.setStage('creative', { progress: 0.62 });
+    this.send('progress', { stage: 'creative' });
+
     // ③ 핵심 장면 — 콘텐츠가 보이는 순간. 재작업이면 장면·콘텐츠를 짚은 지적이 있을 때만 다시 그린다
     const sceneFix = fixes.filter((f) => /장면|대표|핵심 장면|헤드라인|시각화|이미지|앵글|구도|형태|조형/.test(f));
     if (!rework || sceneFix.length || contentFix.length || !arr(prev.examples).length) {
@@ -1347,16 +1355,82 @@ ${o.dups.map((d) => `- ${d.move.slice(0, 100)} ↔ ${d.with}`).join('\n')}
         role: 'director', prompt: '10_creative', stage: 'creative',
         agent: { key: 'painter', name: '화가', task: `핵심 장면 ${n}곳` },
         // 장면은 설계서에서 고른다 — 계보·터널 원문은 설계서에 이미 녹아 있으니 요약만 준다 (입력 토큰이 가장 큰 호출)
-        ctx: { ...common, lineage: this.lineageBrief(), tunnel: this.tunnelBrief(), blueprint: this.blueprintDigest(blueprint, { specMax: 260 }), contents, exampleCount: n },
+        ctx: { ...common, lineage: this.lineageBrief(), tunnel: this.tunnelBrief(), blueprint: this.blueprintDigest(blueprint, { specMax: 260 }), contents, language: this.languageBrief(language), exampleCount: n },
       });
       json.examples = (json.examples || []).slice(0, 5);
       // 다시 그린 장면은 앞 이미지를 이어받지 않는다
-      this.run.results.creative = { ...json, blueprint, contents };
+      this.run.results.creative = { ...json, blueprint, contents, language };
       this.line('화가', json.painter_line, 'creative');
     } else {
-      this.run.results.creative = { ...prev, blueprint, contents };
+      this.run.results.creative = { ...prev, blueprint, contents, language };
     }
     await this.polish('creative', this.run.results.creative, { skip: ['headline', 'sections', 'content_modules', 'spec', 'what', 'where', 'shows', 'becomes', 'form_language'] });
+  }
+
+  /** 결과물이 화면이 주인공인지(ui) 그림이 주인공인지(visual) — 여러 유형이면 둘 다 */
+  creativeModes() {
+    const ids = arr(this.brief.deliverables).length ? arr(this.brief.deliverables) : [this.type.id];
+    const ui = ids.some((id) => ['uiux', 'page'].includes(id));
+    const visual = ids.some((id) => !['uiux', 'page'].includes(id));
+    return { ui, visual };
+  }
+
+  /** 설계론 — 사조의 원리·미감 · 인사이트 · 노하우가 표현으로 바뀌는 단계. 빈 곳이 있으면 한 번 더 */
+  async designLanguage({ common, blueprint, contents, fixes = [] }) {
+    const md = this.creativeModes();
+    const UI = `### 화면이 있는 결과물 — UI 설계론
+- **시그니처 2~4개**: 이 서비스만의 컴포넌트 · 레이아웃 · 그래픽 장치 · 인터랙션. 익숙한 패턴(PAT-*)에서 출발해 사조의 원리 · 미감으로 다룬다. 결과 화면의 주인공은 시그니처 중 하나다.
+- **system**: 그리드(GRID-*) · 레이아웃(LAY-*) · 타입 스케일과 서체의 태도 · 색의 역할(60-30-10) · 모서리 · 선 · 면의 형태 언어 · 이미지·일러스트 방식 · 모션의 성격(MOTION-*) · 정보 밀도. 근거 없는 수치 대신 관계(비율 · 위계)로 쓴다.
+- 관성 패턴(뒤로 가기 · 탭 · 폼 · 진행 표시)은 구조에서 지킨다. 엣지는 표현과 결과 화면의 해석에서 만든다.
+- 정보 구조 · 플로우는 설계서에 있다. 여기서는 그것이 **어떻게 보이는지**를 쓴다.`;
+    const VIS = `### 그림이 주인공인 결과물 — 아트 디렉션
+- **무엇을 그리는가**(주인공 · 장면 · 메타포)와 **어떤 스타일로**(그림 방식 · 렌더 · 질감 · 빛 · 색)가 먼저다. 사조의 미감이 가장 많이 드러나는 곳이다.
+- 스톡 사진처럼 보이는 일반적 장면(웃는 사람, 빈 공간에 놓인 기하 도형, 책상 위 기기)은 실패다.
+- 사이니지 · 공간이면 조형의 형태 언어(설계서 departures)와 그 위에 보이는 그림을 함께 정한다.`;
+    const modeGuide = [md.ui && UI, md.visual && VIS].filter(Boolean).join('\n\n');
+    const imgUI = '화면 디자인 자체를 그린다 — 정면에서 본 평면 UI 화면 2~3개를 중립 배경에 나란히(flat front-on UI screen designs side by side). 기기 사진 · 손 · 책상 · 실내 장면을 넣지 않는다. 실제 컴포넌트(내비게이션 · 카드 · 시각화 · 버튼 · 시그니처)를 설계론의 스타일로 그리고, 글자는 짧은 자리 표시(영문 몇 단어)만 쓴다.';
+    const imgVIS = '그림 자체를 그린다 — 설계론의 그림 방식으로 완성된 한 장(KV · 장면 · 일러스트). 기기 화면 속 이미지나 빈 공간 목업으로 넣지 않는다(사이니지 · 공간이면 실제 환경 속 조형으로). 카피 자리는 비워 두고 글자는 넣지 않는다.';
+    const imageRule = [md.ui && `화면: ${imgUI}`, md.visual && `그림: ${imgVIS}`].filter(Boolean).join(' / ');
+    const ctx = {
+      mission: common.mission, concept: common.concept, lineage: this.lineageBrief(), tunnel: this.tunnelBrief(), forpop: common.forpop,
+      blueprint: { summary: blueprint.summary, form_language: blueprint.form_language, sections: arr(blueprint.sections).filter((x) => /screens|ia|flow|form|system|placement/.test(x.key)).map((x) => ({ label: x.label, items: arr(x.items).map((it) => it.name) })) },
+      contents: arr(contents).map((c) => ({ title: c.title, touchpoint: c.touchpoint, what_people_see: c.what_people_see })),
+      type: common.type, baseline: common.baseline, feedback: common.feedback, modeGuide, imageRule,
+    };
+    const run = (fx) => this.call({
+      role: 'director', prompt: '10_language', stage: 'creative',
+      agent: { key: 'painter', name: '화가', task: fx.length ? `설계론 보완 — ${fx.length}곳` : `설계론 — ${[md.ui && 'UI 시그니처·시스템', md.visual && '아트 디렉션'].filter(Boolean).join(' · ')}` },
+      ctx: { ...ctx, fixes: fx.length ? `## 고칠 것 — 반드시 반영\n${fx.map((f) => `- ${f}`).join('\n')}` : '' },
+    });
+    let lang = await run(fixes).catch((e) => { this.line('시스템', `설계론 실패 — ${e.message}`, 'creative'); return null; });
+    if (!lang) return null;
+    const gaps = this.languageGaps(lang, md);
+    if (gaps.length) {
+      this.line('판단 브레인', `설계론 빈 곳 — ${gaps.join(' · ')}`, 'creative');
+      const again = await run(gaps).catch(() => null);
+      if (again && this.languageGaps(again, md).length < gaps.length) lang = again;
+    }
+    lang.examples = arr(lang.examples).slice(0, 3);
+    lang.modes = md;
+    if (lang.line) this.line('화가', lang.line, 'creative');
+    return lang;
+  }
+
+  languageGaps(L, md) {
+    const g = [];
+    if (!L.thesis) g.push('설계론 한 문장(thesis)');
+    if (!L.edge || !L.edge.familiar || !L.edge.new) g.push('엣지 — 지키는 관습과 그 위의 새 표현');
+    if (arr(L.derivation).filter((x) => x && x.from && x.becomes).length < 2) g.push('근거 — 사조 원리·미감·노하우가 무엇이 되었나 두 개 이상');
+    if (md.ui && arr(L.signatures).filter((x) => x && x.name && x.treatment).length < 2) g.push('UI 시그니처 두 개 이상 — 익숙한 패턴에서 출발해 어떻게 다뤘나');
+    if (md.visual && !(L.art_direction && L.art_direction.picture && L.art_direction.style)) g.push('아트 디렉션 — 무엇을 그리고 어떤 스타일로');
+    if (!arr(L.examples).some((x) => x && x.image_prompt)) g.push('설계론을 구현한 예시 이미지 프롬프트');
+    return g;
+  }
+
+  /** 장면 · 이미지에 넘길 설계론 요약 */
+  languageBrief(L) {
+    if (!L) return null;
+    return { thesis: L.thesis, edge: L.edge, system: L.system, signatures: arr(L.signatures).map((x) => ({ name: x.name, kind: x.kind, anatomy: x.anatomy, where: x.where })), art_direction: L.art_direction, dont: L.dont };
   }
 
   /** 해부도 절마다 조수가 병렬로 설계한다 */
@@ -1461,21 +1535,39 @@ ${o.dups.map((d) => `- ${d.move.slice(0, 100)} ↔ ${d.with}`).join('\n')}
     const off = only === null ? this.imagesOff() : null;
     if (off) { c.imageSkip = off; this.line('시스템', `가이드 이미지를 그리지 않음 — ${off}. 카드의 '그리기'로 한 장씩 그릴 수 있다`, 'creative'); return; }
     delete c.imageSkip;
-    const list = c.examples.map((e, i) => ({ e, i })).filter(({ e, i }) => e.image_prompt && (only === null || only === i));
-    await pLimit(list, 2, async ({ e, i }) => {
+    // 그릴 것: 핵심 장면 + 설계론 예시. only는 장면 번호(숫자) 또는 'lang:번호'
+    const L = c.language || null;
+    const scenes = arr(c.examples).map((e, i) => ({ e, i, kind: 'scene', key: i }));
+    const langs = arr(L && L.examples).map((e, i) => ({ e, i, kind: 'lang', key: `lang:${i}` }));
+    const list = [...langs, ...scenes].filter(({ e, key }) => e.image_prompt && (only === null || only === key));
+    const md = (L && L.modes) || this.creativeModes();
+    // 설계론을 모든 이미지에 붙인다 — 장면 이미지가 설계론과 따로 놀면 스톡 이미지 한 장이 된다
+    const style = L ? [
+      L.thesis && `Design language: ${L.thesis}`,
+      L.system && Object.values(L.system).some(Boolean) && `System: ${Object.entries(L.system).filter(([, v]) => v).map(([k, v]) => `${k} — ${v}`).join('; ')}`,
+      arr(L.signatures).length && `Signature elements: ${arr(L.signatures).map((x) => `${x.name} (${x.anatomy || x.kind || ''})`).join('; ')}`,
+      L.art_direction && L.art_direction.style && `Art direction: ${['picture', 'style', 'composition', 'palette', 'texture_light'].map((k) => L.art_direction[k]).filter(Boolean).join('; ')}`,
+      arr(L.dont).length && `Avoid: ${arr(L.dont).join('; ')}`,
+    ].filter(Boolean).join('\n') : '';
+    const noteUI = 'Render as flat, front-on UI screen designs on a neutral backdrop — not a photograph of a device, no hands, no desk, no room. Draw real interface components in the design language above. Short placeholder labels only. No logos, no watermark.';
+    const noteVIS = 'Concept art-direction draft for a design review, drawn in the design language above — not a stock photo, not generic floating geometric shapes. No text, no letters, no logos, no watermark. Leave clean negative space where the headline will go.';
+    const note = md.ui && !md.visual ? noteUI : !md.ui && md.visual ? noteVIS : 'If this shows a screen, render it as flat front-on UI design (no device photo, no hands, short placeholder labels only). Otherwise draw the artwork itself in the design language above — not a stock photo. No logos, no watermark.';
+    await pLimit(list, 2, async ({ e, i, kind }) => {
       const pick = this.imageModel();
-      const a = { id: `creative:image:${i}:${Date.now()}`, stage: 'creative', role: 'image', key: 'image', name: `조수 · 이미지 (${e.title || i + 1})`, task: e.title, model: (providers.isMock() ? 'mock:' : '') + pick.model, why: pick.why, status: 'working', startedAt: now() };
+      const label = kind === 'lang' ? `설계론 예시 ${i + 1}` : (e.title || i + 1);
+      const a = { id: `creative:image:${kind}${i}:${Date.now()}`, stage: 'creative', role: 'image', key: 'image', name: `조수 · 이미지 (${label})`, task: e.title, model: (providers.isMock() ? 'mock:' : '') + pick.model, why: pick.why, status: 'working', startedAt: now() };
       this.run.agents.push(a);
       this.send('agent-start', { agent: a });
       try {
         const size = ['1536x1024', '1024x1024', '1024x1536'].includes(e.image_size) ? e.image_size : (this.type.imageSize || '1536x1024');
         const d = e.detail || {};
-        const prompt = `${e.image_prompt}\n\nCamera & lighting guide: ${[d.angle, d.view, d.light, d.texture].filter(Boolean).join(' / ')}\nStyle note: concept visual draft for a design review. No text, no letters, no logos, no watermark. Leave clean negative space where the headline will go.`;
+        const cam = [d.angle, d.view, d.light, d.texture].filter(Boolean).join(' / ');
+        const prompt = [e.image_prompt, style, cam && `Camera & lighting guide: ${cam}`, `Style note: ${note}`].filter(Boolean).join('\n\n');
         this.agentProgress(a, { phase: 'drawing' });
-        const r = await this.provider.image({ prompt, size, model: pick.model, signal: this.abort.signal, meta: { example: e, index: i } });
+        const r = await this.provider.image({ prompt, size, model: pick.model, signal: this.abort.signal, meta: { example: e, index: i, kind } });
         const buf = r.buffer || r;
         const ext = buf[0] === 0x3c ? 'svg' : 'png';
-        const rel = store.writeOutput(this.id, `guide-${i + 1}-${Date.now()}.${ext}`, buf);
+        const rel = store.writeOutput(this.id, `${kind === 'lang' ? 'style' : 'guide'}-${i + 1}-${Date.now()}.${ext}`, buf);
         e.image = `ct://project/${this.id}/${rel}`;
         e.imageFile = rel;
         delete e.imageError;
@@ -1717,7 +1809,8 @@ async function regenerateImage(projectId, index, emit) {
   const live = runs.has(projectId);
   const c = live ? runs.get(projectId) : new Controller(projectId, emit);
   if (!c.run.results.creative) throw new Error('아직 Creative 결과가 없습니다');
-  const e = (c.run.results.creative.examples || [])[index];
+  const lang = typeof index === 'string' && /^lang:\d+$/.test(index);
+  const e = lang ? ((c.run.results.creative.language || {}).examples || [])[+index.split(':')[1]] : (c.run.results.creative.examples || [])[index];
   if (!e) throw new Error('해당 예시를 찾을 수 없습니다');
   if (!e.image_prompt) throw new Error('이 예시에는 이미지 프롬프트가 없습니다');
   await c.generateImages(index);

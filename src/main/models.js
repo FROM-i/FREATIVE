@@ -7,6 +7,10 @@
  */
 const settings = require('./settings');
 
+/** API에서 내려간 모델 — 선택지·풀·대체에서 뺀다 (models.json의 retired가 있으면 그것을 더한다) */
+const RETIRED = new Set(['gpt-image-1', 'dall-e-2', 'dall-e-3']);
+function retired(id) { const r = recommended(); return RETIRED.has(id) || !!(r && (r.retired || []).includes(id)); }
+
 function recommended() {
   try { return require('./knowledge').load().models || null; } catch { return null; }
 }
@@ -38,7 +42,7 @@ function effective() {
     models: { ...(o.models || {}) },
     efforts: { ...(o.roleEfforts || {}) },
     pool: o.pool || [],
-    imagePool: o.imagePool && o.imagePool.length ? o.imagePool : (r && r.imagePool) || [],
+    imagePool: (o.imagePool && o.imagePool.filter((x) => !retired(x.id)).length ? o.imagePool.filter((x) => !retired(x.id)) : (r && r.imagePool) || []),
     stages: o.stages || {},
     catalog: (r && r.catalog) || [], uses: (r && r.uses) || {}, effortGuide: (r && r.effortGuide) || {},
     source: 'custom',
@@ -72,6 +76,7 @@ function classify(ids) {
   for (const id of ids) {
     if (known.has(id)) continue;
     if (/(realtime|audio|tts|transcribe|whisper|embedding|moderation|search-api|cyber|rosalind|codex|live|translate|babbage|davinci|instruct)/.test(id)) continue;
+    if (RETIRED.has(id)) continue; // API에서 내려간 모델은 목록에 넣지 않는다
     if (/^(gpt-image|dall-e)/.test(id)) { image.push({ id, tier: /mini|flare|fast/.test(id) ? 'fast' : 'quality' }); continue; }
     if (!/^(gpt-\d|o\d)/.test(id)) continue;
     if (/\d{4}-\d{2}-\d{2}$/.test(id)) continue; // 날짜 고정 스냅샷은 건너뛴다
@@ -83,4 +88,4 @@ function classify(ids) {
   return { text, image };
 }
 
-module.exports = { recommended, following, effective, pricing, snapshotToCustom, classify };
+module.exports = { retired, recommended, following, effective, pricing, snapshotToCustom, classify };

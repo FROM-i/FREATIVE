@@ -41,7 +41,6 @@ const DEFAULTS = {
     'gpt-4.1': { in: 2, cached: 0.5, out: 8 },
     'gpt-4.1-mini': { in: 0.4, cached: 0.1, out: 1.6 },
     'gpt-4o': { in: 2.5, cached: 1.25, out: 10 },
-    'gpt-image-1': { in: 5, cached: 1.25, out: 40, imageIn: 10 },
     image: { low: 0.016, medium: 0.063, high: 0.25 },
     webSearch: 0.01, // 웹 검색 1회 (USD) — 검색 결과 토큰은 모델 단가로 따로 계산된다
   },
@@ -86,6 +85,10 @@ function init() {
   try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* first run */ }
   data = deepMerge(DEFAULTS, saved);
   data.secrets = data.secrets || {};
+  // API에서 내려간 이미지 모델(gpt-image-1 등)을 저장해 두었으면 기본 이미지 모델로 바꾼다
+  const GONE = new Set(['gpt-image-1', 'dall-e-2', 'dall-e-3']);
+  if (data.openai && data.openai.models && GONE.has(data.openai.models.image)) data.openai.models.image = DEFAULTS.openai.models.image;
+  if (data.openai && Array.isArray(data.openai.imagePool)) data.openai.imagePool = data.openai.imagePool.filter((x) => !GONE.has(x && x.id));
   // 환경 변수로도 키를 넣을 수 있다 (CI·테스트)
   if (process.env.OPENAI_API_KEY && !data.secrets.openaiKey) setSecret('openaiKey', process.env.OPENAI_API_KEY);
   save();

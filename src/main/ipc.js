@@ -50,6 +50,8 @@ function register(win, { isMock }) {
   });
 
   // 모델 구성 — 추천(지식 저장소) / 직접 지정
+  h('settings:presets', async () => require('./presets').list());
+  h('settings:applyPreset', async (id) => { await guard('settings:manage'); return require('./presets').apply(id); });
   h('settings:models', async () => { const models = require('./models'); return { following: models.following(), effective: models.effective(), recommended: models.recommended(), pricing: models.pricing() }; });
   h('settings:modelsMode', async (follow) => {
     await guard('settings:manage');

@@ -24,6 +24,8 @@ contextBridge.exposeInMainWorld('api', {
     testKey: () => invoke('settings:testKey'),
     listModels: () => invoke('settings:listModels'),
     models: () => invoke('settings:models'),
+    presets: () => invoke('settings:presets'),
+    applyPreset: (id) => invoke('settings:applyPreset', id),
     modelsMode: (follow) => invoke('settings:modelsMode', follow),
     discoverModels: () => invoke('settings:discoverModels'),
   },

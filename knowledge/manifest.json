@@ -1,6 +1,6 @@
 {
   "name": "thefrom-freative-knowledge",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "methodVersion": "0.9",
   "updated": "2026-10-18",
   "note": "이 파일의 version을 올려야 설치된 앱들이 지식을 다시 내려받는다. files: 앱 안 경로 → 저장소 경로. @skill/ 은 스킬 저장소(thefrom_design_Skill)의 원본 — 앱 저장소에 복사하지 않는다.",
@@ -47,6 +47,7 @@
     "prompts/10_bp_section.md": "knowledge/prompts/10_bp_section.md",
     "prompts/10_ledger.md": "knowledge/prompts/10_ledger.md",
     "prompts/10_content.md": "knowledge/prompts/10_content.md",
+    "prompts/10_language.md": "knowledge/prompts/10_language.md",
     "method/thinking.md": "knowledge/method/thinking.md",
     "prompts/12_round.md": "knowledge/prompts/12_round.md",
     "prompts/b_round.md": "knowledge/prompts/b_round.md"

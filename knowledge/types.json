@@ -223,8 +223,8 @@
         "주인공 화면의 1순위가 3초 안에",
         "핵심 경험이 플랫폼 기본 컴포넌트만으로 끝나지 않는가"
       ],
-      "image": false,
-      "imageSize": "1024x1536",
+      "image": true,
+      "imageSize": "1536x1024",
       "anatomy": [
         {
           "key": "ia",

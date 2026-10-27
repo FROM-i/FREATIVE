@@ -23,6 +23,7 @@ function atAGlance(p) {
   if (c) lines.push(`- **컨셉**: ${c.theme || ''} — ${c.concept || ''}`);
   if (f && f.core_pod && f.core_pod.item) lines.push(`- **코어 PoD**: ${f.core_pod.item}`);
   if (bp && bp.baseline_gap && (bp.baseline_gap.new || []).length) lines.push(`- **기본안에 없는 것**: ${bp.baseline_gap.new.slice(0, 3).join(' / ')}`);
+  if (cr && cr.language && cr.language.thesis) lines.push(`- **설계론**: ${cr.language.thesis}`);
   if (cr && (cr.contents || []).length) lines.push(`- **콘텐츠**: ${cr.contents.map((x) => x.title).join(' · ')}`);
   if (cr && (cr.examples || []).length) lines.push(`- **핵심 장면**: ${cr.examples.map((e) => e.title).join(' · ')}`);
   const vp = verifyItems(p);
@@ -208,6 +209,19 @@ function build(p) {
         const tr = x.treatment || {};
         out.push(`\n### ${i + 1}. ${x.title}${x.status === '후보' ? ' (후보)' : ''}\n- 어디서·언제·누구: ${[x.touchpoint, x.moment, x.for].filter(Boolean).join(' · ')}\n- 보이는 것: ${x.what_people_see || ''}\n- 하는 것: ${x.what_people_do || ''}${(x.samples || []).length ? `\n- 예시: ${x.samples.map((y) => `${y.label} “${y.text}”`).join(' / ')}` : ''}\n- 기존의 것을 다룬 방식: ${x.existing || ''} → ${tr.by || ''} ${tr.treat || ''}${tr.principle ? `(${tr.principle})` : ''} → ${tr.becomes || ''}${x.insight ? `\n- 겹친 인사이트: ${x.insight}` : ''}${(x.knowhow || []).length ? `\n- 노하우: ${x.knowhow.map((k) => `${k.id} — ${k.how}`).join(' / ')}` : ''}\n- 흔한 방식과 다른 점: ${x.vs_convention || ''}`);
       });
+    }
+    const LG = c.language;
+    if (LG) {
+      out.push(`\n## 8.7 설계론 — 이 Creative는 어떻게 보이는가\n\n> ${LG.thesis || ''}`);
+      if (LG.edge) out.push(`\n- **지키는 관습**: ${LG.edge.familiar || ''}\n- **그 위의 새 표현**: ${LG.edge.new || ''}\n- **사람이 얻는 것**: ${LG.edge.why || ''}`);
+      if ((LG.derivation || []).length) out.push('\n**근거 — 사조 원리·미감 · 노하우 · 인사이트가 무엇이 되었나**\n' + table(['근거', '무엇이 되었나'], LG.derivation.map((x) => [x.from, x.becomes])));
+      if ((LG.signatures || []).length) out.push('\n**시그니처**\n' + table(['이름', '종류', '출발한 패턴', '다룬 방식', '구성', '어디서'], LG.signatures.map((x) => [x.name, x.kind, x.familiar, x.treatment, x.anatomy, x.where])));
+      const SY = LG.system || {};
+      if (Object.values(SY).some(Boolean)) out.push('\n**시스템**\n' + table(['항목', '내용'], Object.entries(SY).filter(([, v]) => v)));
+      const AD = LG.art_direction || {};
+      if (AD.picture || AD.style) out.push('\n**아트 디렉션**\n' + table(['항목', '내용'], [['무엇을 그리나', AD.picture], ['스타일', AD.style], ['구도', AD.composition], ['색', AD.palette], ['타이포', AD.type], ['질감·빛', AD.texture_light], ['움직임', AD.motion]].filter((x) => x[1])));
+      (LG.examples || []).forEach((x, i) => out.push(`\n**예시 ${i + 1}. ${x.title || ''}** — ${x.shows || ''}${x.image ? `\n\n![${x.title || ''}](${x.image.replace(/^ct:\/\/project\/[^/]+\//, '')})` : ''}`));
+      if ((LG.dont || []).length) out.push(`\n- 이렇게 보이면 실패: ${LG.dont.join(' / ')}`);
     }
     out.push('\n## 9. 핵심 장면');
     (c.examples || []).forEach((e, i) => {

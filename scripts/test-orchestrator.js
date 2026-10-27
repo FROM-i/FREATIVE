@@ -182,6 +182,9 @@ app.whenReady().then(async () => {
         ['사조 처리 → 콘텐츠', R.airplane.synth.treatments && R.airplane.synth.treatments[0].becomes, ['10_content']],
         ['콘텐츠 → 장면', R.creative.contents && R.creative.contents[0] && R.creative.contents[0].title, ['10_creative']],
         ['터널 인사이트 → 콘텐츠', R.tunnel.layers[0].insights[0].detail, ['10_content']],
+        ['사조 미감 → 설계론', R.airplane.synth.aesthetic && R.airplane.synth.aesthetic[0].what, ['10_language']],
+        ['설계론 → 장면', R.creative.language && R.creative.language.thesis, ['10_creative']],
+        ['콘텐츠 → 설계론', R.creative.contents && R.creative.contents[0] && R.creative.contents[0].title, ['10_language']],
         ['브레인 방향 · 캔버스', run.brain.canvas && run.brain.canvas.direct && run.brain.canvas.direct.direction, ['02_canvas']],
       ];
       const miss = [];
@@ -205,6 +208,10 @@ app.whenReady().then(async () => {
       if (!contrast && !R.brief.plan.isms.some((x) => /대립/.test(x.why || ''))) { /* 화가가 이미 짝을 골랐으면 통과 */ }
       if (!ledger || !ledger.rules.length) fail('설계 원장이 없음');
       if (!(R.creative.contents || []).length) fail('콘텐츠가 생성되지 않음');
+      const LG = R.creative.language;
+      console.log('language', LG && LG.thesis, '| signatures', LG && LG.signatures.length, '| examples', LG && LG.examples.length, '| example images', LG && LG.examples.filter((x) => x.image).length);
+      if (!LG || !LG.signatures.length || !LG.examples.some((x) => x.image)) fail('설계론 또는 설계론 예시 이미지가 없음');
+      if (!/## 8\.7 설계론/.test(md)) fail('보고서에 설계론 장이 없음');
       if (!/## 8\.5 콘텐츠/.test(md)) fail('보고서에 콘텐츠 장이 없음');
       if (!/일반 유형을 어떻게 다뤘나/.test(md)) fail('보고서에 일반 유형 처리가 없음');
       if (!redo.length) fail('겹친 사조 조작을 다시 두지 않음');
@@ -303,6 +310,24 @@ app.whenReady().then(async () => {
       let threw = false; try { await orch.regenerateImage(p.id, 99, emit); } catch { threw = true; }
       if (!threw) fail('없는 예시 그리기가 조용히 지나감');
       settings.set({ run: { generateImages: before.run.generateImages }, openai: { followRecommended: before.openai.followRecommended, autoModel: before.openai.autoModel, stages: before.openai.stages || {}, imagePool: before.openai.imagePool || [], models: before.openai.models } });
+    }
+
+    // 모델 세팅 프리셋 — 고르면 모델이 알아서 세팅된다
+    {
+      const settings = require(path.join(src, 'settings'));
+      const presets = require(path.join(src, 'presets'));
+      const before = JSON.parse(JSON.stringify(settings.get()));
+      presets.apply(3);
+      const s3 = settings.get(), c3 = presets.current();
+      presets.apply(1);
+      const s1 = settings.get(), c1 = presets.current();
+      settings.set({ openai: { models: { ...s1.openai.models, director: 'gpt-6-astra' } } });
+      const cx = presets.current();
+      console.log('preset 3', c3, s3.openai.models.director, JSON.stringify(Object.keys(s3.openai.stages)), '| preset 1', c1, s1.openai.models.sub, s1.openai.roleEfforts.sub, s1.run.webSearch, '| after manual edit', cx);
+      if (c3 !== 3 || c1 !== 1 || cx !== null || s1.openai.followRecommended !== false || s3.openai.stages.forpop.brain.model !== 'gpt-6-astra' || Object.keys(s1.openai.stages).length) fail('프리셋 적용 오동작');
+      const ids = new Set(require(path.join(src, 'models')).effective().catalog.map((c) => c.id));
+      if (ids.has('gpt-image-1')) fail('gpt-image-1이 선택지에 남아 있음');
+      settings.set({ run: before.run, openai: { ...before.openai } });
     }
 
     // 라이브러리 — 사조 추가

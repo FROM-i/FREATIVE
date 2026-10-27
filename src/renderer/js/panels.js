@@ -594,6 +594,24 @@ function blueprintBlock(bp, run) {
   </div>`;
 }
 
+/** 설계론 — 이 Creative는 어떻게 보이는가. 사조의 원리·미감 · 노하우가 표현으로 바뀐 것과 그 예시 이미지 */
+function languageBlock(L, run) {
+  if (!L) return '';
+  const working = arr(run.agents).filter((a) => a.role === 'image' && a.status === 'working').map((a) => a.task);
+  const E = L.edge || {};
+  const sig = arr(L.signatures), AD = L.art_direction || {}, SY = L.system || {};
+  const ex = arr(L.examples);
+  return `<div style="margin-top:28px"><span class="kicker">설계론 — 이 Creative는 어떻게 보이는가</span></div>
+  <div class="card ink" style="margin-top:10px"><b style="font-size:18px">${esc(L.thesis || '')}</b>
+    <div class="grid g3" style="margin-top:10px;font-size:13px"><div><span class="kicker" style="color:#BDB9AF">지키는 관습</span><div>${esc(E.familiar || '')}</div></div><div><span class="kicker" style="color:#BDB9AF">그 위의 새 표현</span><div><b>${esc(E.new || '')}</b></div></div><div><span class="kicker" style="color:#BDB9AF">사람이 얻는 것</span><div>${esc(E.why || '')}</div></div></div></div>
+  ${arr(L.derivation).length ? `<table class="tbl" style="margin-top:10px"><thead><tr><th>근거 — 사조 원리·미감 · 노하우 · 인사이트</th><th>무엇이 되었나</th></tr></thead><tbody>${arr(L.derivation).map((x) => `<tr><td>${esc(x.from)}</td><td><b>${esc(x.becomes)}</b></td></tr>`).join('')}</tbody></table>` : ''}
+  ${sig.length ? `<div class="grid ${sig.length >= 3 ? 'g3' : 'g2'}" style="margin-top:10px">${sig.map((x) => `<div class="card"><span class="tag">${esc(x.kind || '')}</span> <b>${esc(x.name)}</b><div class="muted" style="font-size:12px;margin-top:4px">${esc(x.familiar || '')} →</div><div style="font-size:13px">${esc(x.treatment || '')}</div><div style="font-size:12px;margin-top:6px">${esc(x.anatomy || '')}</div></div>`).join('')}</div>` : ''}
+  ${Object.values(SY).some(Boolean) ? `<div class="card" style="margin-top:10px;font-size:13px">${Object.entries(SY).filter(([, v]) => v).map(([k, v]) => `<div><span class="mono">${esc(k)}</span> ${esc(v)}</div>`).join('')}</div>` : ''}
+  ${AD.picture || AD.style ? `<div class="card" style="margin-top:10px;font-size:13px">${[['무엇을 그리나', AD.picture], ['스타일', AD.style], ['구도', AD.composition], ['색', AD.palette], ['타이포', AD.type], ['질감·빛', AD.texture_light]].filter((x) => x[1]).map(([k, v]) => `<div><b>${k}</b> ${esc(v)}</div>`).join('')}</div>` : ''}
+  ${ex.length ? `<div class="grid ${ex.length >= 3 ? 'g3' : 'g2'}" style="margin-top:10px;align-items:start">${ex.map((x, i) => { const gen = working.includes(x.title); return `<article class="ex"><div class="ex-img">${x.image ? `<img src="${esc(x.image)}" alt="${esc(x.title)} 설계론 예시"/>` : `<div class="ph">${gen ? '이미지 조수가 그리는 중…' : x.imageError ? `이미지 생성 실패 — ${esc(String(x.imageError).slice(0, 160))}` : '이미지 없음'}</div>`}
+      ${x.image_prompt ? `<button class="btn xs regen" data-act="regen" data-i="lang:${i}" ${gen ? 'disabled' : ''}>${x.image ? '다시 그리기' : '그리기'}</button>` : ''}</div><div style="padding:10px 0"><b>${esc(x.title || `예시 ${i + 1}`)}</b><div class="muted" style="font-size:12px">${esc(x.shows || '')}</div></div></article>`; }).join('')}</div>` : ''}`;
+}
+
 /** 콘텐츠 — 사람이 실제로 보고 하는 것. 기존의 무엇을 어느 원리로 어떻게 다뤘는지가 함께 보인다 */
 function contentBlock(list) {
   const L = arr(list);
@@ -648,6 +666,7 @@ function creative(p, run) {
   return `${head('creative', 'Creative — 설계 · 핵심 장면', '컨셉 하나에서 사업 범위 전체로 펼친 설계서와, 그 설계의 핵심 접점 장면', c.painter_line)}
   ${blueprintBlock(c.blueprint, run)}
   ${contentBlock(c.contents)}
+  ${languageBlock(c.language, run)}
   ${ex.length ? `<div style="margin-top:28px"><span class="kicker">핵심 장면 ${ex.length}곳 — 콘텐츠가 보이는 순간</span></div>
   <div class="grid ${ex.length >= 3 ? 'g3' : 'g2'}" style="align-items:start;margin-top:10px">${cards}</div>` : waiting('설계서에서 핵심 장면을 고르는 중')}
   <div class="grid g3" style="margin-top:20px">

@@ -733,3 +733,16 @@ dl.rv dd.rq { font-weight: 800; font-size: 17px; }
 .replay-bar .seg button.on { background: var(--yellow); color: var(--ink); border-color: var(--yellow); }
 .replay-bar .rp-label { font-family: var(--mono); font-size: 12px; white-space: nowrap; min-width: 250px; }
 .replay-bar .seg { border-color: rgba(255, 255, 255, .4); } .replay-bar .seg button + button { border-left-color: rgba(255, 255, 255, .4); }
+
+/* ---------- 모델 세팅 프리셋 ---------- */
+.preset-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--u); }
+.preset-card { text-align: left; display: flex; flex-direction: column; gap: 4px; padding: calc(var(--u) * 1.5); border: var(--line) solid var(--hair-2); border-radius: 10px; background: var(--paper); cursor: pointer; font: inherit; color: inherit; }
+.preset-card:hover { border-color: var(--ink); background: var(--paper-2); }
+.preset-card .pn { font-weight: 800; font-size: var(--t-6); line-height: 1; }
+.preset-card b { font-size: var(--t-3); }
+.preset-card small { color: var(--ink-2); font-size: var(--t-1); min-height: 32px; }
+.preset-card .pc-est { display: grid; gap: 2px; font-size: 11px; color: var(--ink-2); border-top: var(--line) solid var(--hair); padding-top: 6px; margin-top: 2px; }
+.preset-card.rec { border-color: var(--ink); border-width: 2px; }
+.preset-card.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.preset-card.on small, .preset-card.on .pc-est, .preset-card.on .muted { color: #BDB9AF; }
+@media (max-width: 1100px) { .preset-row { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

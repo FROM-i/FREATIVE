@@ -368,6 +368,50 @@ function build(project) {
     }
   }
 
+  /* 설계론 — 이 Creative는 어떻게 보이는가 (사조의 원리·미감 · 노하우가 표현으로) */
+  const LG = R.creative && R.creative.language;
+  if (LG) {
+    {
+      const s = newSlide('설계론 — 이 Creative는 어떻게 보이는가');
+      headline(s, t(LG.thesis || '설계론', 80));
+      const E = LG.edge || {};
+      s.addTable([[{ text: '지키는 관습', options: { bold: true } }, { text: '그 위의 새 표현', options: { bold: true } }, { text: '사람이 얻는 것', options: { bold: true } }], [{ text: t(E.familiar, 80) }, { text: t(E.new, 80), options: { bold: true } }, { text: t(E.why, 80) }]],
+        { x: M, y: 1.75, w: W - 2 * M, fontFace: F, fontSize: 10, color: INK, border: { type: 'solid', color: HAIR, pt: 0.5 }, rowH: 0.42, colW: [(W - 2 * M) / 3, (W - 2 * M) / 3, (W - 2 * M) / 3] });
+      const dv = arr(LG.derivation).slice(0, 6);
+      if (dv.length) s.addTable([[{ text: '근거 — 사조 원리·미감 · 노하우 · 인사이트', options: { bold: true } }, { text: '무엇이 되었나', options: { bold: true } }], ...dv.map((x) => [{ text: t(x.from, 40) }, { text: t(x.becomes, 90), options: { bold: true } }])],
+        { x: M, y: 3.0, w: W - 2 * M, fontFace: F, fontSize: 10, color: INK, border: { type: 'solid', color: HAIR, pt: 0.5 }, rowH: 0.38, colW: [4.0, W - 2 * M - 4.0] });
+    }
+    const SG = arr(LG.signatures);
+    const AD = LG.art_direction || {};
+    if (SG.length || AD.picture) {
+      const s = newSlide(SG.length ? 'UI 설계론 — 시그니처 · 시스템' : '아트 디렉션 — 무엇을, 어떤 스타일로');
+      if (SG.length) {
+        headline(s, `시그니처 ${SG.length}개 — 익숙한 패턴을 이렇게 다룬다`);
+        s.addTable([[{ text: '시그니처', options: { bold: true } }, { text: '출발한 패턴', options: { bold: true } }, { text: '다룬 방식', options: { bold: true } }, { text: '구성', options: { bold: true } }], ...SG.slice(0, 4).map((x) => [{ text: t(x.name, 20), options: { bold: true } }, { text: t(x.familiar, 30) }, { text: t(x.treatment, 60) }, { text: t(x.anatomy, 60) }])],
+          { x: M, y: 1.75, w: W - 2 * M, fontFace: F, fontSize: 10, color: INK, border: { type: 'solid', color: HAIR, pt: 0.5 }, rowH: 0.5, colW: [2.2, 2.6, (W - 2 * M - 4.8) / 2, (W - 2 * M - 4.8) / 2] });
+        const SY = LG.system || {};
+        s.addText(['grid', 'layout', 'type', 'color', 'shape', 'imagery', 'motion'].filter((k) => SY[k]).map((k) => ({ text: `${k}  ${t(SY[k], 80)}`, options: { breakLine: true, paraSpaceAfter: 3 } })), { x: M, y: 4.6, w: W - 2 * M, h: 1.9, fontFace: F, fontSize: 10, color: INK, valign: 'top' });
+      } else {
+        headline(s, t(AD.picture, 70));
+        s.addText([['스타일', AD.style], ['구도', AD.composition], ['색', AD.palette], ['타이포', AD.type], ['질감·빛', AD.texture_light], ['움직임', AD.motion]].filter((x) => x[1]).map(([k, v]) => ({ text: `${k}  ${t(v, 90)}`, options: { breakLine: true, paraSpaceAfter: 5 } })), { x: M, y: 1.9, w: W - 2 * M, h: 4.2, fontFace: F, fontSize: 12, color: INK, valign: 'top' });
+      }
+    }
+    const LX = arr(LG.examples).filter((x) => x.imageFile);
+    LX.forEach((x, i) => {
+      const s = newSlide(`설계론 예시 ${i + 1} / ${LX.length}`);
+      const abs = store.resolveProjectFile(project.id, x.imageFile);
+      if (abs && /\.(png|jpe?g)$/i.test(abs)) s.addImage({ path: abs, x: M, y: 0.75, w: 8.4, h: 5.6, sizing: { type: 'contain', w: 8.4, h: 5.6 } });
+      s.addText([{ text: `${t(x.title, 40)}\n`, options: { fontSize: 16, bold: true } }, { text: t(x.shows, 160), options: { fontSize: 11 } }], { x: M + 8.7, y: 0.8, w: W - 2 * M - 8.7, h: 5.4, fontFace: F, color: INK, valign: 'top' });
+    });
+  }
+  const CT = arr(R.creative && R.creative.contents);
+  if (CT.length) {
+    const s = newSlide('콘텐츠 — 사람이 실제로 보고 하는 것');
+    headline(s, `콘텐츠 ${CT.length}개 — 기존의 것을 이렇게 다뤘다`);
+    s.addTable([[{ text: '콘텐츠', options: { bold: true } }, { text: '보이는 것', options: { bold: true } }, { text: '기존 → 사조의 처리 → 무엇이 되나', options: { bold: true } }], ...CT.slice(0, 6).map((x) => [{ text: t(x.title, 24), options: { bold: true } }, { text: t(x.what_people_see, 70) }, { text: t(`${x.existing || ''} → ${(x.treatment || {}).by || ''} ${(x.treatment || {}).treat || ''} → ${(x.treatment || {}).becomes || ''}`, 80) }])],
+      { x: M, y: 1.75, w: W - 2 * M, fontFace: F, fontSize: 10, color: INK, border: { type: 'solid', color: HAIR, pt: 0.5 }, rowH: 0.5, colW: [2.6, (W - 2 * M - 2.6) / 2, (W - 2 * M - 2.6) / 2] });
+  }
+
   /* 11~ Creative 가이드 */
   if (R.creative) {
     const ex = arr(R.creative.examples);

@@ -359,7 +359,7 @@ async function onDetailClick(e) {
   if (b.dataset.act === 'regen') {
     b.disabled = true; const label = b.textContent; b.textContent = '그리는 중…';
     try {
-      const r = await api.run.regenerateImage(S.project.id, +b.dataset.i);
+      const r = await api.run.regenerateImage(S.project.id, /^lang:/.test(b.dataset.i) ? b.dataset.i : +b.dataset.i);
       if (r && r.ok === false) toast(`이미지를 만들지 못했습니다 — ${r.error}`);
     } catch (err) { toast(`이미지를 만들지 못했습니다 — ${err.message || err}`); }
     finally { b.disabled = false; b.textContent = label; }
@@ -399,7 +399,7 @@ async function onDetailSubmit(e) {
 
 /* ---------- 설정 ---------- */
 async function renderSettings() {
-  [S.settings, S.knowledge, S.models] = await Promise.all([api.settings.get(), api.knowledge.status(), api.settings.models()]);
+  [S.settings, S.knowledge, S.models, S.presets] = await Promise.all([api.settings.get(), api.knowledge.status(), api.settings.models(), api.settings.presets()]);
   const usage = await api.usage.summary();
   const s = S.settings, k = S.knowledge, u = S.update;
   const o = s.openai, m = o.models;
@@ -446,6 +446,16 @@ async function renderSettings() {
       <div class="srow"><div class="lbl">API 키<small>이 PC의 키체인으로 암호화 저장</small></div>
         <div class="inline"><input class="input box" id="key" type="password" placeholder="${s.has.openaiKey ? '저장됨 — 바꾸려면 새 키 입력' : 'sk-...'}"/><button class="btn sm" data-s="saveKey">저장</button><button class="btn sm ghost" data-s="test">연결 확인</button></div></div>
       <div class="srow"><div class="lbl">API 주소<small>프록시·게이트웨이 사용 시</small></div><input class="input box" data-k="openai.baseUrl" value="${esc(o.baseUrl)}"/></div>
+    </div>
+
+    <div class="sgroup" id="presets"><h3>모델 세팅 프리셋</h3>
+      <div class="srow" style="align-items:start"><div class="lbl">진행 수준<small>고르면 아래 모델 · 추론 강도 · 단계 지정 · 실행 설정이 한 번에 바뀝니다. 예상 비용은 추정 — 실제 값은 API 비용 › 프로젝트별에서</small></div>
+        <div class="stack" style="gap:10px">
+          <div class="preset-row">${S.presets.presets.map((p) => `<button class="preset-card ${S.presets.current === p.id ? 'on' : ''} ${p.recommended ? 'rec' : ''}" data-s="preset" data-id="${p.id}">
+            <span class="pn">${p.id}</span><b>${esc(p.name)}${p.recommended ? ' <span class="tag y">권장</span>' : ''}</b><small>${esc(p.label)}</small>
+            <span class="pc-est"><span>컨셉 게이트까지 <b>${esc(p.est.gate)}</b></span><span>Creative 포함 <b>${esc(p.est.full)}</b></span><span class="muted">${esc(p.est.time)}</span></span></button>`).join('')}</div>
+          <div class="muted" style="font-size:12px">${S.presets.current ? `지금: ${S.presets.current}단계 — ${esc((S.presets.presets.find((x) => x.id === S.presets.current) || {}).desc || '')}` : (follow ? '지금: 추천 구성 따르기 (프리셋 아님)' : '지금: 직접 지정 — 프리셋과 다르게 바뀐 값이 있습니다')}</div>
+        </div></div>
     </div>
 
     <div class="sgroup" id="models"><h3>모델 — 역할 · 풀 · 화가의 자율 배정</h3>
@@ -578,6 +588,14 @@ async function renderSettings() {
     if (a === 'poolDel') await saveModels((c) => c.pool.splice(+b.dataset.i, 1));
     if (a === 'ipoolAdd') await saveModels((c) => c.imagePool.push({ id: 'gpt-image-2.5-flare', use: 'iterate', note: useLabel('image', 'iterate'), tier: 'fast' }));
     if (a === 'ipoolDel') await saveModels((c) => c.imagePool.splice(+b.dataset.i, 1));
+    if (a === 'preset') {
+      const pr = S.presets.presets.find((x) => x.id === +b.dataset.id);
+      b.disabled = true;
+      try { await api.settings.applyPreset(pr.id); toast(`${pr.id}단계 '${pr.name}' 프리셋을 적용했습니다 — 화가 ${pr.models.director} · 브레인 ${pr.models.brain} · 조수 ${pr.models.sub}`, 5000); }
+      catch (e) { toast(e.message, 5000); }
+      renderSettings();
+      return;
+    }
     if (a === 'stageDel') await saveModels((c) => { delete (c.stages[b.dataset.stg] || {})[b.dataset.srole]; });
     if (a === 'discover') {
       b.disabled = true; $('#discover').innerHTML = '<span class="muted">확인 중…</span>';

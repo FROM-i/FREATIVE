@@ -164,7 +164,7 @@ const builders = {
     return { id, name: ctx.ismBody ? ctx.ismBody.split('·')[1].trim().split('(')[0].trim() : id, era: '', postcard: d.postcard, take: d.take, leave: d.leave, apply: `${d.core} — 사이니지의 첫 3초에 적용`, a3: { pass: true, check: d.take[0] }, form_moves: ctx.retryNote
       // 다시 두면 이 사조만의 조작으로 — 겹침 검사·재시도 흐름을 시험한다
       ? [{ move: `${id} 고유 조작 — ${d.take[0]}`, on: '입구 사각 패널', trace: d.take[0], costume: `${id} 겉모양`, scope_ids: ['S1'] }]
-      : [{ move: `${d.core} — 거리마다 정보의 해상도를 3단계로 나눈다(5m·1m·0.3m)`, costume: `${id} 양식을 겉모양만 흉내 낸 패널`, scope_ids: ['S1', 'S2'] }, { move: '구조체의 이음매를 감추지 않고 드러낸다 — 공정이 곧 장식', costume: '나무결 시트를 붙인 사각 판', scope_ids: ['S1'] }], treatments: [{ existing: '입구 사각 패널', treat: '다시 읽는다', principle: d.take[0], becomes: `${d.core} — 같은 패널의 쓰임을 바꾼다`, why: '멀리서 먼저 읽힌다' }], core: d.core, fit: 0.6 + Math.random() * 0.35 };
+      : [{ move: `${d.core} — 거리마다 정보의 해상도를 3단계로 나눈다(5m·1m·0.3m)`, costume: `${id} 양식을 겉모양만 흉내 낸 패널`, scope_ids: ['S1', 'S2'] }, { move: '구조체의 이음매를 감추지 않고 드러낸다 — 공정이 곧 장식', costume: '나무결 시트를 붙인 사각 판', scope_ids: ['S1'] }], treatments: [{ existing: '입구 사각 패널', treat: '다시 읽는다', principle: d.take[0], becomes: `${d.core} — 같은 패널의 쓰임을 바꾼다`, why: '멀리서 먼저 읽힌다' }], aesthetic: id === 'ISM-JP' ? { take: true, what: '여백의 밀도', why: '다가가게 한다', transform: '종이 대신 무광 판', limit: '대표 사인 한 곳', costume_risk: '크라프트지·붓글씨' } : { take: false, reason_if_not: '원리만으로 충분' }, core: d.core, fit: 0.6 + Math.random() * 0.35 };
   },
   '04_airplane_synth': () => ({
     selected: ['ISM-JP', 'ISM-SWISS', 'ISM-ARTCRAFT'],
@@ -172,6 +172,7 @@ const builders = {
     hybrid: '일본 미학의 "유보된 완결" × 스위스의 "크기 하나의 위계" × 미술공예의 "공정이 곧 장식"',
     suitcase: ['비워 둔 한 조각', '크기 하나의 위계', '공정이 곧 장식', '다가가야 완성된다'],
     treatments: [{ existing: '입구 사각 패널', by: 'ISM-JP', treat: '덜어낸다', becomes: '한 조각을 비워 다가가게 한다' }],
+    aesthetic: [{ by: 'ISM-JP', what: '여백의 밀도', where: '대표 사인', transform: '무광 판', why: '다가가게 한다' }],
     leave_together: ['크라프트·손글씨 룩', '정보를 지우다 입구까지 지우기'],
     painter_line: '가방이 꽤 묵직해졌어. 이제 차로 갈아타자.',
   }),
@@ -490,6 +491,16 @@ const builders = {
       painter_line: '새 캔버스야. 이번엔 다가가야 보이게.',
     };
   },
+  '10_language': () => ({
+    thesis: '익숙한 팝업 입간판을 일본 미학의 비움으로 다뤄, 다가가야 완성되는 화면으로 보이게 한다',
+    edge: { familiar: '정면 판독 면과 브랜드명 위계', new: '한 모서리를 비워 다가가면 원두 사진이 채워지는 면', why: '멈춰서 다가갈 이유가 생긴다' },
+    derivation: [{ from: 'ISM-JP 원리 — 유보된 완결', becomes: '판의 1/4을 비우는 레이아웃' }, { from: 'ISM-JP 미감 — 여백의 밀도', becomes: '타이포 하나 · 여백 넷의 비례' }, { from: 'EMP-SIZE', becomes: '산지명 하나만 크게' }],
+    system: { grid: '4단 중 1단 비움', layout: '비대칭 여백', type: '큰 산세리프 한 단어', color: '웜 뉴트럴 60 · 원두 브라운 30', shape: '얇은 프레임', imagery: '원두 근접 사진', motion: '', density: '낮음' },
+    signatures: [{ name: '비운 모서리 카드', kind: '컴포넌트', familiar: 'PAT-RESULT', treatment: 'ISM-JP 덜어낸다', anatomy: '제목 · 빈 모서리 · 근접 사진', where: '결과 화면', gain: '다가가 보게 한다' }, { name: '한 단어 헤더', kind: '레이아웃', familiar: 'PAT-TABNAV', treatment: 'ISM-SWISS 크기 하나의 위계', anatomy: '산지명 한 단어', where: '첫 화면', gain: '3초 안에 읽힌다' }],
+    art_direction: { picture: '원두가 온 길', style: '근접 사진과 넓은 여백', composition: '비대칭', palette: '웜 뉴트럴', type: '산세리프', texture_light: '측광', motion: '' },
+    examples: [{ title: '비운 모서리 판', shows: '여백과 근접 사진의 비례', image_prompt: 'popup sign with one empty corner', image_size: '1536x1024' }, { title: '첫 화면', shows: '한 단어 헤더', image_prompt: 'flat UI screens with one-word header', image_size: '1536x1024' }],
+    dont: ['나무결 시트 사각 판'], line: '어떻게 보이는지까지 정했어.',
+  }),
   '10_content': (ctx) => ({
     contents: Array.from({ length: ctx.contentCount || 3 }, (_, i) => ({
       title: ['원두가 온 길 지도', '가까이 와야 읽히는 산지 엽서', '기다리는 줄에서 맡는 향 카드', '시음 순서 카드'][i % 4],
