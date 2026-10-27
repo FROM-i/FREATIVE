@@ -24,6 +24,7 @@
     { "from": 3, "to": 1, "cut": ["T?","T?"], "criterion": "", "reason": "" }
   ],
   "final": { "id": "T?", "reason": "왜 이 영역인가" },
+  "visual_signal": { "visual": false, "why": "고른 빈자리가 '보이는 표현'의 영역인가 — 그렇다면 어떤 보이는 차이가 비어 있는가. 미감을 가져올지는 FoR · PoP · PoD에서 정한다(여기서는 신호만)" },
   "painter_line": "언덕 위에서 지도를 펼치며 화가가 하는 한 마디"
 }
 <<<USER>>>

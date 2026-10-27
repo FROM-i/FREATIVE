@@ -325,12 +325,19 @@ class Controller {
     const chosen = p && arr(p.territories).find((x) => p.final && x.id === p.final.id);
     return {
       canvas: R.canvas && { from_me: R.canvas.from_me, tension: R.canvas.tension, inertia: R.canvas.inertia, concept_draft: R.canvas.concept_draft },
-      airplane: s && { hybrid: s.hybrid, split: s.split, suitcase: s.suitcase, treatments: s.treatments, aesthetic: s.aesthetic, leave: s.leave_together, selected: s.selected, travels: arr(R.airplane.travels).filter((t) => !t.error && (!arr(s.selected).length || arr(s.selected).includes(t.id))).map((t) => ({ id: t.id, name: t.name, take: t.take, apply: t.apply, treatments: t.treatments, aesthetic: t.aesthetic && t.aesthetic.take ? t.aesthetic : undefined, form_moves: t.form_moves, leave: t.leave })) },
+      // 미감은 FoR · PoP · PoD에서 '필요하다'고 판정된 것만 뒤로 넘긴다 — 후보는 넘기지 않는다
+      airplane: s && { hybrid: s.hybrid, split: s.split, suitcase: s.suitcase, treatments: s.treatments, aesthetic: this.aestheticPicks(), leave: s.leave_together, selected: s.selected, travels: arr(R.airplane.travels).filter((t) => !t.error && (!arr(s.selected).length || arr(s.selected).includes(t.id))).map((t) => ({ id: t.id, name: t.name, take: t.take, apply: t.apply, treatments: t.treatments, form_moves: t.form_moves, leave: t.leave })) },
       tunnel: t && { exit_light: t.exit_light, keep: t.keep, change: t.change, conflicts: t.conflicts },
       positioning: p && { whitespace: p.whitespace, chosen, reason: p.final && p.final.reason },
       root: this.root(),
       think: this.thinkDigest(),
     };
+  }
+
+  /** FoR · PoP · PoD에서 가져오기로 판정된 미감 — 판정 전이거나 '필요 없음'이면 undefined */
+  aestheticPicks() {
+    const d = this.run.results.forpop && this.run.results.forpop.compare && this.run.results.forpop.compare.aesthetic_decision;
+    return d && d.need && arr(d.picks).length ? d.picks : undefined;
   }
 
   /** 지금의 나 — 접수 폼의 '요즘 내가 꽂힌 것'. 그 프로젝트에만 쓰고 쌓지 않는다 */
@@ -368,6 +375,7 @@ class Controller {
       positioning: cmp.positioning,
       differentiation: arr(cmp.scopes).map((x) => ({ scope: x.title, verdict: x.verdict, similar: arr(x.similar).map((d) => d.item), different: arr(x.different).map((d) => d.item), note: x.note })),
       core_triangle: cmp.core_triangle,
+      aesthetic: cmp.aesthetic_decision ? { need: cmp.aesthetic_decision.need, why: cmp.aesthetic_decision.why, picks: cmp.aesthetic_decision.picks } : null,
       brain_fixes: arr(cmp.fixes).filter(Boolean),
     };
   }
@@ -1086,10 +1094,12 @@ ${o.dups.map((d) => `- ${d.move.slice(0, 100)} ↔ ${d.with}`).join('\n')}
       agent: { key: 'brain', name: '판단 브레인', task: '차별성 판정 · 세 범위 · 공통 범례' },
       ctx: {
         mission: this.mission, frame, scan: scanBrief, baseline: this.run.results.baseline || null, scope: this.scope(), inspiration: this.inspirationFor('forpop'), lensTable: this.lensTable(),
+        aesthetic: this.aestheticCandidates(), visualSignal: (this.run.results.positioning || {}).visual_signal || null,
         pod: { core: fp.core_pod, rtb: fp.rtb, candidates: base.pod_candidates, shifted: r1.result, shifts: fp.shifts.map((x) => ({ shift: x.shift, cut: x.cut })), final_check: fp.final_check },
       },
     });
     fp.compare = this.normalizeCompare(cmp, scan);
+    fp.compare.aesthetic_decision = this.normalizeAesthetic(cmp.aesthetic_decision, scan);
     // 정찰에서 아무것도 확인하지 못한 범위에는 점수를 매기지 않는다 — 근거 없는 3·3·2가 표에 남지 않게
     for (const x of arr(fp.compare.scopes)) {
       const sc = arr(scan && scan.scopes).find((y) => y.scope === x.scope || y.title === x.title);
@@ -1108,6 +1118,29 @@ ${o.dups.map((d) => `- ${d.move.slice(0, 100)} ↔ ${d.with}`).join('\n')}
     } };
     this.line('판단 브레인', cmp.line || (fp.compare.positioning && fp.compare.positioning.sentence), 'forpop');
     await this.polish('forpop', fp);
+  }
+
+  /** Airplane에서 채집한 미감 후보 — 화가가 묶은 목록, 없으면 조수들의 후보를 모은다 */
+  aestheticCandidates() {
+    const A = this.run.results.airplane || {};
+    const syn = arr(A.synth && A.synth.aesthetic_candidates);
+    if (syn.length) return syn;
+    return arr(A.travels).filter((t) => !t.error).flatMap((t) => arr(t.aesthetic).filter((x) => x && x.what).map((x) => ({ by: t.id, ...x })));
+  }
+
+  /** 미감 판정 정리 — 정찰에서 표현 문법을 하나도 확인하지 못했으면 가져오지 않는다(근거 없는 미감은 취향) */
+  normalizeAesthetic(d, scan) {
+    const D = d && typeof d === 'object' ? { ...d } : { need: false, why: '판단 브레인이 미감을 판정하지 않음' };
+    const seen = arr(scan && scan.scopes).some((x) => arr(x.players).length || arr(x.conventions).length || arr(x.taken).length);
+    const cands = this.aestheticCandidates();
+    D.picks = arr(D.picks).filter((p) => p && p.what).slice(0, 2);
+    if (D.need && !seen) { D.need = false; D.why = `웹 정찰에서 표현 문법을 확인하지 못해 가져오지 않음 — ${D.why || ''}`.trim(); D.picks = []; }
+    if (D.need && !D.picks.length) D.need = false;
+    if (!cands.length) { D.need = false; D.picks = []; }
+    if (!D.need) D.picks = [];
+    D.candidates = cands.length;
+    this.line('판단 브레인', D.need ? `사조의 미감 ${D.picks.length}개를 가져옵니다 — ${D.picks.map((p) => `${p.by || ''} ${p.what}`).join(' · ')}` : `사조의 미감은 가져오지 않습니다 — ${D.why || ''}`, 'forpop');
+    return D;
   }
 
   /** 조수 셋이 웹을 직접 탐색 — 설정에서 끄거나 공급자가 웹 탐색을 못 하면 건너뛴다 */

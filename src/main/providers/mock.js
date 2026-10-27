@@ -164,7 +164,7 @@ const builders = {
     return { id, name: ctx.ismBody ? ctx.ismBody.split('·')[1].trim().split('(')[0].trim() : id, era: '', postcard: d.postcard, take: d.take, leave: d.leave, apply: `${d.core} — 사이니지의 첫 3초에 적용`, a3: { pass: true, check: d.take[0] }, form_moves: ctx.retryNote
       // 다시 두면 이 사조만의 조작으로 — 겹침 검사·재시도 흐름을 시험한다
       ? [{ move: `${id} 고유 조작 — ${d.take[0]}`, on: '입구 사각 패널', trace: d.take[0], costume: `${id} 겉모양`, scope_ids: ['S1'] }]
-      : [{ move: `${d.core} — 거리마다 정보의 해상도를 3단계로 나눈다(5m·1m·0.3m)`, costume: `${id} 양식을 겉모양만 흉내 낸 패널`, scope_ids: ['S1', 'S2'] }, { move: '구조체의 이음매를 감추지 않고 드러낸다 — 공정이 곧 장식', costume: '나무결 시트를 붙인 사각 판', scope_ids: ['S1'] }], treatments: [{ existing: '입구 사각 패널', treat: '다시 읽는다', principle: d.take[0], becomes: `${d.core} — 같은 패널의 쓰임을 바꾼다`, why: '멀리서 먼저 읽힌다' }], aesthetic: id === 'ISM-JP' ? { take: true, what: '여백의 밀도', why: '다가가게 한다', transform: '종이 대신 무광 판', limit: '대표 사인 한 곳', costume_risk: '크라프트지·붓글씨' } : { take: false, reason_if_not: '원리만으로 충분' }, core: d.core, fit: 0.6 + Math.random() * 0.35 };
+      : [{ move: `${d.core} — 거리마다 정보의 해상도를 3단계로 나눈다(5m·1m·0.3m)`, costume: `${id} 양식을 겉모양만 흉내 낸 패널`, scope_ids: ['S1', 'S2'] }, { move: '구조체의 이음매를 감추지 않고 드러낸다 — 공정이 곧 장식', costume: '나무결 시트를 붙인 사각 판', scope_ids: ['S1'] }], treatments: [{ existing: '입구 사각 패널', treat: '다시 읽는다', principle: d.take[0], becomes: `${d.core} — 같은 패널의 쓰임을 바꾼다`, why: '멀리서 먼저 읽힌다' }], aesthetic: id === 'ISM-JP' ? [{ what: '여백의 밀도', could_serve: '다가가게 하는 차이', transform: '종이 대신 무광 판', costume_risk: '크라프트지·붓글씨' }] : [], core: d.core, fit: 0.6 + Math.random() * 0.35 };
   },
   '04_airplane_synth': () => ({
     selected: ['ISM-JP', 'ISM-SWISS', 'ISM-ARTCRAFT'],
@@ -172,7 +172,7 @@ const builders = {
     hybrid: '일본 미학의 "유보된 완결" × 스위스의 "크기 하나의 위계" × 미술공예의 "공정이 곧 장식"',
     suitcase: ['비워 둔 한 조각', '크기 하나의 위계', '공정이 곧 장식', '다가가야 완성된다'],
     treatments: [{ existing: '입구 사각 패널', by: 'ISM-JP', treat: '덜어낸다', becomes: '한 조각을 비워 다가가게 한다' }],
-    aesthetic: [{ by: 'ISM-JP', what: '여백의 밀도', where: '대표 사인', transform: '무광 판', why: '다가가게 한다' }],
+    aesthetic_candidates: [{ by: 'ISM-JP', what: '여백의 밀도', could_serve: '다가가게 하는 차이', transform: '무광 판', costume_risk: '크라프트지' }],
     leave_together: ['크라프트·손글씨 룩', '정보를 지우다 입구까지 지우기'],
     painter_line: '가방이 꽤 묵직해졌어. 이제 차로 갈아타자.',
   }),
@@ -218,6 +218,7 @@ const builders = {
       { from: 3, to: 1, cut: ['T3', 'T1'], criterion: '실행 비용', reason: '향 장치는 운영 비용이 크고, 지도는 3초에 읽히지 않는다' },
     ],
     final: { id: 'T2', reason: '관성(멀리서 읽히는 이름)을 지키면서 다가가는 행동에 새 해석을 준다 — 예비 판정' },
+    visual_signal: { visual: true, why: '근거리에서 완성되는 그림 — 보이는 표현의 빈자리' },
     painter_line: '지도 위에 빈자리가 하나 있네.',
   }),
 
@@ -323,6 +324,7 @@ const builders = {
     ],
     core_triangle: { desirable: 0.85, deliverable: 0.75, defensible: 0.7, note: '산지 근거가 붙어 우리만의 것이 강해짐' },
     pop_add: [{ item: '시음 컵', kind: '경쟁 대응', why: '동일 카테고리 모두가 준다', source: '웹:https://example.com/mock/category/b' }],
+    aesthetic_decision: { need: true, why: '성수 팝업 외벽이 모두 사진+로고로 같게 보인다 — 다가가야 완성되는 차이가 PoD', evidence: ['정찰: 동일 카테고리 외벽 관습'], picks: [{ by: 'ISM-JP', what: '여백의 밀도', for_pod: '다가가야 완성되는 그림', transform: '무광 판', limit: '대표 사인 한 곳', same_direction: '유보된 완결과 같은 방향' }], rejected: [] },
     positioning: { slots: { target: '주말 오후 성수동을 걷는 20~30대', brand: '제주 로컬 로스터리', frame: '성수 주말 팝업', pod: '다가갈수록 원두가 온 먼 길이 완성되는 그림', type: '겨울 원두 시음 팝업' }, sentence: '주말 오후 성수동을 걷는 20~30대를 위해, 제주 로컬 로스터리는 성수 주말 팝업 안에서 다가갈수록 원두가 온 먼 길이 완성되는 그림을 제공하는 겨울 원두 시음 팝업이다.' },
     verdict: '통과',
     fixes: ['확장 범주와 부분 겹침 — 외벽 첫 장면의 3초 가독성을 약점 보완으로 지킬 것'],

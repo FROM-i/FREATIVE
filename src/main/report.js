@@ -84,6 +84,8 @@ function build(p) {
     out.push('\n## 3. Airplane — 사조 여행');
     out.push(table(['사조', '가져올 것', '두고 올 것', '코어', 'A3'], (a.travels || []).filter((t) => !t.error).map((t) => [`${t.name} (${t.id})`, (t.take || []).join(' / '), (t.leave || []).join(' / '), t.core, t.a3 && t.a3.pass ? '통과' : '확인'])));
     if (a.synth) out.push(`\n**하이브리드**: ${a.synth.hybrid}${a.synth.split && a.synth.split.structure ? `\n\n**대립을 나눈 방법** — 구조: ${a.synth.split.structure} · 해석: ${a.synth.split.interpretation}${a.synth.split.how ? ` — ${a.synth.split.how}` : ''}` : ''}${a.synth.risk ? `\n\n**위험**: ${a.synth.risk}` : ''}\n\n**여행 가방**\n${list(a.synth.suitcase)}`);
+    const ac = (a.synth && a.synth.aesthetic_candidates) || [];
+    if (ac.length) out.push(`\n**미감 후보** (가져올지는 FoR · PoP · PoD에서 정한다)\n` + list(ac, (x) => `${x.by || ''} · ${x.what}${x.could_serve ? ` — ${x.could_serve}` : ''}`));
     const tr = (a.synth && a.synth.treatments || []).length ? a.synth.treatments : (a.travels || []).filter((t) => !t.error).flatMap((t) => (t.treatments || []).map((x) => ({ ...x, by: t.id })));
     if (tr.length) out.push('\n**기존의 것을 어떻게 다루는가**\n' + table(['기존 요소', '사조', '다루는 방식', '무엇이 되나'], tr.map((x) => [x.existing, x.by || '', `${x.treat || ''}${x.principle ? ` — ${x.principle}` : ''}`, x.becomes || ''])));
     const ov = (a.overlap || []).filter((x) => x.ratio >= 0.4);
@@ -155,6 +157,8 @@ function build(p) {
         out.push(table(['범위', '계열', ...axes.map((a) => a.id), '판정'], rows));
       }
       scored.forEach((x) => out.push(`\n*${x.title} · ${x.verdict || ''}* — ${x.note || ''}\n- 유사성: ${(x.similar || []).map((y) => y.item).join(' · ')}\n- 차별점: ${(x.different || []).map((y) => y.item).join(' · ')}`));
+      const AD = cmp.aesthetic_decision;
+      if (AD) out.push(`\n**사조의 미감 — ${AD.need ? '가져온다' : '가져오지 않는다'}**: ${AD.why || ''}${(AD.picks || []).length ? '\n' + list(AD.picks, (x) => `${x.by || ''} · ${x.what} → ${x.for_pod || ''} (변형: ${x.transform || ''} · 범위: ${x.limit || ''})`) : ''}`);
       if (cmp.positioning) out.push(`\n**포지셔닝 진술문**\n\n> ${cmp.positioning.sentence || ''}`);
       // 보완할 것은 맨 끝 '검증 계획'에 한 번만 모은다
     }
