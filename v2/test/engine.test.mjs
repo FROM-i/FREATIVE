@@ -743,3 +743,26 @@ test('수파베이스 — 로그인 · 토큰 갱신 · 프로젝트 저장 요�
   delete process.env.BRAIN_ACCESS_CODE; assert.deepEqual(await guard({}), { ok: true });
   Object.assign(process.env, env);
 });
+
+test('외곽선 형상 — 전구 · 번개 · 폰을 쥔 손 · 클라우드와 서버: 노드 자리가 형상 안에 놓이고, 부분을 고치면 반영된다', async () => {
+  const { shapeFor, FIGURES, figureParts, brainShape } = await import('../js/graph/shapes.js');
+  const nodes = [...Array.from({ length: 7 }, (_, i) => ({ id: `id${i}`, type: 'lens', family: 'identity' })), ...Array.from({ length: 16 }, (_, i) => ({ id: `ap${i}`, type: 'lens', family: 'airplane' })), ...Array.from({ length: 4 }, (_, i) => ({ id: `tn${i}`, type: 'lens', family: 'tunnel' })),
+    ...Array.from({ length: 5 }, (_, i) => ({ id: `is${i}`, type: 'issue' })), ...Array.from({ length: 30 }, (_, i) => ({ id: `f${i}`, type: 'fact' })), { id: 'g', type: 'gate' }, { id: 'p', type: 'project' }];
+  assert.deepEqual(Object.keys(FIGURES), ['bulb', 'bolt', 'phone', 'server']);
+  for (const kind of Object.keys(FIGURES)) {
+    const sh = shapeFor({ settings: { look: { kind } } });
+    assert.equal(sh.id, `figure:${kind}`); assert.ok(sh.DOTS.length > 1200, `${kind} 점 ${sh.DOTS.length}`);
+    for (const role of ['identity', 'airplane', 'tunnel', 'core', 'fact', 'mission']) assert.ok(sh.layers.some((l) => l.role === role), `${kind}에 ${role} 부분`);
+    const seat = sh.seats(nodes); assert.equal(seat.size, nodes.length);
+    for (const n of nodes) { const s = seat.get(n.id); assert.ok(sh.inside(s.x, s.y), `${kind}: ${n.id} 자리가 형상 밖 (${Math.round(s.x)}, ${Math.round(s.y)})`); }
+    for (const f of ['identity', 'airplane', 'tunnel']) assert.ok(Number.isFinite(sh.caption(f).x));
+  }
+  // 부분을 고치면 색 · 이름 · 맡는 노드군이 바뀐다. 외곽선은 그대로다
+  const base = shapeFor({ settings: { look: { kind: 'bulb' } } });
+  const mine = shapeFor({ settings: { look: { kind: 'bulb', parts: { glow: { color: '#FF0000', name: '불빛', role: 'airplane' }, glass: { role: 'identity' } } } } });
+  assert.equal(mine.layers[0].rgb, '255,0,0'); assert.equal(mine.layers[0].name, '불빛'); assert.equal(mine.layers[0].role, 'airplane'); assert.equal(mine.layers[1].role, 'identity');
+  assert.deepEqual(mine.layers[0].polys, base.layers[0].polys);
+  assert.equal(figureParts('bulb', { glow: { name: '불빛' } })[0].name, '불빛');
+  // 모르는 형상은 기본 뇌로 돌아간다
+  assert.equal(shapeFor({ settings: { look: { kind: 'nope' } } }), brainShape);
+});
