@@ -18,6 +18,7 @@ export const KIND_TIER = {
   route: 'lead',       // 사조 훑기
   activate: 'lead',    // 판단 도출 (터널 노드만 support — 아래 tierOf)
   link: 'lead',        // 연결 — 어느 판단끼리 충돌하는지가 교배할 짝을 정한다
+  weave: 'lead',       // 그래프 통합안 — 전체 노드의 판단을 읽고 원리 하나로 묶는다. 후보의 질이 여기서 정해진다
   cross: 'lead',       // 충돌 교배 — 두 번의 실행 모두 1위 안이 여기서 나왔다
   stance: 'lead',      // 기조 세우기
   revise: 'lead',      // 기조를 지킨 보완

@@ -1,15 +1,17 @@
 // 경쟁 — 분석해서 하나로 종합하는 대신, 여러 안을 만들어 겨루게 하고 이긴 안을 고친다.
 //
-//   후보 모으기   노드가 자기 기준을 끝까지 민 완성안 + 묶음 통합안 + 충돌하는 두 안의 교배안
+//   후보 모으기   그래프 통합안(큰 충돌 하나를 뼈대로 전체 노드의 판단을 읽고 쓴 안) + 묶음 통합안. 노드의 완성안은 재료다
+//                 (settings.weave가 false면 예전 방식: 노드의 완성안 + 묶음 통합안 + 충돌하는 두 안의 교배안)
 //   기본안 대조   기본안과 같은 해법은 탈락
 //   비교 선별     점수로 자르지 않는다. 사유(기본안과 같음 · 얻는 것 없음)가 있을 때만 떨어뜨리고, 나머지는 1:1로 겨룬다
 //   결선 자리     승수 상위 + 기본안과 가장 다른 안 + 한 가지가 뚜렷한 안 + 상위를 이긴 안. 같은 해법은 2개까지
 //   결선          모두 한 번씩, 두 번 판정한다. 두 판정이 갈리면 무승부로 두고 "갈림"으로 표시한다
 //   공격 · 보완   이긴 안의 약점을 찾아 고친다. 실현 조건은 탈락 사유가 아니라 고칠 대상이다
-//   재대결        고친 안과 고치기 전 안이 겨뤄 이긴 쪽을 남긴다
+//   재대결        하지 않는다 — 고친 안을 다시 뚜렷함으로 겨루게 하면 넓힌 안이 버려진다(맥도날드 실행: 3건 모두). 기조 확인만 한다
+//                 (settings.rematch가 true면 예전 방식)
 //
 // 선별의 잣대는 모두 더프롬의 관점(knowledge/viewpoint.js)이다. 순위 계산은 코드가 한다.
-import { crossPrompt, screenPrompt, duelPrompt, distinctPrompt, stancePrompt, holdPrompt, attackPrompt, revisePrompt } from '../../knowledge/prompts-arena.js';
+import { weavePrompt, crossPrompt, screenPrompt, duelPrompt, distinctPrompt, stancePrompt, holdPrompt, attackPrompt, revisePrompt } from '../../knowledge/prompts-arena.js';
 import { FAMILIES } from '../../knowledge/nodes.js';
 import { lensName } from '../graph/model.js';
 
@@ -35,6 +37,25 @@ export function shapeFrames(raw, facts = []) {
 }
 
 /** 교배할 짝 — 충돌 연결 중 무게가 큰 것부터, 두 노드가 모두 완성안을 냈고 같은 노드 짝은 한 번만 */
+/** 통합안의 뼈대가 될 충돌 — 무겁고, 서로 다른 노드 사이이고, 되도록 다른 이슈에 걸친 것부터 고른다 */
+export function weaveSpines(run, count) {
+  const sig = new Map(run.signals.filter((s) => !s.muted).map((s) => [s.id, s]));
+  const score = (e) => e.weight * ((run.energy[e.from] || 0) + (run.energy[e.to] || 0));
+  const tensions = run.edges.filter((e) => e.type === 'tension' && sig.has(e.from) && sig.has(e.to) && sig.get(e.from).lens !== sig.get(e.to).lens).sort((a, b) => score(b) - score(a) || a.id.localeCompare(b.id));
+  const out = []; const lensPairs = new Set(); const lensSeen = new Map(); const issueSeen = new Map();
+  const rest = tensions.slice();
+  while (out.length < count && rest.length) {
+    // 이미 뼈대로 쓴 노드와 이슈가 다시 나오면 뒤로 민다 — 뼈대가 한쪽에 몰리지 않게
+    rest.sort((a, b) => { const pen = (e) => { const x = sig.get(e.from); const y = sig.get(e.to); return (lensSeen.get(x.lens) || 0) + (lensSeen.get(y.lens) || 0) + 0.5 * ((issueSeen.get(x.issue) || 0) + (issueSeen.get(y.issue) || 0)); }; return (score(b) / (1 + pen(b))) - (score(a) / (1 + pen(a))) || a.id.localeCompare(b.id); });
+    const e = rest.shift(); const a = sig.get(e.from); const b = sig.get(e.to);
+    const key = [a.lens, b.lens].sort().join('|');
+    if (lensPairs.has(key)) continue;
+    lensPairs.add(key); out.push({ edge: e, a, b });
+    for (const x of [a, b]) { lensSeen.set(x.lens, (lensSeen.get(x.lens) || 0) + 1); issueSeen.set(x.issue, (issueSeen.get(x.issue) || 0) + 1); }
+  }
+  return out;
+}
+
 export function crossPairs(run, count) {
   const byLens = new Map((run.proposals || []).map((p) => [p.lens, p]));
   const sig = new Map(run.signals.map((s) => [s.id, s]));
@@ -116,13 +137,41 @@ export async function arena({ project, run, call, emit, pool }) {
   const cands = [];
   const add = (c) => { const k = { id: `K${cands.length + 1}`, status: '후보', ...c }; cands.push(k); return k; };
 
-  // 1) 후보 모으기 — 노드의 완성안
-  for (const p of run.proposals || []) add({ title: p.title, concept: p.concept, visual: p.visual, gain: p.gain, origin: { type: 'node', lens: p.lens, frame: p.frame, signals: run.signals.filter((x) => x.lens === p.lens).map((x) => x.id) } });
+  // 1) 후보 모으기
+  const live0 = run.signals.filter((x) => !x.muted);
+  const spines = s.weave !== false ? weaveSpines(run, s.weaveCount ?? 5) : [];
+  const weaving = spines.length > 0;
+  const uniq = (a) => [...new Set(a)];
+  const factIds = new Set((project.facts || []).map((f) => f.id));
+  // 노드의 완성안 — 통합안을 쓸 때는 후보가 아니라 재료다
+  if (!weaving) for (const p of run.proposals || []) add({ title: p.title, concept: p.concept, visual: p.visual, gain: p.gain, origin: { type: 'node', lens: p.lens, frame: p.frame, signals: run.signals.filter((x) => x.lens === p.lens).map((x) => x.id) } });
   // 묶음 통합안
   for (const n of run.insights) add({ title: n.title, concept: n.concept || n.insight, visual: n.visual, gain: `${n.substitute.who} ${n.substitute.changes}`.trim(), origin: { type: 'cluster', insight: n.id, signals: n.check.used }, source: n });
-  // 충돌 교배
+  // 그래프 통합안 — 큰 충돌 하나를 뼈대로, 전체 노드의 판단을 읽고 쓴다
+  if (weaving) {
+    emit('stage', { stage: 'weave' });
+    const cut = (t, n) => (String(t || '').length > n ? `${String(t).slice(0, n)}…` : String(t || ''));
+    const byLens = new Map(); for (const x of live0) { if (!byLens.has(x.lens)) byLens.set(x.lens, []); byLens.get(x.lens).push(x); }
+    const groups = [...byLens].map(([lens, list]) => `### ${lensName(lens)} (${FAMILIES[list[0].family].short})\n${list.map((x) => `- [${x.id}] ${x.issue} · ${cut(x.claim, 140)}${x.facts?.length ? ` · ${x.facts.join(' ')}` : ''}`).join('\n')}`).join('\n');
+    const materials = (run.proposals || []).map((p) => ({ 노드: lensName(p.lens), 제목: p.title, 컨셉: cut(p.concept, 120) }));
+    const famCount = uniq(live0.map((x) => x.family)).length; const hasTunnel = live0.some((x) => x.family === 'tunnel');
+    const need = { nodes: Math.min(5, byLens.size), families: Math.min(2, famCount), tunnel: hasTunnel, facts: Math.min(5, factIds.size) };
+    const allT = run.edges.filter((e) => e.type === 'tension' && sig.has(e.from) && sig.has(e.to)).sort((a, b) => b.weight - a.weight).slice(0, 14);
+    await pool(spines, s.concurrency, async (sp) => {
+      const spine = { id: sp.edge.id, 한쪽: { id: sp.a.id, 노드: lensName(sp.a.lens), 판단: sp.a.claim }, 다른_쪽: { id: sp.b.id, 노드: lensName(sp.b.lens), 판단: sp.b.claim }, 충돌하는_이유: sp.edge.why };
+      const p = weavePrompt(project, spine, groups, materials, allT.filter((e) => e.id !== sp.edge.id).map((e) => ({ id: e.id, 사이: `${e.from} ↔ ${e.to}`, 이유: cut(e.why, 70) })), run.baseline, need);
+      const raw = await call({ role: 'director', ...p, task: { kind: 'weave', project, run, spine: sp, need } });
+      if (!text(raw?.concept)) return;
+      const spans = (Array.isArray(raw.spans) ? raw.spans : []).map((x) => ({ signals: uniq((Array.isArray(x.signals) ? x.signals : []).map((id) => text(id).replace(/^\[|\]$/g, '')).filter((id) => sig.has(id) && !sig.get(id).muted)), line: text(x.line) })).filter((x) => x.signals.length);
+      const used = uniq([sp.edge.from, sp.edge.to, ...spans.flatMap((x) => x.signals)]);
+      const lenses = uniq(used.map((id) => sig.get(id).lens));
+      add({ title: text(raw.title) || text(raw.principle), concept: text(raw.concept), visual: text(raw.visual), gain: text(raw.gain), how: text(raw.how), principle: text(raw.principle), leaves: text(raw.leaves),
+        origin: { type: 'weave', edge: sp.edge.id, lenses, signals: used, spans, facts: uniq((Array.isArray(raw.facts) ? raw.facts : []).map(text).filter((id) => factIds.has(id))), resolves: uniq((Array.isArray(raw.resolves) ? raw.resolves : []).map(text).filter((id) => run.edges.some((e) => e.id === id))), thin: lenses.length < need.nodes } });
+    });
+  }
+  // 충돌 교배 — 통합안을 쓰지 않을 때만
   emit('stage', { stage: 'cross' });
-  const pairs = crossPairs(run, s.crossCount ?? 5);
+  const pairs = weaving ? [] : crossPairs(run, s.crossCount ?? 5);
   await pool(pairs, s.concurrency, async (pr) => {
     const a = cands.find((c) => c.origin.type === 'node' && c.origin.lens === pr.a.lens); const b = cands.find((c) => c.origin.type === 'node' && c.origin.lens === pr.b.lens);
     const p = crossPrompt(project, a, b, pr.edge.why, run.baseline);
@@ -130,6 +179,12 @@ export async function arena({ project, run, call, emit, pool }) {
     if (text(raw?.concept)) add({ title: text(raw.title) || `${a.title} × ${b.title}`, concept: text(raw.concept), visual: text(raw.visual), gain: text(raw.gain), how: text(raw.how), origin: { type: 'cross', lenses: [pr.a.lens, pr.b.lens], edge: pr.edge.id, signals: [pr.edge.from, pr.edge.to] } });
   });
   cands.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+  // 근거의 넓이 — 대결 판정자가 글만 보지 않고, 그 안이 그래프를 얼마나 읽었는지도 본다
+  for (const c of cands) {
+    const ids = c.origin.signals.filter((id) => sig.has(id));
+    const facts = c.origin.facts?.length ? c.origin.facts : uniq(ids.flatMap((id) => sig.get(id).facts || []));
+    c.breadth = `노드 ${uniq(ids.map((id) => sig.get(id).lens)).length}개 · 판단 ${ids.length}건 · 팩트 ${facts.length}건${c.origin.resolves?.length ? ` · 푼 충돌 ${c.origin.resolves.length + 1}건` : ''} (전체 판단 ${live0.length}건)`;
+  }
 
   // 2) 기본안 대조 — 같은 해법은 탈락
   emit('stage', { stage: 'screen' });
@@ -209,7 +264,7 @@ export async function arena({ project, run, call, emit, pool }) {
 
   // 5) 공격 · 보완 — 이긴 안을 고친다
   emit('stage', { stage: 'forge' });
-  const where = (c) => (c.origin.type === 'node' ? `${lensName(c.origin.lens)}의 완성안${c.origin.frame && c.origin.frame !== 'R0' ? ` · ${c.origin.frame}` : ''}` : c.origin.type === 'cross' ? `${c.origin.lenses.map(lensName).join(' × ')} 교배` : `묶음 통합안 ${c.origin.insight}`);
+  const where = (c) => (c.origin.type === 'node' ? `${lensName(c.origin.lens)}의 완성안${c.origin.frame && c.origin.frame !== 'R0' ? ` · ${c.origin.frame}` : ''}` : c.origin.type === 'cross' ? `${c.origin.lenses.map(lensName).join(' × ')} 교배` : c.origin.type === 'weave' ? `그래프 통합안 · 노드 ${c.origin.lenses.length}개` : `묶음 통합안 ${c.origin.insight}`);
   // 기조 — 공격을 받기 전에, 안마다 끝까지 지킬 것(거는 것 · 핵심 장치 · 포기한 것)을 정한다.
   // 받은 공격을 전부 고치게 하면 안이 무난해지고 서로 닮는다. 기조가 있어야 고치면서도 구분이 남는다.
   emit('stage', { stage: 'stance' });
@@ -232,22 +287,27 @@ export async function arena({ project, run, call, emit, pool }) {
   const reviseOne = async (c, attack, note = '') => {
     // 다른 최종안의 지금 모습과 기조 — 이미 고친 안은 고친 모습으로
     const others = winners.filter((w) => w !== c).map((w) => { const f = forged.find((x) => x.cand === w); const v = (f?.adopted !== false && f?.revised) || w; return { title: v.title, concept: v.concept, bet: w.stance.bet, device: w.stance.device }; });
-    const rp = revisePrompt(project, c, attack, run.baseline, others, c.stance, note);
+    // 이 안이 아직 쓰지 않은 판단 — 공격을 메울 근거를 그래프에서 끌어온다
+    const mine = new Set(c.origin.signals);
+    const spare = live0.filter((x) => !mine.has(x.id)).sort((a, b) => (run.energy[b.id] || 0) - (run.energy[a.id] || 0) || a.id.localeCompare(b.id)).slice(0, 24).map((x) => ({ id: x.id, 노드: lensName(x.lens), 판단: String(x.claim).slice(0, 110), ...(x.facts?.length ? { 팩트: x.facts } : {}) }));
+    const rp = revisePrompt(project, c, attack, run.baseline, others, c.stance, note, spare);
     const rraw = await call({ role: 'director', ...rp, task: { kind: 'revise', project, cand: c, attack, others, again: !!note } });
     if (!text(rraw?.concept)) return null;
     // 공격마다 고침 · 대가 · 받지 않음 가운데 하나. 예전 형식(fixed)도 받는다
     const responses = (Array.isArray(rraw.responses) ? rraw.responses : (Array.isArray(rraw.fixed) ? rraw.fixed.map((f) => ({ hit: f.hit, how: '고침', note: f.fix })) : []))
       .map((r) => ({ hit: text(r.hit), how: HOW.includes(text(r.how)) ? text(r.how) : '고침', note: text(r.note) })).filter((r) => r.note);
     return { id: `${c.id}r`, title: text(rraw.title) || c.title, concept: text(rraw.concept), visual: text(rraw.visual) || c.visual, gain: text(rraw.gain) || c.gain, keep: text(rraw.keep), change: text(rraw.change), verdict: text(rraw.verdict),
+      pulled: uniq((Array.isArray(rraw.pulled) ? rraw.pulled : []).map((id) => text(id).replace(/^\[|\]$/g, '')).filter((id) => sig.has(id) && !mine.has(id))),
       responses, fixed: responses.filter((r) => r.how === '고침').map((r) => ({ hit: r.hit, fix: r.note })), costs: responses.filter((r) => r.how === '대가'), refused: responses.filter((r) => r.how === '받지 않음'), open: (Array.isArray(rraw.open) ? rraw.open : []).map(text).filter(Boolean) };
   };
   for (const { cand: c, attack } of attacked) forged.push({ cand: c, attack, revised: attack.attacks.length ? await reviseOne(c, attack) : null });
 
   // 6) 재대결 — 고친 안과 고치기 전 안
-  const rematch = forged.filter((f) => f.revised).map((f) => { byId.set(f.revised.id, f.revised); return hash(f.cand.id) < 0.5 ? { id: `X${f.cand.id}`, a: f.cand.id, b: f.revised.id } : { id: `X${f.cand.id}`, a: f.revised.id, b: f.cand.id }; });
+  //    기본은 하지 않는다. 고친 안을 그대로 받고, 아래 기조 확인에서만 거른다.
+  const rematch = s.rematch !== true ? [] : forged.filter((f) => f.revised).map((f) => { byId.set(f.revised.id, f.revised); return hash(f.cand.id) < 0.5 ? { id: `X${f.cand.id}`, a: f.cand.id, b: f.revised.id } : { id: `X${f.cand.id}`, a: f.revised.id, b: f.cand.id }; });
   const rres = rematch.length ? await judge(rematch, 'rematch') : [];
   duels.push(...rres.map((d) => ({ ...d, stage: '재대결' })));
-  for (const f of forged) { const r = rres.find((x) => x.id === `X${f.cand.id}`); f.adopted = !!(f.revised && r && r.winner === f.revised.id); f.rematch = r ? r.why : ''; }
+  for (const f of forged) { const r = rres.find((x) => x.id === `X${f.cand.id}`); f.adopted = s.rematch !== true ? !!f.revised : !!(f.revised && r && r.winner === f.revised.id); f.rematch = r ? r.why : ''; }
 
   // 기조 확인 — 고친 안이 기조를 버렸거나 다른 안과 같아졌으면, 이유를 붙여 한 번 다시 고친다.
   // 다시 고쳐도 같으면 고치기 전으로 되돌린다(고치기 전에는 서로 달랐다). 되돌린 안은 공격이 고쳐지지 않은 채 남는다.
@@ -281,14 +341,15 @@ export async function arena({ project, run, call, emit, pool }) {
   const fam = (ids) => { const o = Object.fromEntries(Object.keys(FAMILIES).map((f) => [f, 0])); for (const id of ids) { const x = sig.get(id); if (x) o[x.family]++; } return o; };
   run.insights = forged.map((f, i) => {
     const c = f.cand; const v = f.adopted ? f.revised : c; const src = c.source;
-    const used = c.origin.signals.filter((id) => sig.has(id));
+    const used = uniq([...c.origin.signals, ...(f.adopted ? f.revised.pulled || [] : [])]).filter((id) => sig.has(id));
     const byFamily = fam(used);
-    const edge = c.origin.type === 'cross' ? run.edges.find((e) => e.id === c.origin.edge) : null;
+    const edge = c.origin.type === 'cross' || c.origin.type === 'weave' ? run.edges.find((e) => e.id === c.origin.edge) : null;
     return {
       id: `N${i + 1}`, cluster: src?.cluster || null, candidate: c.id,
       title: v.title, insight: v.concept,
       chain: src ? src.chain : used.map((id, n) => ({ signal: id, role: c.origin.type === 'cross' ? '충돌' : n === 0 ? '전제' : '근거', says: sig.get(id).claim })),
       tension: src ? src.tension : edge ? { a: edge.from, b: edge.to, resolve: c.how || '' } : null,
+      principle: c.principle || '', spans: c.origin.spans || [], pulled: f.adopted ? f.revised.pulled || [] : [], facts: uniq([...(c.origin.facts || []), ...used.flatMap((id) => sig.get(id).facts || [])]),
       keep: v.keep || src?.keep || '', change: v.change || src?.change || '', concept: v.concept, visual: v.visual,
       substitute: src && !f.adopted ? src.substitute : { who: '', changes: v.gain }, verdict: v.verdict || src?.verdict || '', gate: src?.gate || '',
       without: { nearest: c.screen?.nearest || src?.without?.nearest || '', baseline: src?.without?.baseline || '', difference: c.screen?.why || src?.without?.difference || '' },
@@ -301,7 +362,7 @@ export async function arena({ project, run, call, emit, pool }) {
   run.arena = {
     candidates: cands.map((c) => ({ id: c.id, title: c.title, concept: c.concept, from: where(c), type: c.origin.type, screen: c.screen || null, family: c.group || c.screen?.family || '', reach: c.screen?.success || '', seat: c.seat || '', swiss: c.swiss ?? null, wins: c.wins ?? null, rank: c.rank ?? null, notable: c.notable || '', contested: !!c.contested, status: c.status })),
     duels: duels.map((d) => ({ stage: d.stage, a: d.a, b: d.b, winner: d.winner, split: !!d.split, unsure: !!d.unsure, why: d.why })),
-    counts: { candidates: cands.length, node: cands.filter((c) => c.origin.type === 'node').length, cluster: cands.filter((c) => c.origin.type === 'cluster').length, cross: cands.filter((c) => c.origin.type === 'cross').length, screened: cands.filter((c) => c.status.startsWith('탈락 — 기본안') || c.status.startsWith('탈락 — 얻는')).length, finalists: finalists.length, duels: duels.length, splits: finals.filter((d) => d.split).length, groups: new Set(finalists.map((c) => groupOf.get(c.id))).size, merged: finalists.filter((c) => c.status === '탈락 — 같은 해법이 이미 뽑힘').length, reserve: winners.filter((c) => c.status === '결선 통과 — 예비').length, different: cands.filter((c) => c.screen?.verdict === '다름' && c.status.startsWith('탈락')).length, revised: forged.filter((f) => f.adopted).length, reverted, redone },
+    counts: { candidates: cands.length, weave: cands.filter((c) => c.origin.type === 'weave').length, node: cands.filter((c) => c.origin.type === 'node').length, cluster: cands.filter((c) => c.origin.type === 'cluster').length, cross: cands.filter((c) => c.origin.type === 'cross').length, screened: cands.filter((c) => c.status.startsWith('탈락 — 기본안') || c.status.startsWith('탈락 — 얻는')).length, finalists: finalists.length, duels: duels.length, splits: finals.filter((d) => d.split).length, groups: new Set(finalists.map((c) => groupOf.get(c.id))).size, merged: finalists.filter((c) => c.status === '탈락 — 같은 해법이 이미 뽑힘').length, reserve: winners.filter((c) => c.status === '결선 통과 — 예비').length, different: cands.filter((c) => c.screen?.verdict === '다름' && c.status.startsWith('탈락')).length, revised: forged.filter((f) => f.adopted).length, reverted, redone },
     groups: groups.map((g) => ({ name: g.name, ids: g.ids, why: g.why })),
     calls: run.calls - before,
   };

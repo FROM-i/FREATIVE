@@ -10,7 +10,8 @@ import { SAMPLE } from '../knowledge/sample-project.js';
 import { LENSES, AIRPLANE, OPPOSITIONS, IDENTITY, TUNNEL } from '../knowledge/nodes.js';
 import { activatePrompt, linkPrompt, integratePrompt } from '../knowledge/prompts.js';
 
-const sample = () => newProject(SAMPLE);
+// 예전 경쟁 방식(노드의 완성안 + 교배 + 재대결)을 보는 테스트는 그 설정으로 돌린다. 지금 기본은 그래프 통합안이다(맨 아래 테스트).
+const sample = () => { const p = newProject(SAMPLE); p.settings.weave = false; p.settings.rematch = true; return p; };
 
 test('기본 노드 — 모든 기준 노드에 기준과 질문이 있고, 사조에는 두고 올 것이 있다', () => {
   assert.equal(AIRPLANE.length, 16);
@@ -851,4 +852,45 @@ test('전략 한 장 — 인사이트 위에 전체 판단과 팩트로 올리�
   p.run = run; const before = run.calls; const kinds = [];
   const only = await strategizeOnly(p, { json: async (a) => { kinds.push(a.task.kind); return good.json(a); } });
   assert.ok(only.check.ok && p.run === run && run.calls === before + 1 && kinds.every((k) => k === 'strategy'));
+});
+
+test('그래프 통합안 — 후보는 전체 노드의 판단을 읽고 쓴 안이고, 노드의 완성안은 재료다. 재대결은 하지 않는다', async () => {
+  const { weaveSpines } = await import('../js/engine/arena.js');
+  const { weavePrompt, duelPrompt, revisePrompt } = await import('../knowledge/prompts-arena.js');
+  const p = newProject(SAMPLE);
+  const calls = [];
+  const mock = createMock();
+  const run = await think(p, { ...mock, json: (a) => { calls.push(a); return mock.json(a); } });
+  const kinds = calls.map((c) => c.task.kind);
+  const c = run.arena.counts;
+  assert.ok(c.weave >= 3 && c.node === 0 && c.cross === 0 && c.cluster === 3, JSON.stringify(c));
+  assert.ok(!kinds.includes('cross') && kinds.filter((k) => k === 'weave').length === c.weave, '교배 대신 통합안을 쓴다');
+  assert.ok(run.proposals.length >= 10, '노드의 완성안은 그대로 받아 재료로 쓴다');
+  // 통합안은 뼈대 충돌의 두 판단을 포함해 여러 노드에 걸친다
+  const sig = new Map(run.signals.map((x) => [x.id, x]));
+  for (const k of run.arena.candidates.filter((x) => x.type === 'weave')) assert.match(k.from, /그래프 통합안 · 노드 \d+개/);
+  const spines = weaveSpines(run, 5);
+  assert.ok(spines.length >= 3 && new Set(spines.map((x) => [x.a.lens, x.b.lens].sort().join('|'))).size === spines.length, '뼈대는 서로 다른 노드 짝이다');
+  assert.ok(spines.every((x) => x.edge.type === 'tension' && x.a.lens !== x.b.lens));
+  // 통합안 프롬프트 — 모든 노드의 판단과 조건이 들어간다
+  const wcall = calls.find((x) => x.task.kind === 'weave');
+  for (const x of run.signals.filter((y) => !y.muted)) assert.ok(wcall.user.includes(`[${x.id}]`), `${x.id}가 통합안 프롬프트에 없다`);
+  assert.match(wcall.system, /노드 \d개 이상/); assert.match(wcall.system, /판단을 나열하거나 평균 내지 않는다/);
+  // 대결 — 판정자가 근거의 넓이를 본다
+  const dcall = calls.find((x) => x.task.kind === 'duel');
+  assert.match(dcall.user, /근거_넓이/); assert.match(dcall.user, /노드 \d+개 · 판단 \d+건 · 팩트 \d+건/); assert.match(dcall.system, /뚜렷함은 좁다는 뜻이 아니다/);
+  // 재대결이 없다 — 고친 안을 받고, 기조 확인만 한다
+  assert.ok(!calls.some((x) => x.task.kind === 'duel' && x.task.tag === 'rematch'), '재대결을 하지 않는다');
+  assert.ok(!run.arena.duels.some((d) => d.stage === '재대결'));
+  assert.ok(run.insights.every((n) => n.revised || n.reverted || !n.attacks.length), '고친 안은 기조 확인에서 걸리지 않으면 그대로 받는다');
+  // 보완 — 아직 쓰지 않은 판단을 끌어다 쓸 수 있게 주고, 끌어온 것은 근거에 더한다
+  const rcall = calls.find((x) => x.task.kind === 'revise');
+  assert.match(rcall.user, /끌어다 쓸 수 있는 판단/); assert.match(rcall.system, /pulled/);
+  const winner = run.insights.find((n) => n.origin.type === 'weave');
+  if (winner) { assert.ok(winner.check.lenses.length >= 4, '이긴 통합안은 여러 노드에 걸친다'); assert.ok(Array.isArray(winner.spans) && winner.spans.length >= 4); assert.ok(winner.facts.every((f) => p.facts.some((x) => x.id === f))); }
+  assert.ok(run.arena.candidates.some((x) => x.type === 'weave' && (x.seat || /결선/.test(x.status))), '통합안이 결선에 오른다');
+  // 끌어온 판단은 그 안의 근거가 된다
+  const run2 = await think(newProject(SAMPLE), { ...mock, json: async (a) => { const r = await mock.json(a); if (a.task.kind === 'revise') { const mine = new Set(a.task.cand.origin.signals); r.json.pulled = [run.signals.find((x) => !mine.has(x.id)).id, 'NOPE-1']; } return r; } });
+  const pulled = run2.insights.filter((n) => n.revised && n.pulled.length);
+  assert.ok(pulled.length > 0 && pulled.every((n) => n.pulled.every((id) => n.check.used.includes(id)) && !n.pulled.includes('NOPE-1')));
 });
