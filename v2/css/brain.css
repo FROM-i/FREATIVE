@@ -397,3 +397,59 @@ details[open] > summary { margin-bottom: var(--u); }
 .guide li { display: flex; flex-direction: column; gap: calc(var(--u) * 0.75); }
 .guide-body { display: flex; flex-direction: column; gap: calc(var(--u) * 0.5); padding-left: calc(var(--u) * 4); align-items: flex-start; }
 a.btn { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* 전략 한 장 — 우측 패널 왼쪽에 펼치는 판. 읽는 문서가 아니라 보는 판이라 글자를 크게, 줄을 적게 쓴다 */
+:root { --deck: calc(var(--u) * 66); }
+.stage.with-deck { grid-template-columns: minmax(0, 1fr) var(--deck) var(--panel); }
+.deck { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; min-width: 0; border-left: 1px solid var(--line); background: var(--surface); }
+.deck-head { display: flex; align-items: center; justify-content: space-between; gap: var(--u); padding: calc(var(--u) * 1.5) calc(var(--u) * 2.5); border-bottom: 1px solid var(--line); }
+.eyebrow { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .12em; color: var(--mute); }
+.deck-body { overflow: auto; padding: calc(var(--u) * 3) calc(var(--u) * 2.5) calc(var(--u) * 5); display: flex; flex-direction: column; gap: calc(var(--u) * 3.5); }
+.deck h2 { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .12em; color: var(--mute); display: flex; justify-content: space-between; gap: var(--u); margin-bottom: calc(var(--u) * 1.5); }
+.deck h2 small { font-family: var(--font); font-weight: 500; letter-spacing: 0; }
+.deck .concept h1 { font-size: 34px; line-height: 42px; font-weight: 800; letter-spacing: -.01em; color: var(--yellow); text-wrap: balance; }
+.deck .concept .line { margin-top: var(--u); font-size: var(--t-head); line-height: 30px; font-weight: 700; text-wrap: balance; }
+.deck .concept .principle { margin-top: calc(var(--u) * 1.5); color: var(--text-2); font-size: var(--t-body); line-height: 24px; }
+.covs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: calc(var(--u) * 2); }
+.cov .num b { font-family: var(--mono); font-size: var(--t-head); line-height: 28px; font-weight: 600; }
+.cov .num span { font-size: var(--t-cap); color: var(--text-2); margin-left: 2px; }
+.cov .track { position: relative; height: calc(var(--u) * .5); background: var(--line); margin: var(--u) 0 calc(var(--u) * .75); }
+.cov .track i { display: block; height: 100%; background: var(--yellow); }
+.cov .track u { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--text); }
+.cov small, .small.warn { font-size: 11px; color: var(--mute); }
+.small.warn { color: var(--red-soft); }
+.pillar { display: grid; grid-template-columns: calc(var(--u) * 7) minmax(0, 1fr); gap: calc(var(--u) * 1.5); padding: calc(var(--u) * 1.75) 0; border-top: 1px solid var(--line); cursor: pointer; }
+.pillar:hover h3, .pillar.on h3 { color: var(--yellow); }
+.pillar.on { border-top-color: var(--yellow); }
+.pillar .part { font-size: var(--t-cap); font-weight: 700; color: var(--mute); padding-top: 3px; }
+.pillar.on .part { color: var(--yellow); }
+.pillar h3 { font-size: var(--t-lead); line-height: 24px; font-weight: 700; }
+.pillar p { margin-top: 2px; color: var(--text-2); line-height: 22px; }
+.moves { margin-top: var(--u); display: flex; flex-direction: column; gap: 2px; }
+.moves li { font-size: var(--t-sub); line-height: 20px; padding-left: calc(var(--u) * 1.5); position: relative; }
+.moves li::before { content: '→'; position: absolute; left: 0; color: var(--mute); font-size: 11px; }
+.evs { margin-top: var(--u); display: flex; flex-wrap: wrap; gap: 2px var(--u); align-items: center; }
+.ev { background: none; border: 0; padding: 0; cursor: pointer; font-family: var(--mono); font-size: 11px; line-height: 18px; color: var(--mute); }
+.ev::before { content: '#'; }
+.ev:hover { color: var(--yellow); }
+.ev.n { font-family: var(--font); font-weight: 600; color: var(--text-2); }
+.ev.n::before { content: '◆ '; color: var(--yellow); font-size: 9px; }
+.evs .cnt { font-size: 11px; color: var(--mute); }
+.phases ol { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.phases li { background: var(--surface); padding: calc(var(--u) * 1.5); display: flex; flex-direction: column; gap: calc(var(--u) * .5); min-width: 0; }
+.phases li b { font-family: var(--mono); font-size: var(--t-cap); color: var(--yellow); }
+.phases li p { font-size: var(--t-sub); line-height: 20px; font-weight: 600; }
+.phases li small { font-size: 11px; color: var(--mute); }
+.pairs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: calc(var(--u) * 3); }
+.pair { padding: calc(var(--u) * 1.25) 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+.pair span { font-size: var(--t-cap); color: var(--mute); }
+.pair strong { font-size: var(--t-sub); line-height: 20px; }
+.pair .evs { margin-top: 2px; }
+.gaps li { font-size: var(--t-sub); line-height: 22px; color: var(--text-2); padding-left: calc(var(--u) * 1.5); position: relative; }
+.gaps li::before { content: '?'; position: absolute; left: 0; color: var(--mute); font-family: var(--mono); font-size: 11px; }
+.stratcard { width: 100%; display: flex; flex-direction: column; gap: 2px; text-align: left; background: none; border: 0; border-left: 2px solid var(--yellow); padding: calc(var(--u) * .5) 0 calc(var(--u) * .5) calc(var(--u) * 1.5); cursor: pointer; }
+.stratcard strong { font-size: var(--t-head); line-height: 30px; font-weight: 800; color: var(--yellow); }
+.stratcard .line { font-size: var(--t-body); line-height: 24px; font-weight: 600; }
+.stratcard .meta { font-size: 11px; color: var(--mute); margin-top: calc(var(--u) * .5); }
+.stratcard:hover .meta, .stratcard.on .meta { color: var(--text-2); }
+@media (max-width: 1280px) { :root { --deck: calc(var(--u) * 52); } .pairs { grid-template-columns: minmax(0, 1fr); } }

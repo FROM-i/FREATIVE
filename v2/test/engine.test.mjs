@@ -30,7 +30,7 @@ test('사고 패스 — 발화 · 연결 · 수렴 · 통합이 한 번에 돈�
   const events = [];
   const run = await think(p, createMock(), { onEvent: (e) => events.push(e.type === 'stage' ? e.stage : e.type) });
   const lenses = IDENTITY.length + TUNNEL.length + p.settings.ismCount;
-  assert.equal(run.calls, 1 + 1 + 1 + lenses + 1 + p.settings.insightCount + run.arena.calls + 1 + 1 + 1 + (run.creative ? 2 : 0), '호출 수 = 기본안 1 + 문제 다시 정의 1 + 사조 고르기 1 + 노드 수 + 연결 1 + 묶음 통합 + 경쟁 + 더프롬 판정 1 + 디렉션 1');
+  assert.equal(run.calls, 1 + 1 + 1 + lenses + 1 + p.settings.insightCount + run.arena.calls + 1 + 1 + 1 + (run.creative ? 2 : 0) + (run.strategy?.attempts || 0), '호출 수 = 기본안 1 + 문제 다시 정의 1 + 사조 고르기 1 + 노드 수 + 연결 1 + 묶음 통합 + 경쟁 + 더프롬 판정 1 + 디렉션 1');
   assert.equal(new Set(run.signals.map((s) => s.lens)).size, lenses, '모든 노드가 발화했다');
   assert.deepEqual(events.filter((e) => ['route', 'activate', 'link', 'propagate', 'integrate', 'direct', 'done'].includes(e)), ['route', 'activate', 'link', 'propagate', 'integrate', 'direct', 'done']);
   assert.ok(OPPOSITIONS.some((o) => run.picks.some((x) => x.id === o.a) && run.picks.some((x) => x.id === o.b)), '대립하는 사조 쌍이 들어 있다');
@@ -107,7 +107,7 @@ test('사람의 개입 — 엣지를 고치면 발화 없이 전파·통합만 �
   const kinds = [];
   const mock = createMock();
   const again = await think(p, { name: 'spy', json: (a) => { kinds.push(a.task.kind); return mock.json(a); } }, { mode: 'relink' });
-  assert.ok(kinds.length > again.clusters.length && kinds.every((k) => ['integrate', 'direct', 'verdict', 'cross', 'screen', 'duel', 'attack', 'revise', 'plan', 'pull', 'creative'].includes(k)), '통합·판정·디렉션 호출만 있다');
+  assert.ok(kinds.length > again.clusters.length && kinds.every((k) => ['integrate', 'direct', 'verdict', 'cross', 'screen', 'duel', 'attack', 'revise', 'plan', 'pull', 'creative', 'distinct', 'stance', 'hold', 'strategy'].includes(k)), '통합·판정·디렉션 호출만 있다');
   assert.equal(again.signals.length, 26);
   assert.ok(!again.clusters.some((c) => c.members.includes('BRUTAL-1')));
   assert.notDeepEqual(again.clusters.map((c) => c.members.join()), before);
@@ -811,4 +811,44 @@ test('스킬 — ZIP이 최신이고, 맨 위가 스킬 폴더이며, 지시문�
   assert.equal(factProblem(example.facts[0]), ''); assert.equal(example.facts[0].by, 'doc');
   const p = newProject(example); assert.deepEqual(p.categories, ['ops', 'dev']);
   for (const kind of ['burger', 'bulb', 'bolt', 'phone', 'server']) assert.ok(md.includes('`' + kind + '`'), `지시문에 ${kind} 형상`);
+});
+
+test('전략 한 장 — 인사이트 위에 전체 판단과 팩트로 올리고, 넓이를 세고, 모자라면 한 번 더 쓴다', async () => {
+  const { shapeStrategy, strategize } = await import('../js/engine/strategy.js');
+  const { strategizeOnly } = await import('../js/engine/think.js');
+  const { STRATEGY_CAPS, strategyPrompt } = await import('../knowledge/prompts.js');
+  const { lensName } = await import('../js/graph/model.js');
+  const p = newProject(SAMPLE);
+  const run = await think(p, createMock());
+  const st = run.strategy;
+  assert.ok(st && st.concept.name && st.pillars.length >= 3 && st.check.ok, '분석 끝에 전략 한 장이 붙는다');
+  assert.ok(st.coverage.signals.fresh > 0 && st.coverage.signals.total === run.signals.filter((s) => !s.muted).length, '쓰이지 않던 판단을 몇 개 끌어왔는지 센다');
+  assert.equal(st.insights.length, run.insights.length, '인사이트마다 짧은 이름이 붙는다');
+  // 프롬프트 — 쓰이지 않은 판단을 표시하고 글자 수를 묶는다
+  const prompt = strategyPrompt(p, run, lensName);
+  assert.match(prompt.user, /\(안 쓰임\)/); assert.match(prompt.system, new RegExp(`${STRATEGY_CAPS.name}자 이내`)); assert.match(prompt.system, /인사이트를 요약하지 않는다/);
+  // 다듬기 — 없는 id는 걷어 내고, 크게 넘긴 글은 자르고, 모자란 것은 문제로 적는다
+  const sid = run.signals[0].id;
+  const shaped = shapeStrategy({ concept: { name: '가'.repeat(60), line: '한 줄' }, principle: '원칙', pillars: [{ part: 'a1', name: '축', guide: '안내', moves: ['1', '2', '3', '4'], facts: ['F1', 'F999'], signals: [sid, 'NOPE-1'], insights: ['N1', 'N9'] }], insights: [{ id: 'N9', name: 'x' }] }, p, run);
+  assert.ok(shaped.concept.name.length <= STRATEGY_CAPS.name + 6, '크게 넘긴 이름은 자른다');
+  assert.deepEqual([shaped.pillars[0].facts, shaped.pillars[0].signals, shaped.pillars[0].insights, shaped.pillars[0].moves.length, shaped.insights.length], [['F1'], [sid], ['N1'], 3, 0]);
+  assert.ok(!shaped.check.ok && shaped.check.problems.some((x) => /축이 3개보다 적다/.test(x)), '조건을 못 채우면 무엇이 모자란지 적는다');
+  // 모자라면 이유를 붙여 한 번 더 쓰게 한다
+  const notes = []; let n = 0;
+  const good = createMock();
+  const call = async (args) => { n++; notes.push(/다시 쓰는 이유/.test(args.user)); return n === 1 ? { concept: { name: '', line: '' }, pillars: [] } : (await good.json(args)).json; };
+  const run2 = { ...run, strategy: null };
+  const again = await strategize({ project: p, run: run2, call });
+  assert.deepEqual([n, notes, again.attempts, again.check.ok], [2, [false, true], 2, true]);
+  // 한 장 보고서 — 전략과 쓴 팩트의 출처가 들어가고, 모델이 쓴 글은 이스케이프한다
+  const { strategyHtml, reportMarkdown } = await import('../js/engine/report.js');
+  p.run = run; const keep = run.strategy.concept.name; run.strategy.concept.name = '<b>x</b>';
+  const html = strategyHtml(p);
+  assert.ok(html.includes('&lt;b&gt;x&lt;/b&gt;') && !html.includes('<b>x</b>') && html.includes('A4 landscape') && html.includes(p.facts[0].source));
+  run.strategy.concept.name = keep;
+  assert.match(reportMarkdown(p), /## 전략 한 장/);
+  // 이미 있는 결과 위에 전략만 다시 만든다 — 앞 단계 호출 없이
+  p.run = run; const before = run.calls; const kinds = [];
+  const only = await strategizeOnly(p, { json: async (a) => { kinds.push(a.task.kind); return good.json(a); } });
+  assert.ok(only.check.ok && p.run === run && run.calls === before + 1 && kinds.every((k) => k === 'strategy'));
 });

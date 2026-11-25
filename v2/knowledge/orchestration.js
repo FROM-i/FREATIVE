@@ -22,6 +22,7 @@ export const KIND_TIER = {
   stance: 'lead',      // 기조 세우기
   revise: 'lead',      // 기조를 지킨 보완
   verdict: 'lead',     // 더프롬 판정
+  strategy: 'lead',    // 전략 한 장 — 인사이트 위의 층. 전체 판단과 팩트를 다시 훑어 과제를 관통하는 전략으로 올린다
   integrate: 'support', // 묶음 정리
   screen: 'support',   // 기본안 대조
   duel: 'support',     // 대결 판정 (두 번 판정해 갈림을 잡는다)
