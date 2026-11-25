@@ -391,3 +391,9 @@ details[open] > summary { margin-bottom: var(--u); }
 .gate-form { display: flex; flex-direction: column; gap: calc(var(--u) * 1.5); }
 .gate-msg { color: var(--red-soft); font-size: var(--t-sub); }
 .users li { display: flex; flex-direction: column; gap: 2px; }
+
+/* RFP로 자동 채우기 안내 */
+.guide-h { font-size: var(--t-sub); font-weight: 700; margin-top: calc(var(--u) * 2); color: var(--text); }
+.guide li { display: flex; flex-direction: column; gap: calc(var(--u) * 0.75); }
+.guide-body { display: flex; flex-direction: column; gap: calc(var(--u) * 0.5); padding-left: calc(var(--u) * 4); align-items: flex-start; }
+a.btn { text-decoration: none; display: inline-flex; align-items: center; }

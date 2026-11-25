@@ -42,6 +42,7 @@ const isUrl = (v) => /^https?:\/\/[^\s]+\.[^\s]+/i.test(str(v));
  * 팩트 한 건이 받을 수 있는 형태인지 본다. 이유를 돌려준다(빈 문자열이면 통과).
  *   공통  내용 · 출처 이름 · 종류 · 출처 유형
  *   AI 조사  주소(URL)와 날짜가 반드시 있어야 하고, 내부 자료 유형은 쓸 수 없다
+ *   자료에서 옮김(doc)  받은 RFP · 팩트북에서 LLM이 옮긴 것. 내부 자료 유형을 쓸 수 있고, 출처에 문서 이름과 쪽을 적는다
  */
 export function factProblem(f) {
   if (!str(f?.text)) return '내용이 없다';
@@ -56,6 +57,9 @@ export function factProblem(f) {
   }
   return '';
 }
+
+/** 사람이 원문을 아직 확인하지 않은 팩트 — AI가 조사했거나(ai), 받은 자료에서 LLM이 옮긴 것(doc) */
+export const unverified = (f) => (f?.by === 'ai' || f?.by === 'doc') && !f.checked;
 
 /** 쓸 수 있는 팩트만 */
 export function validFacts(project) {
@@ -92,7 +96,7 @@ export function acceptResearch(raw, project) {
 export function factsFor(facts, lensId) {
   const first = new Set(TUNNEL_FACTS[lensId] || []);
   return [...facts].sort((a, b) => (first.has(b.kind) ? 1 : 0) - (first.has(a.kind) ? 1 : 0))
-    .map((f) => ({ id: f.id, 종류: factKind(f.kind).name, 내용: f.text, 출처: `${sourceType(f.sourceType).name} — ${f.source}`, ...(f.date ? { 날짜: f.date } : {}), ...(f.by === 'ai' && !f.checked ? { 확인: '사람이 원문을 확인하기 전' } : {}) }));
+    .map((f) => ({ id: f.id, 종류: factKind(f.kind).name, 내용: f.text, 출처: `${sourceType(f.sourceType).name} — ${f.source}`, ...(f.date ? { 날짜: f.date } : {}), ...(unverified(f) ? { 확인: '사람이 원문을 확인하기 전' } : {}) }));
 }
 
 // ---------- md ----------
@@ -117,7 +121,7 @@ export function factsToMarkdown(project) {
       if (f.date) L.push(`  - 날짜: ${f.date}`);
       if (f.url) L.push(`  - 주소: ${f.url}`);
       if (f.quote) L.push(`  - 근거 구절: "${f.quote}"`);
-      L.push(`  - 확인: ${f.by === 'ai' ? (f.checked ? 'AI 조사 · 사람 확인' : 'AI 조사 · 확인 전') : '직접 입력'}`);
+      L.push(`  - 확인: ${f.by === 'ai' ? (f.checked ? 'AI 조사 · 사람 확인' : 'AI 조사 · 확인 전') : f.by === 'doc' ? (f.checked ? '자료에서 옮김 · 사람 확인' : '자료에서 옮김 · 확인 전') : '직접 입력'}`);
       const why = factProblem(f);
       if (why) L.push(`  - 제외: ${why}`);
     }
@@ -142,7 +146,7 @@ export function parseFactbook(md) {
     else if (key === '날짜') cur.date = val;
     else if (key === '주소') cur.url = val;
     else if (key === '근거 구절') cur.quote = val.replace(/^"|"$/g, '');
-    else if (key === '확인') { cur.by = val.startsWith('AI') ? 'ai' : 'human'; cur.checked = !val.includes('확인 전'); }
+    else if (key === '확인') { cur.by = val.startsWith('AI') ? 'ai' : val.startsWith('자료') ? 'doc' : 'human'; cur.checked = !val.includes('확인 전'); }
   }
   push();
   const used = new Set(facts.map((f) => f.id).filter(Boolean));
