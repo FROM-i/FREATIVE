@@ -1,0 +1,17 @@
+{
+  "scores": {
+    "K1": {"ID-FROM": 4, "ID-JAMAIS": 5, "ID-INERTIA": 5, "ID-ONEU": 5, "ID-YELLOW": 4, "ID-BENEFIT": 5, "verdict": "채택", "why": "토스 텍스트 한 문장이라는 익숙한 구조를 그대로 두고 밑줄 구절 하나에 응답 하나를 연결해, 결과·공유·댓글·공개 승인이 모두 한 구절에서 파생되며 설명 없이 다름이 느껴진다."},
+    "K2": {"ID-FROM": 2, "ID-JAMAIS": 3, "ID-INERTIA": 4, "ID-ONEU": 3, "ID-YELLOW": 4, "ID-BENEFIT": 2, "verdict": "기각", "why": "토스 리스트 행 8줄은 익숙하지만 중심이 납득이 아니라 고쳐서 다시 계산하는 쪽이라 결과 조작 유인이 생기고, 공유 한 장·커뮤니티가 비어 있어 효익이 빈 부분이 크다."},
+    "K3": {"ID-FROM": 2, "ID-JAMAIS": 2, "ID-INERTIA": 3, "ID-ONEU": 3, "ID-YELLOW": 4, "ID-BENEFIT": 3, "verdict": "기각", "why": "근거를 줄마다 붙인 명세서는 누구나 내는 결론이고 더프롬 고유의 해석이나 판단 출발점이 보이지 않는다."},
+    "K4": {"ID-FROM": 3, "ID-JAMAIS": 3, "ID-INERTIA": 3, "ID-ONEU": 3, "ID-YELLOW": 4, "ID-BENEFIT": 3, "verdict": "보완", "why": "결과를 가설로 놓고 댓글이 검증한다는 관점은 있으나 '맞아요/달라요' 반응은 흔하고 핵심 순간인 '왜 나야' 납득을 풀지 못한다."},
+    "K5": {"ID-FROM": 2, "ID-JAMAIS": 2, "ID-INERTIA": 2, "ID-ONEU": 3, "ID-YELLOW": 2, "ID-BENEFIT": 2, "verdict": "기각", "why": "겹친 축 지도와 궤적선은 읽기 어렵고 1~2분 틈의 20~30대에게 낯선 구조이며 납득보다 도식 해독을 요구해 접근성을 실험 비용으로 낸다."},
+    "K6": {"ID-FROM": 4, "ID-JAMAIS": 4, "ID-INERTIA": 3, "ID-ONEU": 5, "ID-YELLOW": 4, "ID-BENEFIT": 4, "verdict": "보완", "why": "응답 하나가 문장 하나라는 코어에서 문항 수·중도 이탈 결과까지 파생하고 1~2분 틈이라는 상황을 정확히 읽었으나, 8문항 구조와 부분 결과 규칙을 건드려 관성을 지키는지 정리가 필요하다."},
+    "K7": {"ID-FROM": 3, "ID-JAMAIS": 4, "ID-INERTIA": 4, "ID-ONEU": 4, "ID-YELLOW": 3, "ID-BENEFIT": 4, "verdict": "보완", "why": "읽는 것만으로 내 답이 짚이는 절 구조는 좋지만 인용이 굵게 반복되는 문장이 길어질 위험이 있고 수정·재계산·검증 절차까지 얹어 코어가 흐려진다."},
+    "K8": {"ID-FROM": 4, "ID-JAMAIS": 5, "ID-INERTIA": 4, "ID-ONEU": 4, "ID-YELLOW": 4, "ID-BENEFIT": 5, "verdict": "보완", "why": "구절을 눌러 같은 자리에서 내 답으로 바뀌는 해석은 자메뷰가 강하나 자동 펼침·모두 펼치기·칩·세로선 등 장치가 많아 한 화면이 무거워지고 커뮤니티 연결이 약하다."},
+    "K9": {"ID-FROM": 3, "ID-JAMAIS": 3, "ID-INERTIA": 4, "ID-ONEU": 4, "ID-YELLOW": 4, "ID-BENEFIT": 4, "verdict": "보완", "why": "응답 인용을 맨 위에 두는 순서 뒤집기는 분명하지만 인용 줄 두세 개와 연결선이라는 형식이 평범해 더프롬의 해석이라 하기엔 약하다."},
+    "K10": {"ID-FROM": 3, "ID-JAMAIS": 3, "ID-INERTIA": 4, "ID-ONEU": 4, "ID-YELLOW": 4, "ID-BENEFIT": 4, "verdict": "보완", "why": "공유 장을 응답·결과 한 줄 짝으로 시작해 눌러 열면 전체 근거가 이어지는 구조는 좋으나 결과 화면 본체의 납득 경험이 공유 장 쪽에 치우쳐 있다."},
+    "K11": {"ID-FROM": 4, "ID-JAMAIS": 4, "ID-INERTIA": 4, "ID-ONEU": 4, "ID-YELLOW": 4, "ID-BENEFIT": 4, "verdict": "보완", "why": "가장 크게 반영된 응답 한두 개에 댓글을 붙이고 공개 범위를 줄마다 끄게 한 설계는 단단하나 토스 기본 리스트에 가까워 다름이 설명 없이 느껴질지 확신이 부족하다."},
+    "K12": {"ID-FROM": 4, "ID-JAMAIS": 4, "ID-INERTIA": 4, "ID-ONEU": 3, "ID-YELLOW": 4, "ID-BENEFIT": 3, "verdict": "보완", "why": "친구에게 이름 대신 내가 고른 답 한 줄을 보내는 공유 해석은 새롭지만 결과 화면의 납득이라는 가장 중요한 순간과 커뮤니티는 다루지 않는다."}
+  },
+  "rank": ["K1", "K8", "K11", "K6", "K7", "K9", "K12", "K10", "K4", "K2", "K3", "K5"]
+}
