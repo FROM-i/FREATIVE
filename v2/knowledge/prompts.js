@@ -2,7 +2,7 @@
 // 1.x는 단계마다 "앞 단계의 요약"을 받았다. 2.0은 모든 노드가 같은 원문(미션·이슈)을 받고,
 // 노드 사이의 관계는 문장이 아니라 엣지(from·to·type·weight·why)로 남는다.
 
-import { COMMON_INPUT, SEED_INPUT, PERSPECTIVES, tagById, categoryById } from './tags.js';
+import { COMMON_INPUT, SEED_INPUT, PERSPECTIVES, tagById, categoryById, categoriesOf } from './tags.js';
 import { viewpointBlock } from './viewpoint.js';
 import { depthBlock, LAYERS } from './ism-depth.js';
 import { validFacts, factsFor, FACT_KINDS, SOURCE_TYPES } from './facts.js';
@@ -46,11 +46,12 @@ const common = (project) => `${viewpointBlock(project?.view?.precedents, project
 const tagNames = (ids) => (ids || []).map((id) => tagById(id)?.name).filter(Boolean);
 function missionBlock(p, lensId = null) {
   const { facts } = validFacts(p);
-  const cat = categoryById(p.category);
+  const cats = categoriesOf(p).map(categoryById);
   const common = Object.fromEntries(COMMON_INPUT.map((f) => [f.label, p.brief[f.id]]).filter(([, v]) => v));
-  const seed = cat ? Object.fromEntries(SEED_INPUT[cat.id].map((f) => [f.label, p.seed?.[cat.id]?.[f.id]]).filter(([, v]) => v)) : {};
+  // 분류를 여러 개 골랐으면 분류마다 특화 인풋을 따로 넣는다
+  const seeds = Object.fromEntries(cats.map((cat) => [`${cat.name}_인풋`, Object.fromEntries(SEED_INPUT[cat.id].map((f) => [f.label, p.seed?.[cat.id]?.[f.id]]).filter(([, v]) => v))]).filter(([, v]) => Object.keys(v).length));
   return `## 미션
-${j({ 프로젝트: p.title, ...(cat ? { 분류: cat.name } : {}), ...common, ...(Object.keys(seed).length ? { [`${cat.name}_인풋`]: seed } : {}) })}
+${j({ 프로젝트: p.title, ...(cats.length ? { 분류: cats.map((c) => c.name).join(' · ') } : {}), ...common, ...seeds })}
 
 ## 이슈 — 모든 판단을 대입할 자리
 ${j(p.issues.map((i) => ({ id: i.id, 종류: i.root ? '근본 이슈' : '이슈', 이슈: i.title, 설명: i.detail, 판정_질문: i.test, ...(tagNames(i.tags).length ? { 태그: tagNames(i.tags) } : {}) })))}${facts.length ? `

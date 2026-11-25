@@ -1,7 +1,7 @@
 // Brain 유니버스 — 뇌 형상의 홀로그램. 의존 라이브러리 없음.
 // 점 구름(앞·뒤 반구 두 겹)이 형상을 만들고, 그 위에 기준 노드·신호·통합 인사이트가 뉴런으로 놓인다.
 // 색은 셋만 쓴다: 홀로그램의 찬 흰색, 수렴의 노랑, 긴장의 빨강. (DESIGN.md)
-import { DOTS, LOBES, OUTLINE, CENTER, CORE, BOX, seats, onCortex, inBrain, thickness } from './brain.js';
+import { brainShape } from './shapes.js';
 
 const TAU = Math.PI * 2;
 const hash = (s) => { let h = 2166136261; for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967295; };
@@ -29,11 +29,12 @@ function sprite(rgb) {
 
 export function createView(canvas, { onSelect = () => {}, onHover = () => {} } = {}) {
   const ctx = canvas.getContext('2d');
+  let SH = brainShape;   // 지금 형상 — setShape로 바꾼다
   const reduce = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const glow = { holo: sprite(HOLO), yellow: sprite('255,210,0') };
   const state = {
     nodes: [], links: [], byId: new Map(), adj: new Map(), counts: {},
-    cam: { x: (BOX.x0 + BOX.x1) / 2, y: (BOX.y0 + BOX.y1) / 2, k: 0.7 }, w: 0, h: 0, dpr: 1,
+    cam: { x: (SH.BOX.x0 + SH.BOX.x1) / 2, y: (SH.BOX.y0 + SH.BOX.y1) / 2, k: 0.7 }, w: 0, h: 0, dpr: 1,
     alpha: 0, hover: null, selected: null, focus: null, path: [], pulses: new Map(), captions: [],
     show: { signals: true, dormant: true }, raf: 0, fitted: false, busy: false, theta: reduce ? 0.09 : 0, sin: 0, cos: 1, frame: 0,
   };
@@ -43,31 +44,31 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
   const visible = (n) => n.type !== 'hub' && (n.type !== 'signal' || state.show.signals) && (!(n.type === 'lens' && n.dormant) || state.show.dormant);
 
   function setData({ nodes, links }) {
-    const seat = seats(nodes);
+    const seat = SH.seats(nodes);
     const next = nodes.map((n) => { const old = state.byId.get(n.id); const node = old ? Object.assign(old, n) : { ...n, vx: 0, vy: 0 }; node.seat = seat.get(n.id) || null; node.r = radius(node); return node; });
     const fresh = next.filter((n) => n.x == null);
     state.nodes = next; state.byId = new Map(next.map((n) => [n.id, n]));
     for (const type of ['project', 'hub', 'issue', 'lens', 'gate', 'fact', 'signal', 'insight']) {
       for (const n of fresh.filter((f) => f.type === type)) {
-        if (n.seat) { n.x = n.seat.x; n.y = n.seat.y; n.z = type === 'lens' ? thickness(n.x, n.y) * 0.9 : 0; }
+        if (n.seat) { n.x = n.seat.x; n.y = n.seat.y; n.z = type === 'lens' ? SH.thickness(n.x, n.y) * 0.9 : 0; }
         else if (type === 'signal') {
           // 신호는 낸 노드(피질)와 대입한 이슈(중심) 사이에서 태어난다
-          const from = state.byId.get(n.lens); const to = state.byId.get(n.issue) || CORE;
+          const from = state.byId.get(n.lens); const to = state.byId.get(n.issue) || SH.CORE;
           const t = 0.3 + hash(`${n.id}t`) * 0.34;
           n.x = from.x + (to.x - from.x) * t + (hash(`${n.id}x`) - 0.5) * 50;
           n.y = from.y + (to.y - from.y) * t + (hash(`${n.id}y`) - 0.5) * 50;
           n.z = (from.z || 0) * (1 - t) * 0.8;
         } else if (type === 'insight') {
           const used = links.filter((l) => l.kind === 'use' && l.source === n.id).map((l) => state.byId.get(l.target)).filter((u) => u && u.x != null);
-          n.x = used.length ? used.reduce((s, u) => s + u.x, 0) / used.length : CORE.x; n.y = used.length ? used.reduce((s, u) => s + u.y, 0) / used.length : CORE.y; n.z = 24;
-        } else { n.x = CORE.x; n.y = CORE.y; n.z = 0; }
+          n.x = used.length ? used.reduce((s, u) => s + u.x, 0) / used.length : SH.CORE.x; n.y = used.length ? used.reduce((s, u) => s + u.y, 0) / used.length : SH.CORE.y; n.z = 24;
+        } else { n.x = SH.CORE.x; n.y = SH.CORE.y; n.z = 0; }
       }
     }
     state.links = links.filter((l) => l.kind !== 'hub' && l.kind !== 'issue' && state.byId.has(l.source) && state.byId.has(l.target)).map((l) => ({ ...l, a: state.byId.get(l.source), b: state.byId.get(l.target) }));
     state.adj = new Map(next.map((n) => [n.id, new Set()]));
     for (const l of state.links) { state.adj.get(l.source).add(l.target); state.adj.get(l.target).add(l.source); }
     state.counts = {};
-    for (const f of Object.keys(LOBES)) state.counts[f] = { lenses: next.filter((n) => n.type === 'lens' && n.family === f && !n.dormant).length, signals: next.filter((n) => n.type === 'signal' && n.family === f && !n.muted).length };
+    for (const f of Object.keys(SH.LOBES)) state.counts[f] = { lenses: next.filter((n) => n.type === 'lens' && n.family === f && !n.dormant).length, signals: next.filter((n) => n.type === 'signal' && n.family === f && !n.muted).length };
     if (state.selected && !state.byId.has(state.selected)) state.selected = null;
     if (fresh.length) state.alpha = Math.max(state.alpha, fresh.length > 6 ? 1 : 0.5);
     if (reduce || !state.fitted) { settle(); fit(); state.fitted = true; }
@@ -77,7 +78,7 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
   /** 생각이 지나간 자리가 밝아진다 — 신호 가까운 점일수록 */
   function reheat() {
     const src = state.nodes.filter((n) => n.type === 'signal' && !n.muted && visible(n) && (!state.focus || state.focus.has(n.id)));
-    for (const d of DOTS) {
+    for (const d of SH.DOTS) {
       if (!d.front) continue;
       let hsum = 0;
       for (const s of src) { const dx = d.x - s.x; const dy = d.y - s.y; const q = dx * dx + dy * dy; if (q < 12000) hsum += (0.35 + (s.energy || 0)) * Math.exp(-q / 3800); }
@@ -109,8 +110,8 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
     for (const n of ns) {
       if (n.seat) { n.vx += (n.seat.x - n.x) * n.seat.k * a; n.vy += (n.seat.y - n.y) * n.seat.k * a; }
       else {
-        const pull = inBrain(n.x, n.y) ? 0.0012 : 0.05; // 형상 밖으로 나가면 중심으로 되돌린다
-        n.vx += (CORE.x - n.x) * pull * a; n.vy += (CORE.y - n.y) * pull * a;
+        const pull = SH.inside(n.x, n.y) ? 0.0012 : 0.05; // 형상 밖으로 나가면 중심으로 되돌린다
+        n.vx += (SH.CORE.x - n.x) * pull * a; n.vy += (SH.CORE.y - n.y) * pull * a;
       }
       if (n.fixed) { n.vx = 0; n.vy = 0; continue; }
       n.vx *= 0.8; n.vy *= 0.8;
@@ -149,21 +150,21 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
   }
   function fit() {
     if (!state.w) return;
-    state.cam.k = Math.max(0.2, Math.min(1.6, Math.min(state.w / (BOX.x1 - BOX.x0), (state.h - 150) / (BOX.y1 - BOX.y0))));
-    state.cam.x = (BOX.x0 + BOX.x1) / 2; state.cam.y = (BOX.y0 + BOX.y1) / 2 - 18 / state.cam.k;
+    state.cam.k = Math.max(0.2, Math.min(1.6, Math.min(state.w / (SH.BOX.x1 - SH.BOX.x0), (state.h - 150) / (SH.BOX.y1 - SH.BOX.y0))));
+    state.cam.x = (SH.BOX.x0 + SH.BOX.x1) / 2; state.cam.y = (SH.BOX.y0 + SH.BOX.y1) / 2 - 18 / state.cam.k;
     draw(performance.now());
   }
   /** 세계 좌표(x, y, z) → 화면. 세로축을 중심으로 조금 돌린다. */
   function project(x, y, z = 0) {
-    const xc = x - CENTER.x;
+    const xc = x - SH.CENTER.x;
     const X = xc * state.cos + z * state.sin;
     const p = 1 + (z * state.cos - xc * state.sin) * 0.00025;
-    return [(CENTER.x + X * p - state.cam.x) * state.cam.k + state.w / 2, (CENTER.y + (y - CENTER.y) * p - state.cam.y) * state.cam.k + state.h / 2];
+    return [(SH.CENTER.x + X * p - state.cam.x) * state.cam.k + state.w / 2, (SH.CENTER.y + (y - SH.CENTER.y) * p - state.cam.y) * state.cam.k + state.h / 2];
   }
   const at = (n) => project(n.x, n.y, n.z || 0);
   function toWorld(sx, sy, z = 0) {
     const wx = (sx - state.w / 2) / state.cam.k + state.cam.x; const wy = (sy - state.h / 2) / state.cam.k + state.cam.y;
-    return [CENTER.x + (wx - CENTER.x - z * state.sin) / (state.cos || 1), wy];
+    return [SH.CENTER.x + (wx - SH.CENTER.x - z * state.sin) / (state.cos || 1), wy];
   }
 
   // ---------- 그리기 ----------
@@ -188,17 +189,18 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
     contour(on ? 0.6 : 1);
 
     // 점 구름 — 밝기 단계별로 묶어 그린다
-    const scan = state.busy && !reduce ? BOX.x0 + (((now / 2600) % 1) * (BOX.x1 - BOX.x0)) : null;
+    const scan = state.busy && !reduce ? SH.BOX.x0 + (((now / 2600) % 1) * (SH.BOX.x1 - SH.BOX.x0)) : null;
     const quiet = on ? 0.55 : 1;
-    const buckets = Array.from({ length: 8 }, () => []);
-    for (const d of DOTS) {
+    const buckets = {};
+    for (const d of SH.DOTS) {
       let a = (d.front ? 0.34 : 0.13) * d.a * quiet + (d.front ? d.heat * 0.55 : 0);
       if (scan != null) { const q = Math.abs(d.x - scan); if (q < 46) a += (1 - q / 46) * 0.5; }
-      buckets[Math.min(7, Math.floor(a * 8))].push(d);
+      const b = Math.min(7, Math.floor(a * 8)); const key = `${d.c || HOLO}|${b}`;
+      (buckets[key] ||= Object.assign([], { c: d.c || HOLO, i: b })).push(d);
     }
-    buckets.forEach((list, i) => {
-      if (!list.length) return;
-      ctx.fillStyle = `rgba(${HOLO},${(i + 0.6) / 8})`;
+    Object.values(buckets).forEach((list) => {
+      if (!list.length) return; const i = list.i;
+      ctx.fillStyle = `rgba(${list.c},${(i + 0.6) / 8})`;
       ctx.beginPath();
       for (const d of list) { const [x, y] = project(d.x, d.y, d.z); const r = Math.max(0.6, (d.r + d.heat * 0.9) * k); ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU); }
       ctx.fill();
@@ -222,7 +224,7 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
       else { ctx.strokeStyle = COLORS.holo; alpha = 0.22; ctx.lineWidth = 0.6; }
       ctx.globalAlpha = alpha * (active ? 1 : 0.1);
       const [x1, y1] = at(l.a); const [x2, y2] = at(l.b);
-      const [cx, cy] = project((l.a.x + l.b.x) / 2 + (CORE.x - (l.a.x + l.b.x) / 2) * 0.2, (l.a.y + l.b.y) / 2 + (CORE.y - (l.a.y + l.b.y) / 2) * 0.2, ((l.a.z || 0) + (l.b.z || 0)) / 2);
+      const [cx, cy] = project((l.a.x + l.b.x) / 2 + (SH.CORE.x - (l.a.x + l.b.x) / 2) * 0.2, (l.a.y + l.b.y) / 2 + (SH.CORE.y - (l.a.y + l.b.y) / 2) * 0.2, ((l.a.z || 0) + (l.b.z || 0)) / 2);
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.quadraticCurveTo(cx, cy, x2, y2); ctx.stroke();
       if ((l.kind === 'cause' || l.kind === 'condition') && on && active) arrow(cx, cy, x2, y2, l.b.r * k + 3);
     }
@@ -291,7 +293,7 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
       if (n.type === 'lens') {
         if (dim && !(hot || k > 1.5)) continue;
         // 이름은 뇌의 바깥쪽으로 놓는다
-        const a = Math.atan2(n.y - CENTER.y, n.x - CENTER.x); const cos = Math.cos(a); const off = r + 9;
+        const a = Math.atan2(n.y - SH.CENTER.y, n.x - SH.CENTER.x); const cos = Math.cos(a); const off = r + 9;
         ctx.globalAlpha = dim ? 0.5 : hot || on ? 1 : 0.82;
         text(clip(n.name, 20), x + cos * off, y + Math.sin(a) * off, `500 11.5px ${FONT}`, COLORS.holo, Math.abs(cos) < 0.35 ? 'center' : cos < 0 ? 'right' : 'left');
       } else if (n.type === 'signal') {
@@ -310,12 +312,12 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
 
     // 엽의 이름 — 노드군의 허브를 대신한다
     state.captions = [];
-    for (const [family, lobe] of Object.entries(LOBES)) {
-      const c = onCortex(lobe.caption.deg, lobe.caption.depth); const [x, y] = project(c.x, c.y, 0);
+    for (const [family, lobe] of Object.entries(SH.LOBES)) {
+      const c = SH.caption(family); const [x, y] = project(c.x, c.y, 0);
       const cnt = state.counts[family] || { lenses: 0, signals: 0 }; const id = `HUB-${family.toUpperCase()}`;
       const lit2 = !on || state.selected === id; const al = lobe.caption.align;
       ctx.globalAlpha = lit2 ? 0.95 : 0.35;
-      const w1 = text(lobe.label, x, y, `700 11px ${MONO}`, state.selected === id ? COLORS.pink : COLORS.holo, al, 2.4);
+      const w1 = text(lobe.label, x, y, `700 11px ${MONO}`, state.selected === id ? COLORS.pink : lobe.color ? `rgb(${lobe.color})` : COLORS.holo, al, 2.4);
       ctx.globalAlpha = lit2 ? 0.55 : 0.2;
       text(lobe.sub, x, y + 16, `500 10.5px ${FONT}`, COLORS.holo, al);
       text(`${String(cnt.lenses).padStart(2, '0')} NODES  ${String(cnt.signals).padStart(2, '0')} SIGNALS`, x, y + 31, `500 9.5px ${MONO}`, COLORS.holo, al, 0.8);
@@ -327,7 +329,7 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
 
   /** 계기 — 뇌를 감싸는 얇은 호와 눈금. 생각하는 동안 돈다. */
   function instruments(now, k) {
-    const [cx, cy] = project(CENTER.x, CENTER.y + 55, 0);
+    const [cx, cy] = project(SH.CENTER.x, SH.CENTER.y + 55, 0);
     const spin = reduce ? 0 : (now / (state.busy ? 9000 : 60000)) * TAU;
     ctx.strokeStyle = COLORS.holo; ctx.lineWidth = 1;
     for (const [r, a0, span, alpha] of [[505, -0.5, 1, 0.16], [505, Math.PI - 0.5, 1, 0.16], [530, 0.2 + spin, 0.5, 0.1], [530, Math.PI + 0.2 + spin, 0.5, 0.1]]) {
@@ -348,11 +350,12 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
   function contour(q) {
     const trace2 = (pts, close) => { ctx.beginPath(); pts.forEach(([x, y], i) => { const [sx, sy] = project(x, y, 0); if (i) ctx.lineTo(sx, sy); else ctx.moveTo(sx, sy); }); if (close) ctx.closePath(); ctx.stroke(); };
     ctx.strokeStyle = COLORS.holo; ctx.lineWidth = 1; ctx.setLineDash([]);
-    ctx.globalAlpha = 0.34 * q; trace2(OUTLINE.cerebrum, true);
-    ctx.globalAlpha = 0.24 * q; for (const run of [...OUTLINE.stem, ...OUTLINE.cerebellum]) trace2(run, false);
-    ctx.globalAlpha = 0.2 * q; for (const s of OUTLINE.sulci) trace2(s, false);
+    for (const o of SH.outlines) { ctx.strokeStyle = o.color ? `rgb(${o.color})` : COLORS.holo; ctx.globalAlpha = o.alpha * q; trace2(o.pts, o.close); }
+    ctx.strokeStyle = COLORS.holo;
+    // 노드군이 아닌 층의 이름
+    for (const l of SH.labels) { const [lx, ly] = project(l.x, l.y, 0); ctx.globalAlpha = 0.6 * q; text(l.text, lx, ly, `600 10.5px ${FONT}`, l.color ? `rgb(${l.color})` : COLORS.holo, l.align); }
     // 받침 — 홀로그램이 떠 있는 자리
-    const [bx, by] = project(CENTER.x + 40, 806, 0); const k2 = state.cam.k;
+    const [bx, by] = project(SH.base.x, SH.base.y, 0); const k2 = state.cam.k;
     for (const [rx, ry, al] of [[250, 15, 0.3], [330, 20, 0.16], [410, 25, 0.08]]) { ctx.globalAlpha = al * q; ctx.beginPath(); ctx.ellipse(bx, by, rx * k2, ry * k2, 0, 0, TAU); ctx.stroke(); }
     ctx.globalAlpha = 1;
   }
@@ -458,6 +461,8 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
 
   return {
     setData, select, fit, resize,
+    /** 형상을 바꾼다 — 노드의 자리를 새 형상에 맞춰 다시 잡는다 */
+    setShape(shape) { if (!shape || shape === SH) return; SH = shape; for (const n of state.nodes) { n.x = null; n.y = null; n.vx = 0; n.vy = 0; } state.byId = new Map(); state.nodes = []; state.fitted = false; },
     zoom: (f) => zoomAt(state.w / 2, state.h / 2, f),
     /** 인사이트의 근거만 밝히고 인과 사슬을 순서대로 잇는다. null이면 해제 */
     trace(ids, path = []) { state.focus = ids ? new Set(ids) : null; state.path = path; reheat(); draw(performance.now()); },

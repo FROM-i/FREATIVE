@@ -251,7 +251,7 @@ ${j((baseline?.concepts || []).map((c) => ({ id: c.id, 컨셉: c.concept })))}
  *   대가        기조를 택했기 때문에 따라오는 약점이다. 고치지 않고 감수한다
  *   받지 않음   이 공격을 받으면 다른 안이 된다
  */
-export function revisePrompt(project, cand, attack, baseline, others = [], stance = null) {
+export function revisePrompt(project, cand, attack, baseline, others = [], stance = null, note = '') {
   return {
     system: `${common(project)}
 
@@ -265,7 +265,7 @@ export function revisePrompt(project, cand, attack, baseline, others = [], stanc
   - "대가": 기조를 택했기 때문에 따라오는 약점이다. 고치지 않는다. 무엇을 감수하는지 한 문장으로 쓴다.
   - "받지 않음": 이 공격을 받으면 다른 안이 된다. 왜 그런지 한 문장으로 쓴다.
 - 전부 고치려 하지 않는다. "고침"이 많을수록 좋은 안이 아니다. 심각도 3 공격은 "고침"으로 답하고, 기조 안에서 고칠 수 없으면 \`open\`에 사람이 정할 것으로 남긴다.
-- "성공 기준" 공격에는 이 안의 장치로 답한다. 다른 안에도 붙일 수 있는 장치(알림, 일정, 혜택 같은 것)를 가져와 답하지 않는다.
+- "성공 기준" 공격은 "대가"나 "받지 않음"으로 답할 수 없다. 성공 기준은 기조보다 앞선다. 이 안의 장치로, 성공 기준이 재는 행동과 빈도에 닿게 고친다. 다른 안에도 붙일 수 있는 장치(알림, 일정, 혜택 같은 것)를 가져와 답하지 않는다. 기조 안에서 닿을 방법이 없으면 그렇다고 \`open\` 맨 앞에 적는다.
 - 다른 최종안이 주어지면 그 안의 기조와 핵심 장치를 가져다 쓰지 않는다. 고친 결과가 다른 최종안이나 기본안과 같은 해법이 되면 실패다.
 - 고친 뒤에도 짧아야 한다. \`concept\`은 두 문장 이내, \`visual\`은 네 문장 이내. 고친 세부는 \`responses\`에만 적는다. 한두 문장으로 말할 수 없게 된 안은 고친 것이 아니라 흐려진 것이다.
 - \`keep\`(지킬 관성)과 \`change\`(바꿀 해석)를 가른다. \`verdict\`에는 근본 이슈의 판정 질문에 넣은 결과를 쓴다.
@@ -287,6 +287,6 @@ ${j(attack.attacks)}
 ## 기본안 (이 해법으로 돌아가지 않는다)
 ${j((baseline?.concepts || []).map((c) => ({ id: c.id, 컨셉: c.concept })))}
 ${others.length ? `\n## 다른 최종안 (이 안들의 기조와 핵심 장치를 가져다 쓰지 않는다)\n${j(others.map((o) => ({ 제목: o.title, 컨셉: o.concept, ...(o.bet ? { 거는_것: o.bet, 핵심_장치: o.device } : {}) })))}\n` : ''}
-보완한 안을 JSON으로 출력하라.`,
+${note ? `${note}\n\n` : ''}보완한 안을 JSON으로 출력하라.`,
   };
 }

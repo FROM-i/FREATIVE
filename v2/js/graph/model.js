@@ -2,7 +2,7 @@
 // 노드: 허브 · 기준 노드(렌즈) · 문 · 프로젝트 · 이슈 · 신호 · 통합 인사이트
 // 엣지: 구조(hub·issue) · 발화(emit) · 대입(target) · 판단(cause·condition·reinforce·tension) · 사용(use) · 지목(hint)
 import { FAMILIES, HUBS, IDENTITY, TUNNEL, AIRPLANE, GATES, LENSES, DEFAULTS } from '../../knowledge/nodes.js';
-import { COMMON_INPUT, SEED_INPUT, TAGS, tagById, categoryById, recommendTags } from '../../knowledge/tags.js';
+import { COMMON_INPUT, SEED_INPUT, TAGS, tagById, categoryById, categoriesOf, recommendTags } from '../../knowledge/tags.js';
 
 export const VERSION = 1;
 
@@ -14,7 +14,8 @@ export function newProject(seed = {}) {
     v: VERSION,
     id: seed.id || uid('P'),
     title: seed.title || '새 프로젝트',
-    category: seed.category || null,                       // 여섯 분류 중 하나 (knowledge/tags.js)
+    category: seed.category || seed.categories?.[0] || null,   // 첫 분류 (예전 형식과 맞춘다)
+    categories: categoriesOf(seed),                        // 고른 분류들 — 여러 개 고를 수 있다 (knowledge/tags.js)
     brief: { what: '', purpose: '', success: '', target: '', product: '', channel: '', note: '', ...(seed.brief || {}) },   // 공통 인풋
     seed: { ...(seed.seed || {}) },                        // 분류별 인풋 — { [분류]: { [칸]: 값 } }
     facts: (seed.facts || []).map((f) => ({ ...f })),      // 팩트북 — 출처가 있는 실제 자료 (knowledge/facts.js)
@@ -49,8 +50,8 @@ export function validateProject(project) {
   const problems = [];
   const miss = (where, what) => problems.push({ where, what });
   for (const f of COMMON_INPUT) if (f.required && !String(project.brief[f.id] || '').trim()) miss('공통 인풋', `"${f.label}"이 비어 있다`);
-  if (!categoryById(project.category)) miss('분류', '분류를 고르지 않았다');
-  else for (const f of SEED_INPUT[project.category]) if (f.required && !String(project.seed?.[project.category]?.[f.id] || '').trim()) miss(`${categoryById(project.category).name} 인풋`, `"${f.label}"이 비어 있다`);
+  if (!categoriesOf(project).length) miss('분류', '분류를 고르지 않았다');
+  else for (const cid of categoriesOf(project)) for (const f of SEED_INPUT[cid]) if (f.required && !String(project.seed?.[cid]?.[f.id] || '').trim()) miss(`${categoryById(cid).name} 인풋`, `"${f.label}"이 비어 있다`);
   const ready = [];
   for (const i of project.issues) {
     const where = `이슈 ${i.id}`;
@@ -66,7 +67,7 @@ export function validateProject(project) {
 
 /** 개발 관점이 필요한 과제인가 — 분류가 개발이거나 개발 태그가 하나라도 붙었으면 그렇다 */
 export function needsDevelopment(project, issues = project.issues) {
-  return project.category === 'dev' || issues.some((i) => (i.tags || []).some((id) => tagById(id)?.category === 'dev'));
+  return categoriesOf(project).includes('dev') || issues.some((i) => (i.tags || []).some((id) => tagById(id)?.category === 'dev'));
 }
 
 /** 신호 ID — 노드 이름에서 만든다. 실행 순서와 무관하게 같다. */

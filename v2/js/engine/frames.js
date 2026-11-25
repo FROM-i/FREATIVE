@@ -1,5 +1,6 @@
 // 프레임 — 경쟁에서 이긴 안을 기획 틀(JTBD → … → Concept Theme)과 디자인 틀(FoR · PoP · PoD → Creative 방향)로 정리한다.
 // 틀은 칸이다. 모델은 재료로 칸을 채우고, 코드는 근거 id가 실제로 있는지와 형식을 확인한다. 근거 없는 칸은 비운다.
+import { categoriesOf } from '../../knowledge/tags.js';
 import { planPrompt, knowhowPullPrompt, creativePrompt } from '../../knowledge/prompts-frames.js';
 import { KNOWHOW, knowhowById } from '../../knowledge/knowhow.js';
 
@@ -8,7 +9,7 @@ const list = (v) => (Array.isArray(v) ? v : []);
 
 /** 디자인 틀까지 가는 과제인가 — 분류가 디자인 · 통합 · 서비스이거나 디자인 태그가 붙은 이슈가 있을 때 */
 export function needsCreative(project) {
-  return ['design', 'integrated', 'service'].includes(project.category) || project.issues.some((i) => (i.tags || []).some((t) => String(t).startsWith('ds-')));
+  return categoriesOf(project).some((c) => ['design', 'integrated', 'service'].includes(c)) || project.issues.some((i) => (i.tags || []).some((t) => String(t).startsWith('ds-')));
 }
 
 /** 근거 id 모음 — 칸의 from은 이 안에 있어야 한다 */

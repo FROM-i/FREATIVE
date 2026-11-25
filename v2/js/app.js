@@ -1,8 +1,9 @@
 // THE FROM BRAIN — 화면. 빌드 단계 없는 ES 모듈 (standalone/ 은 같은 코드를 한 파일로 묶은 것).
 // 모델이 쓴 문장은 모두 textContent로만 넣는다 — innerHTML을 쓰지 않는다.
 import { newProject, buildGraph, describe, nextIssueId, lensName, activeLenses, uid, validateProject } from './graph/model.js';
-import { CATEGORIES, TAGS, COMMON_INPUT, SEED_INPUT, PERSPECTIVES, tagById, categoryById, recommendTags, recommendCategory } from '../knowledge/tags.js';
+import { CATEGORIES, TAGS, COMMON_INPUT, SEED_INPUT, PERSPECTIVES, tagById, categoryById, categoriesOf, recommendTags, recommendCategory } from '../knowledge/tags.js';
 import { createView } from './graph/view.js';
+import { shapeFor, PRESETS, LAYER_ROLES, LAYER_FORMS } from './graph/shapes.js';
 import { think, proposeIssues, researchFacts } from './engine/think.js';
 import { FACT_KINDS, SOURCE_TYPES, factKind, sourceType, factProblem, validFacts, nextFactId, factsToMarkdown, parseFactbook } from '../knowledge/facts.js';
 import { WEIGHTS, SEED_PRECEDENTS, normalizeWeights } from '../knowledge/viewpoint.js';
@@ -13,6 +14,8 @@ import { reportMarkdown } from './engine/report.js';
 import { createMock } from './providers/mock.js';
 import { createOpenAI, OPENAI_DEFAULTS } from './providers/openai.js';
 import { createClaudePage } from './providers/claude-page.js';
+import { createAnthropic, ANTHROPIC_DEFAULTS } from './providers/anthropic.js';
+import { TIERS } from '../knowledge/orchestration.js';
 import { SAMPLE, SAMPLE_ID } from '../knowledge/sample-project.js';
 import { FAMILIES, LENSES, DEFAULTS, IDENTITY } from '../knowledge/nodes.js';
 
@@ -153,6 +156,7 @@ async function getProvider() {
     if (S.claude) return S.claude;
     toast('이 화면에서는 Claude를 부를 수 없어 목업으로 실행한다.', true);
   }
+  if (c.provider === 'anthropic') return createAnthropic(c.anthropic, { getKey: () => c.akey, getCode: () => c.code });
   if (c.provider === 'openai') return createOpenAI(c.openai, { getKey: () => c.key, getCode: () => c.code });
   return createMock({ delay: reduce ? 0 : 260 });
 }
@@ -198,7 +202,7 @@ async function go(mode = 'full') {
 const pendingIssues = () => (S.project.run ? S.project.issues.filter((i) => i.title.trim() && !S.project.run.signals.some((s) => s.issue === i.id)) : []);
 
 // ---------- 그래프 ----------
-function refreshGraph() { view.setData(buildGraph(S.project)); }
+function refreshGraph() { view.setShape(shapeFor(S.project)); view.setData(buildGraph(S.project)); }
 
 function traceInsight(id) {
   const ins = S.project.run?.insights?.find((i) => i.id === id);
@@ -269,7 +273,7 @@ function renderChrome() {
   $('run-status').className = `status${r ? ' live' : ''}`;
   $('run-status').textContent = r
     ? (r.stage === 'activate' ? `분석 ${r.fired}/${r.total}` : r.stage === 'integrate' ? `통합 ${r.done}/${r.count}` : STAGE[r.stage] || '준비 중')
-    : `MODEL · ${{ mock: 'MOCK', claude: 'CLAUDE', openai: 'OPENAI' }[S.config.provider]}`;
+    : `MODEL · ${{ mock: 'MOCK', claude: 'CLAUDE', anthropic: 'CLAUDE API', openai: 'OPENAI' }[S.config.provider]}`;
 
   const run = S.project.run;
   const stats = $('stats');
@@ -435,14 +439,16 @@ function missionTab() {
     field('프로젝트', bind(p, 'title', { graph: true, id: 'f-title' })),
     h('div', { class: 'grid2' }, COMMON_INPUT.map((f) => field(`${f.label}${f.required ? ' · 필수' : ''}`, bind(b, f.id, { area: true, id: `f-${f.id}`, placeholder: f.hint }))))));
 
-  const cat = categoryById(p.category);
+  // 분류는 여러 개 고를 수 있다 — 마케팅 + 운영처럼 걸치는 과제가 있다. 고른 분류마다 특화 인풋이 열린다
+  const cats = categoriesOf(p);
   const guess = recommendCategory(allText());
-  p.seed[p.category] = p.seed[p.category] || {};
-  out.push(h('section', { class: 'sec' }, h('h2', null, '분류와 특화 인풋', h('small', null, '분류를 고르면 해당 항목 표시')),
-    h('div', { class: 'row' }, CATEGORIES.map((c) => h('button', { type: 'button', class: `chip pick${p.category === c.id ? ' y' : ''}`, 'aria-pressed': String(p.category === c.id), title: c.role, onclick: () => { p.category = c.id; persist(); rerender(); } }, c.name))),
-    !cat && guess ? h('p', { class: 'small' }, '입력한 글로 보면 ', h('button', { class: 'link', type: 'button', onclick: () => { p.category = guess; persist(); rerender(); } }, categoryById(guess).name), ' 분류에 가깝다.') : null,
-    cat ? [h('p', { class: 'small' }, `${cat.name} — ${cat.role}`),
-      h('div', { class: 'grid2' }, SEED_INPUT[cat.id].map((f) => field(`${f.label}${f.required ? ' · 필수' : ''}`, bind(p.seed[cat.id], f.id, { area: true, id: `seed-${f.id}`, placeholder: f.hint }))))] : null));
+  const toggleCat = (id) => { const list = cats.includes(id) ? cats.filter((x) => x !== id) : [...cats, id]; p.categories = list; p.category = list[0] || null; persist(); rerender(); };
+  for (const id of cats) p.seed[id] = p.seed[id] || {};
+  out.push(h('section', { class: 'sec' }, h('h2', null, '분류와 특화 인풋', h('small', null, '여러 개 고를 수 있다')),
+    h('div', { class: 'row' }, CATEGORIES.map((c) => h('button', { type: 'button', class: `chip pick${cats.includes(c.id) ? ' y' : ''}`, 'aria-pressed': String(cats.includes(c.id)), title: c.role, onclick: () => toggleCat(c.id) }, c.name))),
+    !cats.length && guess ? h('p', { class: 'small' }, '입력한 글로 보면 ', h('button', { class: 'link', type: 'button', onclick: () => toggleCat(guess) }, categoryById(guess).name), ' 분류에 가깝다.') : null,
+    cats.map((id) => { const cat = categoryById(id); return [h('p', { class: 'small' }, h('strong', null, cat.name), ` — ${cat.role}`),
+      h('div', { class: 'grid2' }, SEED_INPUT[id].map((f) => field(`${f.label}${f.required ? ' · 필수' : ''}`, bind(p.seed[id], f.id, { area: true, id: `seed-${id}-${f.id}`, placeholder: f.hint }))))]; })));
 
   out.push(h('section', { class: 'sec' }, h('h2', null, `이슈 ${p.issues.length}건`, h('small', null, '노드가 분석할 대상')),
     ...p.issues.map((i) => h('div', { class: `card${i.root ? ' root' : ''}` },
@@ -479,13 +485,44 @@ function missionTab() {
 
   const o = c.openai;
   const cfg = (obj, key, attrs) => h('input', { type: 'text', value: obj[key] || '', ...attrs, oninput: (e) => { obj[key] = e.target.value.trim(); persist(); } });
+  // 브레인 맵 모양 — 프로젝트마다 고른다. 노드와 판단은 그대로이고 자리와 색만 바뀐다
+  {
+    const st = p.settings; const look = st.look || { kind: 'brain' };
+    const setLook = (next) => { st.look = next; persist(); refreshGraph(); rerender(); };
+    const layers = look.kind === 'stack' ? look.layers : look.kind !== 'brain' && PRESETS[look.kind] ? PRESETS[look.kind].layers : null;
+    const edit = (i, key, value) => { const list = layers.map((l) => ({ ...l })); list[i][key] = value; setLook({ kind: 'stack', name: look.name || PRESETS[look.kind]?.name || '내 형상', layers: list }); };
+    out.push(h('section', { class: 'sec' }, h('h2', null, '브레인 맵 모양', h('small', null, '이 프로젝트에만 적용')),
+      field('형상', h('select', { id: 'set-look', onchange: (e) => setLook(e.target.value === 'brain' ? { kind: 'brain' } : { kind: e.target.value }) },
+        h('option', { value: 'brain', selected: look.kind === 'brain' }, '뇌 — 기본'),
+        Object.entries(PRESETS).map(([id, d]) => h('option', { value: id, selected: look.kind === id }, `${d.name} — 층 ${d.layers.length}개`)),
+        look.kind === 'stack' ? h('option', { value: 'stack', selected: true }, `${look.name || '내 형상'} — 고친 것`) : null)),
+      layers ? [h('p', { class: 'small' }, '위에서 아래 순서다. 층마다 이름, 색, 맡는 노드군을 고친다.'),
+        h('div', { class: 'layers' }, layers.map((l, i) => h('div', { class: 'layer' },
+          h('input', { type: 'color', value: l.color, 'aria-label': `${l.name} 색`, onchange: (e) => edit(i, 'color', e.target.value) }),
+          h('input', { type: 'text', value: l.name, 'aria-label': '층 이름', onchange: (e) => edit(i, 'name', e.target.value.trim() || l.name) }),
+          h('select', { 'aria-label': `${l.name}이 맡는 것`, onchange: (e) => edit(i, 'role', e.target.value) }, LAYER_ROLES.map((r) => h('option', { value: r.id, selected: l.role === r.id }, r.name))),
+          h('select', { 'aria-label': `${l.name}의 모양`, onchange: (e) => edit(i, 'form', e.target.value) }, LAYER_FORMS.map((f) => h('option', { value: f.id, selected: l.form === f.id }, f.name)))))),
+      ] : h('p', { class: 'small' }, '층을 쌓은 형상으로 바꾸면 층마다 색과 맡는 노드군을 정할 수 있다.')));
+  }
+
   out.push(h('section', { class: 'sec' }, h('h2', null, '모델'),
     field('공급자', h('select', { id: 'set-provider', onchange: (e) => { c.provider = e.target.value; persist(); rerender(); } },
       h('option', { value: 'mock', selected: c.provider === 'mock' }, '목업 — API 없이 구조 확인'),
+      h('option', { value: 'anthropic', selected: c.provider === 'anthropic' }, 'Claude API — 주 모델 Opus · 보조 모델 Sonnet'),
       h('option', { value: 'claude', selected: c.provider === 'claude' }, 'Claude — claude.ai 아티팩트로 열었을 때'),
       h('option', { value: 'openai', selected: c.provider === 'openai' }, 'OpenAI — FREATIVE 1.x와 같은 모델'))),
     c.provider === 'mock' ? h('p', { class: 'small' }, '목업 문장은 판단이 아니다. "[목업]"이 붙은 틀 문장이 나온다.') : null,
     c.provider === 'claude' ? h('p', { class: 'small' }, '보는 사람의 Claude에게 묻는다. 첫 실행에서 동의를 묻고, 키는 필요 없다. 로컬 파일로 연 화면에서는 쓸 수 없다.') : null,
+    c.provider === 'anthropic' ? [
+      h('p', { class: 'small' }, '호출마다 급을 붙여 모델을 고른다. 주 모델은 방향을 정하는 호출(근본 이슈 · 문제 정의 · 판단 도출 · 충돌 교배 · 기조 · 보완 · 최종 판정), 보조 모델은 정리와 대조를 맡는다.'),
+      field('키를 두는 곳', h('select', { id: 'set-amode', onchange: (e) => { c.anthropic.mode = e.target.value; persist(); rerender(); } },
+        h('option', { value: 'direct', selected: c.anthropic.mode === 'direct' }, '내 키 — 이 브라우저에만 저장'),
+        h('option', { value: 'proxy', selected: c.anthropic.mode === 'proxy' }, '서버 키 — server.js 또는 Vercel 함수가 대신 호출'))),
+      c.anthropic.mode === 'direct' ? field('Claude API 키', cfg(c, 'akey', { type: 'password', id: 'set-akey', autocomplete: 'off', placeholder: 'sk-ant-…' }))
+        : h('div', { class: 'grid2' }, field('프록시 주소', cfg(c.anthropic, 'proxyUrl', { id: 'set-aproxy' })), field('접속 코드 (설정한 경우)', cfg(c, 'code', { type: 'password', id: 'set-acode', autocomplete: 'off' }))),
+      h('div', { class: 'grid2' }, field(TIERS.lead.name, cfg(c.anthropic.models, 'lead', { id: 'set-m-lead' })), field(TIERS.support.name, cfg(c.anthropic.models, 'support', { id: 'set-m-support' }))),
+      c.anthropic.mode === 'direct' ? h('p', { class: 'small' }, '브라우저에서 직접 부른다. 조직 설정에 따라 직접 호출이 막혀 있으면 "서버 키"로 바꾼다.') : null,
+    ] : null,
     c.provider === 'openai' ? [
       field('키를 두는 곳', h('select', { id: 'set-mode', onchange: (e) => { o.mode = e.target.value; persist(); rerender(); } },
         h('option', { value: 'direct', selected: o.mode === 'direct' }, '내 키 — 이 브라우저에만 저장'),
@@ -508,7 +545,7 @@ function missionTab() {
 /** 이슈의 태그 — 고른 태그 · 글에서 추천한 태그 · 사전에서 더하기 */
 function tagRow(p, i) {
   i.tags = i.tags || [];
-  const rec = recommendTags(`${i.title} ${i.detail}`, { category: p.category, limit: 4 }).filter((r) => !i.tags.includes(r.id));
+  const rec = recommendTags(`${i.title} ${i.detail}`, { category: categoriesOf(p)[0] || null, limit: 4 }).filter((r) => !i.tags.includes(r.id));
   const set = (ids) => { i.tags = ids; persist(); refreshGraph(); rerender(); };
   return h('div', { class: 'field' }, h('span', null, i.tags.length ? '태그' : '태그 — 비워 두면 추천 태그가 그대로 붙는다'),
     h('div', { class: 'row' },
@@ -871,6 +908,7 @@ async function init() {
   for (const id of Object.keys(S.projects)) S.projects[id] = newProject(S.projects[id]);
   S.config = { provider: 'mock', key: '', code: '', ...(saved?.config || {}) };
   S.config.openai = { ...OPENAI_DEFAULTS, ...(S.config.openai || {}), models: { ...OPENAI_DEFAULTS.models, ...(S.config.openai?.models || {}) } };
+  S.config.anthropic = { ...ANTHROPIC_DEFAULTS, ...(S.config.anthropic || {}), models: { ...ANTHROPIC_DEFAULTS.models, ...(S.config.anthropic?.models || {}) } };
   if (!Object.keys(S.projects).length) { const p = newProject(SAMPLE); S.projects[p.id] = p; }
   S.project = S.projects[saved?.current] || Object.values(S.projects)[0];
   // 예시는 열자마자 결과가 보이게 한다 (목업 · 지연 없음)

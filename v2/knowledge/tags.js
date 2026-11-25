@@ -1,7 +1,7 @@
 // 태그 라이브러리 · 시드 인풋 · 관점.
 // 노드 세팅을 사람마다 다르게 하지 않기 위한 사전이다. 태그와 인풋 칸은 여기서만 고친다.
 
-/** 분류 — 프로젝트와 태그가 속하는 여섯 갈래 */
+/** 분류 — 프로젝트와 태그가 속하는 일곱 갈래. 한 프로젝트가 여러 분류에 걸칠 수 있다(예: 마케팅 + 운영). */
 export const CATEGORIES = [
   { id: 'marketing', name: '마케팅', role: '누구에게 무엇을 어디서 말해 무엇을 얻는가' },
   { id: 'planning', name: '기획', role: '무엇을 왜 어디까지 만드는가' },
@@ -9,7 +9,11 @@ export const CATEGORIES = [
   { id: 'dev', name: '개발', role: '무엇으로 어떻게 만들고 굴리는가' },
   { id: 'integrated', name: '통합', role: '여러 파트를 하나의 방향으로 묶는다' },
   { id: 'service', name: '서비스(자사)', role: '우리 서비스를 키우고 운영한다' },
+  { id: 'ops', name: '운영', role: '만든 뒤 누가 무엇을 얼마나 자주 굴리고 고치는가' },
 ];
+
+/** 프로젝트가 고른 분류들 — 예전 프로젝트(category 하나)도 받는다 */
+export const categoriesOf = (project) => { const list = Array.isArray(project?.categories) && project.categories.length ? project.categories : (project?.category ? [project.category] : []); return [...new Set(list)].filter((id) => CATEGORIES.some((c) => c.id === id)); };
 
 const T = (id, category, name, keywords) => ({ id, category, name, keywords });
 /** 태그 — keywords는 자동 추천에 쓴다. 입력 글에 이 말이 있으면 그 태그를 추천한다. */
@@ -60,6 +64,12 @@ export const TAGS = [
   T('sv-ops', 'service', '서비스 운영', ['자사', '사내', '운영 리소스', 'CS', '문의', '커뮤니티 운영']),
   T('sv-roadmap', 'service', '로드맵', ['로드맵', '우선순위', '다음 버전', '백로그']),
   T('sv-tool', 'service', '사내 툴', ['사내 툴', '내부 도구', '업무 자동화', '관리자']),
+
+  T('op-content', 'ops', '콘텐츠 운영', ['콘텐츠 운영', '게시', '업로드', '월간 콘텐츠', '운영 캘린더']),
+  T('op-promo', 'ops', '상시 프로모션', ['프로모션 운영', '쿠폰', '이벤트 운영', '상시 프로모션', '혜택 운영']),
+  T('op-cs', 'ops', '고객 응대', ['고객 응대', '리뷰 대응', '문의 대응', 'VOC', '민원']),
+  T('op-report', 'ops', '모니터링 · 리포트', ['모니터링', '월간 리포트', '주간 리포트', '지표 점검', '대시보드']),
+  T('op-process', 'ops', '운영 프로세스', ['운영 프로세스', '검수', '승인 절차', '인수인계', '운영 매뉴얼']),
 ];
 
 export const tagById = (id) => TAGS.find((t) => t.id === id) || null;
@@ -108,6 +118,12 @@ export const SEED_INPUT = {
     F('milestone', '일정 · 마일스톤', '큰 날짜들', true),
     F('touch', '접점 목록', '사람이 만나는 모든 자리'),
     F('govern', '의사결정 구조', '누가 최종 결정하나, 충돌하면 누가 정하나'),
+  ],
+  ops: [
+    F('cycle', '운영 주기 · 범위', '상시 · 월간 · 캠페인 단위, 맡는 범위', true),
+    F('standard', '응대 · 품질 기준', '무엇을 얼마나 빨리, 어떤 수준으로', true),
+    F('team', '운영 인력 · 도구', '누가 무엇으로 굴리나'),
+    F('review', '보고 · 개선 주기', '무엇을 언제 보고 고치나'),
   ],
   service: [
     F('status', '지금 상태', '사용자 수 · 재방문 · 매출 등 아는 만큼', true),

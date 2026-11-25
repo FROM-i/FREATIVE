@@ -1,7 +1,7 @@
 // 보고서(.md) — 두괄식. 결론(통합 인사이트)이 먼저, 근거(사슬·판단)는 뒤에.
 import { FAMILIES } from '../../knowledge/nodes.js';
 import { lensName } from '../graph/model.js';
-import { PERSPECTIVES, tagById, categoryById } from '../../knowledge/tags.js';
+import { PERSPECTIVES, tagById, categoryById, categoriesOf } from '../../knowledge/tags.js';
 
 const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 const TYPE = { cause: '원인', condition: '조건', reinforce: '강화', tension: '충돌' };
@@ -21,7 +21,7 @@ export function reportMarkdown(project) {
   run.insights.forEach((n, i) => L.push(`${i + 1}. **${n.title}** — ${n.insight}`));
   L.push('');
   if (root) L.push(`근본 이슈: ${root.title}`, root.test ? `판정 질문: ${root.test}` : '', '');
-  if (categoryById(project.category)) L.push(`분류: ${categoryById(project.category).name} · 분석한 이슈 ${(run.setup?.issues || []).map((i) => `${i.id}[${i.tags.map((t) => tagById(t)?.name).join(', ')}${i.auto ? ' · 자동' : ''}]`).join(' ')}`, '');
+  if (categoriesOf(project).length) L.push(`분류: ${categoriesOf(project).map((c) => categoryById(c).name).join(' · ')} · 분석한 이슈 ${(run.setup?.issues || []).map((i) => `${i.id}[${i.tags.map((t) => tagById(t)?.name).join(', ')}${i.auto ? ' · 자동' : ''}]`).join(' ')}`, '');
 
   const d = run.direction;
   if (d) {

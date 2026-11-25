@@ -375,3 +375,9 @@ details[open] > summary { margin-bottom: var(--u); }
 .push.stance { border-left-color: var(--holo); }
 .push.stance b { color: var(--text-2); }
 .push small { display: block; margin-top: calc(var(--u) * .5); font-size: var(--t-cap); color: var(--mute); }
+
+/* 브레인 맵 모양 — 층 편집 */
+.layers { display: flex; flex-direction: column; gap: calc(var(--u) * .75); }
+.layer { display: grid; grid-template-columns: calc(var(--u) * 4) minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr); gap: var(--u); align-items: center; }
+.layer input[type="color"] { width: 100%; height: calc(var(--u) * 4); padding: 2px; background: var(--ground); border: 1px solid var(--line-2); }
+.layer input[type="text"], .layer select { height: calc(var(--u) * 4); min-width: 0; background: var(--ground); color: var(--text); border: 1px solid var(--line-2); padding: 0 var(--u); font-size: var(--t-cap); }

@@ -226,7 +226,7 @@ test('프롬프트 — 사조 노드는 카드 원문 전체와 방법론 규칙
 test('세팅 — 같은 글이면 같은 태그가 추천되고, 틀을 채우지 않은 이슈는 발화에 들어가지 않는다', async () => {
   const T = await import('../knowledge/tags.js');
   const { validateProject, needsDevelopment } = await import('../js/graph/model.js');
-  assert.equal(T.CATEGORIES.length, 6);
+  assert.equal(T.CATEGORIES.length, 7);
   for (const t of T.TAGS) assert.ok(T.categoryById(t.category) && t.keywords.length, t.id);
   for (const c of T.CATEGORIES) assert.ok(T.SEED_INPUT[c.id].filter((f) => f.required).length >= 2, `${c.name} 필수 인풋`);
   const text = '토스 미니앱 결과 화면의 UI를 다시 만들고 공유로 재방문을 늘린다';
@@ -583,27 +583,30 @@ test('기조 — 공격 전에 기조를 세우고, 보완은 기조를 지킨 �
   assert.ok(attackPrompt(sample(), { id: 'K1' }, null, st).user.includes('## 이 안의 기조'));
   assert.ok(duelPrompt(sample(), [], 'rematch').system.includes('고치기 전 안이 이긴다') && !duelPrompt(sample(), [], 'final').system.includes('고치기 전 안이 이긴다'));
 
-  const mock = createMock(); const order = []; const seen = [];
-  // 고친 안이 고치기 전 안을 이기게 하고, 기조 확인에서 2위 안은 "버림", 3위 안은 1위와 같은 묶음으로 답한다
+  const mock = createMock(); const order = []; const seen = []; const notes = [];
+  // 고친 안이 고치기 전 안을 이기게 한다. 기조 확인에서 2위 안은 두 번 다 "버림", 3위 안은 첫 번째에만 1위와 같은 묶음으로 답한다
   const p = { ...mock, json: async (a) => {
     if (['stance', 'attack', 'revise', 'hold'].includes(a.task.kind) && order.at(-1) !== a.task.kind) order.push(a.task.kind);
-    if (a.task.kind === 'revise') { seen.push(a.task.others.length); const r = await mock.json(a); r.json.concept = `${r.json.concept} (고침)`; return r; }
+    if (a.task.kind === 'revise') { seen.push(a.task.others.length); if (a.task.again) notes.push(a.user); const r = await mock.json(a); r.json.concept = `${r.json.concept} (${a.task.again ? '다시 고침' : '고침'})`; return r; }
     if (a.task.kind === 'duel' && a.task.tag === 'rematch') return { json: { duels: a.task.pairs.map((x) => ({ pair: x.id, winner: x.a.id.endsWith('r') ? x.a.id : x.b.id, why: '고친 안이 낫다' })) }, usage: null };
-    if (a.task.kind === 'hold') { const ids = a.task.items.map((x) => x.id); return { json: { checks: ids.map((id, i) => ({ id, kept: i === 1 ? '버림' : '지킴', why: i === 1 ? '달력 안이 됐다' : '' })), groups: [{ name: '같아진 해법', ids: [ids[0], ids[2]], why: '같은 장치' }, { name: '다른 해법', ids: [ids[1]], why: '' }] }, usage: null }; }
+    if (a.task.kind === 'hold') { const ids = a.task.items.map((x) => x.id); const first = a.task.pass === 0;
+      return { json: { checks: ids.map((id, i) => ({ id, kept: i === 1 ? '버림' : '지킴', why: i === 1 ? '달력 안이 됐다' : '' })), groups: first ? [{ name: '같아진 해법', ids: [ids[0], ids[2]], why: '같은 장치' }, { name: '다른 해법', ids: [ids[1]], why: '' }] : ids.map((id) => ({ name: id, ids: [id], why: '' })) }, usage: null }; }
     return mock.json(a);
   } };
   const run = await think(sample(), p);
-  assert.deepEqual(order, ['stance', 'attack', 'revise', 'hold'], '기조 → 공격 → 보완 → 기조 확인 순서');
-  assert.deepEqual(seen, run.insights.map(() => run.insights.length - 1), '보완마다 다른 최종안을 함께 받는다');
+  assert.deepEqual(order, ['stance', 'attack', 'revise', 'hold', 'revise', 'hold'], '기조 → 공격 → 보완 → 기조 확인 → 다시 보완 → 다시 확인');
+  assert.deepEqual(seen, [2, 2, 2, 2, 2], '보완마다 다른 최종안을 함께 받는다 (처음 3번 + 다시 2번)');
+  assert.ok(notes.length === 2 && notes.every((u) => u.includes('앞서 고친 안은 받아들이지 않았다')), '다시 고칠 때는 이유를 붙인다');
   const [a1, a2, a3] = run.insights;
   assert.ok(a1.stance.bet && a1.stance.givesUp, '인사이트에 기조가 남는다');
-  assert.equal(a1.revised, true); assert.equal(a1.kept, '지킴');
+  assert.equal(a1.revised, true); assert.equal(a1.kept, '지킴'); assert.ok(a1.concept.endsWith('(고침)'));
   assert.ok(a1.fixed.length === 1 && a1.costs.length === 0 && a1.refused.length === 0, '목업 공격 1건은 고침으로 답했다');
-  assert.ok(a2.reverted && !a2.revised && a2.rematch.includes('기조를 버려'), '기조를 버린 안은 되돌린다');
-  assert.ok(a3.reverted && !a3.revised && a3.rematch.includes('같은 해법'), '고치다가 같아진 안은 되돌린다');
-  assert.ok(!a2.concept.endsWith('(고침)') && !a3.concept.endsWith('(고침)') && a1.concept.endsWith('(고침)'));
-  assert.equal(run.arena.counts.reverted, 2);
+  assert.ok(a2.reverted && !a2.revised && a2.rematch.includes('기조를 버렸다') && a2.rematch.includes('고치기 전 안을 남겼다'), '다시 고쳐도 기조를 버린 안은 되돌린다');
+  assert.ok(!a2.concept.includes('고침'));
+  assert.ok(a3.revised && a3.redone && !a3.reverted && a3.concept.endsWith('(다시 고침)') && a3.rematch.includes('같은 해법'), '같아진 안은 다시 고쳐서 달라지면 남긴다');
+  assert.equal(run.arena.counts.reverted, 1); assert.equal(run.arena.counts.redone, 2);
   assert.ok(run.notes.some((n) => n.includes('고치기 전으로 되돌렸다')));
+  assert.ok(revisePrompt(sample(), { id: 'K1' }, { attacks: [], keep: '' }, null, [], st).system.includes('성공 기준은 기조보다 앞선다'));
 });
 
 test('오케스트레이션 — 방향을 정하는 호출은 lead, 정리 · 대조는 support로 나간다', async () => {
@@ -621,3 +624,53 @@ test('오케스트레이션 — 방향을 정하는 호출은 lead, 정리 · �
   assert.equal(KIND_TIER.hold, 'support');
 });
 async function proposeIssuesFor(p, provider) { const { proposeIssues } = await import('../js/engine/think.js'); return proposeIssues(p, provider); }
+
+test('분류 — 여러 개 고를 수 있고, 고른 분류마다 특화 인풋이 미션에 들어간다', async () => {
+  const T = await import('../knowledge/tags.js');
+  const { newProject, validateProject } = await import('../js/graph/model.js');
+  const { verdictPrompt } = await import('../knowledge/prompts.js');
+  assert.ok(T.CATEGORIES.some((c) => c.id === 'ops') && T.SEED_INPUT.ops.length === 4 && T.TAGS.some((t) => t.category === 'ops'));
+  // 예전 형식(category 하나)도 받는다
+  assert.deepEqual(T.categoriesOf({ category: 'marketing' }), ['marketing']);
+  assert.deepEqual(T.categoriesOf({ categories: ['marketing', 'ops', 'ops', '없는 분류'] }), ['marketing', 'ops']);
+  const p = newProject({ ...sample(), id: 'multi', categories: ['marketing', 'ops'], seed: { marketing: { kpi: '대출 건수', offer: '빌릴 일이 없어도 들를 수 있다' }, ops: { cycle: '상시 운영, 월간 점검', standard: '' } } });
+  assert.deepEqual(p.categories, ['marketing', 'ops']); assert.equal(p.category, 'marketing');
+  const user = verdictPrompt(p, [], []).user;
+  assert.ok(user.includes('마케팅 · 운영') && user.includes('마케팅_인풋') && user.includes('운영_인풋') && user.includes('상시 운영, 월간 점검'));
+  // 고른 분류마다 필수 칸을 본다
+  const miss = validateProject(p).problems.map((x) => `${x.where} ${x.what}`).join(' | ');
+  assert.ok(miss.includes('운영 인풋') && miss.includes('응대 · 품질 기준') && !miss.includes('마케팅 인풋'));
+});
+
+test('Claude API 공급자 — 급에 따라 모델을 고르고, 문서의 호출 형식으로 보낸다', async () => {
+  const { createAnthropic, ANTHROPIC_DEFAULTS } = await import('../js/providers/anthropic.js');
+  const { forward } = await import('../api/claude.js');
+  const sent = [];
+  const fake = (answers) => async (url, init) => { sent.push({ url, headers: init.headers, body: JSON.parse(init.body) }); const a = answers.shift(); return { ok: a.status === 200, status: a.status, text: async () => JSON.stringify(a.body) }; };
+  const ok = (text, stop = 'end_turn') => ({ status: 200, body: { type: 'message', content: [{ type: 'text', text }], stop_reason: stop, usage: { input_tokens: 10, output_tokens: 5 } } });
+  const direct = createAnthropic({}, { getKey: () => 'sk-test', fetchImpl: fake([ok('{"a":1}'), ok('설명 없이 {"b":2}'), ok('{"잘린', 'max_tokens'), ok('{"c":3}')]) });
+  const r1 = await direct.json({ tier: 'lead', system: 'S', user: 'U' });
+  assert.deepEqual(r1.json, { a: 1 }); assert.equal(r1.model, 'claude-opus-5-5'); assert.deepEqual(r1.usage, { in: 10, out: 5 });
+  assert.equal(sent[0].url, 'https://api.anthropic.com/v1/messages');
+  assert.equal(sent[0].headers.Authorization, 'Bearer sk-test'); assert.equal(sent[0].headers['anthropic-version'], ANTHROPIC_DEFAULTS.version); assert.equal(sent[0].headers['anthropic-dangerous-direct-browser-access'], 'true');
+  assert.deepEqual(sent[0].body, { model: 'claude-opus-5-5', max_tokens: 8000, system: 'S', messages: [{ role: 'user', content: 'U' }] });
+  const r2 = await direct.json({ tier: 'support', system: 'S', user: 'U' });
+  assert.equal(r2.model, 'claude-sonnet-5-5'); assert.deepEqual(r2.json, { b: 2 });
+  // 답이 잘리면 한 번 늘려서 다시 받는다
+  const r3 = await direct.json({ tier: 'support', system: 'S', user: 'U' });
+  assert.deepEqual(r3.json, { c: 3 }); assert.equal(sent[3].body.max_tokens, 16000);
+  // 키가 없으면 부르지 않는다
+  await assert.rejects(() => createAnthropic({}, { getKey: () => '', fetchImpl: fake([]) }).json({ system: 'S', user: 'U' }), /키가 없습니다/);
+  // 서버 키 방식 — 키를 보내지 않고 접속 코드만 보낸다
+  sent.length = 0;
+  const proxy = createAnthropic({ mode: 'proxy' }, { getCode: () => 'code', fetchImpl: fake([ok('{"d":4}')]) });
+  await proxy.json({ tier: 'lead', system: 'S', user: 'U' });
+  assert.equal(sent[0].url, '/api/claude'); assert.equal(sent[0].headers['x-brain-code'], 'code'); assert.equal(sent[0].headers.Authorization, undefined); assert.ok(sent[0].body.body.model);
+  // 프록시 — 키가 없거나 허용하지 않는 모델이면 막는다
+  const old = process.env.ANTHROPIC_API_KEY; delete process.env.ANTHROPIC_API_KEY;
+  assert.equal((await forward({ method: 'POST', payload: { body: { model: 'claude-opus-5-5', messages: [] } } })).status, 503);
+  process.env.ANTHROPIC_API_KEY = 'k';
+  assert.equal((await forward({ method: 'GET', payload: {} })).status, 405);
+  assert.equal((await forward({ method: 'POST', payload: { body: { model: '다른 모델', messages: [] } } })).status, 400);
+  if (old === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = old;
+});
