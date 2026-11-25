@@ -452,4 +452,30 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .stratcard .line { font-size: var(--t-body); line-height: 24px; font-weight: 600; }
 .stratcard .meta { font-size: 11px; color: var(--mute); margin-top: calc(var(--u) * .5); }
 .stratcard:hover .meta, .stratcard.on .meta { color: var(--text-2); }
+/* 전략 과제의 판 — 운영 방향 → 축 → 파트 × 단계 */
+.deck h2 .lno { display: inline-block; margin-right: var(--u); color: var(--yellow); }
+.deck .concept h2 { margin-bottom: var(--u); }
+.shift { margin-top: calc(var(--u) * 2); display: grid; grid-template-columns: minmax(0, 1fr) calc(var(--u) * 2) minmax(0, 1fr); gap: var(--u); align-items: start; font-size: var(--t-sub); line-height: 20px; }
+.shift span { color: var(--mute); } .shift i { color: var(--mute); font-style: normal; } .shift strong { font-weight: 700; }
+.kv { margin-top: var(--u); font-size: var(--t-sub); line-height: 20px; color: var(--text-2); }
+.kv b { font-size: 11px; font-weight: 700; color: var(--mute); margin-right: var(--u); }
+.rival { display: grid; grid-template-columns: calc(var(--u) * 5) minmax(0, 1fr); gap: var(--u); padding: calc(var(--u) * 1.25) 0; border-top: 1px solid var(--line); cursor: pointer; }
+.rival.base { cursor: default; } .rival.base p { color: var(--mute); }
+.rival .tag { font-size: 11px; font-weight: 700; color: var(--mute); padding-top: 2px; }
+.rival.won .tag, .rival.on .tag { color: var(--yellow); } .rival.won { border-top-color: var(--yellow); }
+.rival p { font-size: var(--t-sub); line-height: 20px; color: var(--text-2); } .rival p strong { color: var(--text); margin-right: calc(var(--u) * .5); }
+.rival small { display: block; font-size: 11px; line-height: 16px; color: var(--mute); margin-top: 2px; } .rival.won small:not(.meta) { color: var(--text-2); }
+.axis { display: grid; grid-template-columns: calc(var(--u) * 3) minmax(0, 1fr); gap: var(--u); padding: calc(var(--u) * 1.5) 0; border-top: 1px solid var(--line); cursor: pointer; }
+.axis.on { border-top-color: var(--yellow); } .axis:hover h3, .axis.on h3 { color: var(--yellow); }
+.axis h3 { font-size: var(--t-lead); line-height: 24px; font-weight: 700; } .axis p { margin-top: 2px; color: var(--text-2); line-height: 22px; }
+.ax { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--text); color: var(--ground); font-family: var(--mono); font-size: 10px; font-style: normal; font-weight: 700; flex: none; }
+.axis > .ax { margin-top: 4px; }
+.phasebar { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); margin-bottom: var(--u); }
+.phasebar li { background: var(--surface); padding: var(--u) calc(var(--u) * 1.25); min-width: 0; }
+.phasebar b { font-family: var(--mono); font-size: var(--t-cap); color: var(--yellow); } .phasebar p { font-size: 11px; line-height: 16px; color: var(--text-2); margin-top: 2px; }
+.matrix .pillar .guide { font-weight: 600; color: var(--text); }
+.cells { margin-top: var(--u); display: flex; flex-direction: column; gap: 3px; }
+.cells li { display: grid; grid-template-columns: calc(var(--u) * 8) minmax(0, 1fr); gap: var(--u); font-size: var(--t-sub); line-height: 20px; }
+.cells .when { font-family: var(--mono); font-size: 11px; color: var(--mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cells .move { display: flex; flex-wrap: wrap; gap: 2px calc(var(--u) * .75); align-items: center; }
 @media (max-width: 1280px) { :root { --deck: calc(var(--u) * 52); } .pairs { grid-template-columns: minmax(0, 1fr); } }

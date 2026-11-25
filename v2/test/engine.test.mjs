@@ -905,3 +905,68 @@ test('닿은 것 세기 — 노드군별로 쓰인 노드 수와, 인사이트�
   assert.deepEqual([r.nodes, r.usedNodes, r.facts.sort(), r.cited.sort()], [4, 1, ['F1', 'F2'], ['F1', 'F2', 'F3', 'F4', 'F5']], '판단에 인용만 된 팩트는 닿은 것으로 세지 않는다');
   assert.deepEqual(reach({ signals: [], insights: [] }).facts, []);
 });
+
+test('운영 방향 — 전략 과제는 방향을 먼저 겨뤄 정하고 축 · 단계 · 파트별 할 일로 내려 쓴다', async () => {
+  const { levelOf, chart, shapeRivals, shapeJudge, shapeLayers, courseNeed } = await import('../js/engine/course.js');
+  const { strategizeOnly } = await import('../js/engine/think.js');
+  const { coursePrompt, courseJudgePrompt, layersPrompt, COURSE_CAPS } = await import('../knowledge/prompts-course.js');
+  const { weaveSpines } = await import('../js/engine/arena.js');
+  const { lensName } = await import('../js/graph/model.js');
+  // 층위 — 고르지 않으면 분류로 정한다. 통합 · 운영 분류는 전략이다
+  const p = newProject(SAMPLE);
+  assert.equal(levelOf(p), 'concept');
+  p.categories = ['integrated', 'ops', 'planning', 'marketing', 'design']; p.category = 'integrated';
+  assert.equal(levelOf(p), 'strategy');
+  p.settings.level = 'concept'; assert.equal(levelOf(p), 'concept'); delete p.settings.level;
+  // 분석 끝에 3층 전략이 붙는다 — 방향, 겨룬 후보와 판정, 축, 단계, 파트별 × 단계별 할 일
+  const kinds = [];
+  const mock = createMock();
+  const run = await think(p, { name: 'mock', json: async (a) => { kinds.push(a.task.kind); return mock.json(a); } });
+  const st = run.strategy;
+  assert.ok(st && st.v === 2 && st.check.ok, st?.check.problems.join(' / '));
+  assert.ok(!kinds.includes('strategy') && ['courseBase', 'course', 'courseJudge', 'layers'].every((k) => kinds.filter((x) => x === k).length === 1), '전략 과제는 인사이트에서 올려 쓰는 단계를 돌리지 않는다');
+  assert.ok(kinds.indexOf('courseBase') < kinds.indexOf('course') && kinds.indexOf('course') < kinds.indexOf('courseJudge') && kinds.indexOf('courseJudge') < kinds.indexOf('layers'));
+  assert.ok(st.rivals.length >= 2 && st.rivals.some((r) => r.id === st.direction.id) && st.judge.order.includes('BASE') && st.judge.beatsBase);
+  assert.deepEqual([st.concept.name, st.principle], [st.direction.name, st.direction.standard], '맨 위는 이긴 방향이다');
+  assert.ok(st.axes.length >= 3 && st.phases.length >= 3);
+  assert.deepEqual(st.pillars.map((x) => x.part), ['ops', 'planning', 'marketing', 'design'], '통합은 파트가 아니다 — 방향이 통합이다');
+  assert.ok(st.pillars.every((x) => x.cells.length === st.phases.length && x.cells.every((c) => c.axis && c.move)), '파트마다 단계별 할 일이 있고 축에 묶인다');
+  assert.equal(st.insights.length, run.insights.length, '이긴 인사이트는 전술로 놓인다');
+  assert.ok(st.insights.every((x) => x.part && x.phase && x.axis));
+  assert.ok(st.coverage.signals.used >= st.direction.signals.length && st.coverage.nodes.used >= 2);
+  // 프롬프트 — 인사이트를 방향으로 올리지 않게 하고, 후보마다 출발 충돌을 다르게 준다
+  const need = courseNeed(p, run); const spines = weaveSpines(run, 3);
+  const cp = coursePrompt(p, run, spines, st.base, lensName, need);
+  assert.match(cp.system, /인사이트를 넓게 고쳐 써서 방향으로 올리지 않는다/); assert.match(cp.system, new RegExp(`\`name\` ${COURSE_CAPS.name}자`)); assert.match(cp.user, /출발 충돌/); assert.match(cp.user, /전술이다/);
+  const jp = courseJudgePrompt(p, st.rivals, st.base);
+  assert.match(jp.system, /전술 하나를 방향이라 부른 안은 진다/); assert.match(jp.system, /방향이 넓다는 이유만으로 "같음"이라 하지 않는다/); assert.match(jp.user, /근거_넓이/);
+  assert.match(layersPrompt(p, run, st.direction, st.judge, lensName, need).system, /인사이트를 모아 올리지 않는다/);
+  // 다듬기 — 장치 이름이 든 방향에 표시를 달고, 근거가 좁으면 문제로 적는다
+  const sid = run.signals.find((s) => s.family === 'tunnel').id;
+  const shaped = shapeRivals({ candidates: [{ name: '혜택 쿠폰 화면', line: '쿠폰 화면을 하나로', standard: '기준', signals: [sid, 'NOPE'], facts: ['F1', 'F999'], drops: [] }] }, p, run, spines);
+  assert.deepEqual([shaped.rivals[0].signals, shaped.rivals[0].facts], [[sid], ['F1']]);
+  assert.ok(shaped.rivals[0].flags.some((f) => /장치 이름이 들어 있다: .*화면/.test(f) && /쿠폰/.test(f)));
+  assert.ok(shaped.problems.some((x) => /후보가 1개뿐/.test(x)) && shaped.problems.some((x) => /장치 이름을 쓴 후보: D1/.test(x)));
+  // 판정 — 전술로 판정받은 후보는 순서가 앞이어도 방향으로 올리지 않는다. 기본 방향이 앞이면 그대로 남긴다
+  const j1 = shapeJudge({ order: ['D1', 'BASE', 'D2'], items: [{ id: 'D1', level: '전술' }, { id: 'D2', level: '방향', vsBase: '같음' }] }, st.rivals.slice(0, 2));
+  assert.deepEqual([j1.winner, j1.beatsBase, j1.items[1].vsBase], ['D2', false, '같음']);
+  assert.equal(shapeJudge({}, st.rivals).winner, 'D1', '판정이 비면 첫 후보로 간다');
+  // 전개 — 빈 칸과 빠진 파트를 문제로 적는다
+  const thin = shapeLayers({ axes: [{ id: 'A1', name: '축', rule: '규칙' }], phases: [{ id: 'P1', when: '1월', line: '상태' }, { id: 'P2', when: '2월', line: '상태' }, { id: 'P3', when: '3월', line: '상태' }], parts: [{ part: 'ops', guide: '안내', cells: [{ phase: 'P1', move: '한다', axis: 'A1' }, { phase: 'P2', move: '한다', axis: 'A9' }] }] }, p, run, st.direction);
+  assert.ok(['축이 1개다', '빠진 파트: 기획, 마케팅, 디자인', '운영\\(2/3\\)', '축에 묶이지 않은 할 일 1건', '배치하지 않은 인사이트'].every((re) => thin.check.problems.some((x) => new RegExp(re).test(x))), thin.check.problems.join(' / '));
+  // 판정이 기본 방향을 더 낫게 보면 숨기지 않고 문제로 남긴다
+  const run3 = { ...run, strategy: null };
+  const lost = await chart({ project: p, run: run3, call: async (a) => (a.task.kind === 'courseJudge' ? { order: ['BASE', 'D1', 'D2', 'D3'], items: [] } : (await mock.json(a)).json) });
+  assert.ok(!lost.check.ok && lost.check.problems[0] === '판정이 기본 방향을 더 낫게 봤다' && lost.direction.id === 'D1');
+  // 이미 있는 결과 위에서 방향 단계만 돈다 — 앞 단계 호출 없이 4회
+  p.run = run; const before = run.calls; const only = [];
+  const again = await strategizeOnly(p, { json: async (a) => { only.push(a.task.kind); return mock.json(a); } });
+  assert.deepEqual([only, run.calls - before, again.v], [['courseBase', 'course', 'courseJudge', 'layers'], 4, 2]);
+  // 한 장 보고서 — 3층으로 나오고, 모델이 쓴 글은 이스케이프한다
+  const { strategyHtml, reportMarkdown } = await import('../js/engine/report.js');
+  again.direction.name = '<b>x</b>';
+  const html = strategyHtml(p);
+  assert.ok(html.includes('&lt;b&gt;x&lt;/b&gt;') && !html.includes('<b>x</b>') && ['운영 방향', '파트 × 단계', '겨룬 방향', 'A4 landscape'].every((t) => html.includes(t)));
+  const md = reportMarkdown(p);
+  assert.ok(['### 1. 운영 방향', '### 2. 축과 단계', '### 3. 파트별 × 단계별 할 일', '(채택)'].every((t) => md.includes(t)));
+});

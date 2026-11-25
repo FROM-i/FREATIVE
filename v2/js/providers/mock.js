@@ -191,7 +191,39 @@ function strategy({ project, run }) {
     gaps: ['[목업] 확인할 것'],
   };
 }
-const HANDLERS = { weave, strategy, plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, distinct, stance, hold, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
+// 운영 방향 — 전략 과제. 기본 방향, 방향 후보(출발 충돌마다 하나), 판정, 3층 전개
+const courseBase = () => ({ name: '[목업] 기본 방향', line: '[목업] 누구나 낼 운영 방향', standard: '[목업] 통상의 기준' });
+function course({ run, spines, need }) {
+  const live = run.signals.filter((s) => !s.muted);
+  return { candidates: (spines.length ? spines : [null, null]).slice(0, 3).map((sp, i) => {
+    const seen = new Set(); const picked = [];
+    const order = [...(sp ? [sp.a, sp.b] : []), ...[...live].sort((a, b) => (a.family === 'tunnel' ? 0 : 1) - (b.family === 'tunnel' ? 0 : 1) || hash(`course${i}${a.id}`) - hash(`course${i}${b.id}`))];
+    for (const x of order) { if (seen.has(x.lens)) continue; seen.add(x.lens); picked.push(x); if (picked.length >= Math.max(need?.nodes || 2, 4)) break; }
+    const facts = [...new Set([...picked.flatMap((x) => x.facts || []), ...(run.facts?.total ? [] : [])])];
+    return { id: `D${i + 1}`, name: `[목업] 운영 방향 ${i + 1}`, line: '[목업] 실제 모델이 방향 한 줄을 쓴다', standard: '[목업] 결정을 가르는 기준 한 문장', from: '[목업] 지금의 기준', to: '[목업] 바뀌는 기준', keeps: '[목업] 키우는 것', drops: ['[목업] 하지 않는 것'], answer: '[목업] 판정 질문의 답', signals: picked.map((x) => x.id), facts };
+  }) };
+}
+const courseJudge = ({ rivals }) => ({ order: [rivals[0].id, 'BASE', ...rivals.slice(1).map((r) => r.id)], items: rivals.map((r) => ({ id: r.id, level: '방향', vsBase: '다름', strong: '[목업] 강한 점', weak: '[목업] 약한 점' })), why: '[목업] 고른 이유는 실제 모델이 쓴다', borrow: rivals[1] ? [{ from: rivals[1].id, what: '[목업] 가져올 것' }] : [], risk: '[목업] 무너질 수 있는 지점' });
+function layers({ project, run }) {
+  const cats = (project.categories?.length ? project.categories : [project.category].filter(Boolean)).filter((c) => c !== 'integrated');
+  const parts = cats.length > 1 ? cats : ['a1', 'a2', 'a3'];
+  const used = new Set((run.insights || []).flatMap((i) => i.check?.used || []));
+  const live = run.signals.filter((s) => !s.muted);
+  const fresh = live.filter((s) => !used.has(s.id)); const rest = live.filter((s) => used.has(s.id));
+  const facts = (project.facts || []).map((f) => f.id);
+  const pick = (list, i, n) => Array.from({ length: Math.min(n, list.length) }, (_, k) => list[(i * n + k) % list.length]);
+  const axes = ['A1', 'A2', 'A3']; const phases = ['P1', 'P2', 'P3'];
+  return {
+    axes: axes.map((id, i) => ({ id, name: `[목업] 축 ${i + 1}`, rule: '[목업] 결정을 가르는 문장', signals: [...pick(fresh, i, 2), ...pick(rest, i, 1)].map((s) => s.id), facts: pick(facts, i, 2) })),
+    phases: phases.map((id, i) => ({ id, when: ['처음', '중간', '끝'][i], line: '[목업] 이 시기에 이룰 상태' })),
+    parts: parts.map((part, i) => ({ part, label: `파트 ${i + 1}`, guide: '[목업] 이 파트가 방향을 받는 방법', cells: phases.map((ph, k) => ({ phase: ph, move: `[목업] 할 일 ${i + 1}-${k + 1}`, axis: axes[(i + k) % axes.length] })), facts: pick(facts, i + 3, 2), signals: pick(fresh, i + 3, 1).map((s) => s.id) })),
+    insights: (run.insights || []).map((n, i) => ({ id: n.id, name: `[목업] 전술 ${i + 1}`, line: '[목업] 실제 모델이 줄여 쓴다', part: parts[i % parts.length], phase: phases[i % phases.length], axis: axes[i % axes.length], fit: '맞음' })),
+    fixes: facts.length ? [{ pain: '[목업] 지금의 문제', answer: '[목업] 바꾸는 것', facts: facts.slice(0, 1) }] : [],
+    boosts: facts.length > 1 ? [{ strength: '[목업] 이미 잘하는 것', answer: '[목업] 더 키우는 것', facts: facts.slice(1, 2) }] : [],
+    gaps: ['[목업] 확인할 것'],
+  };
+}
+const HANDLERS = { courseBase, course, courseJudge, layers, weave, strategy, plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, distinct, stance, hold, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
 
 export function createMock({ delay = 0 } = {}) {
   return {
