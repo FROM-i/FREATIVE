@@ -16,6 +16,12 @@ export function reportMarkdown(project) {
   const root = project.issues.find((i) => i.root) || project.issues[0];
 
   L.push(`> THE FROM BRAIN · ${run.at.slice(0, 10)} · 공급자 ${run.provider} · AI의 판단은 모두 예비 판정이다. 방향의 결정은 사람이 한다.`, '');
+  const st = run.strategy;
+  if (st) {
+    L.push('## 전략 한 장', '', `**${st.concept.name}** — ${st.concept.line}`, st.principle ? `\n${st.principle}` : '', '');
+    st.pillars.forEach((p) => L.push(`- **${p.label || '축'} · ${p.name}** — ${p.guide}${p.moves.length ? ` (${p.moves.join(' / ')})` : ''}${p.facts.length ? ` [${p.facts.join(' ')}]` : ''}`));
+    L.push('', `팩트 ${st.coverage.facts.used}/${st.coverage.facts.total}건, 판단 ${st.coverage.signals.used}/${st.coverage.signals.total}건(인사이트에 쓰이지 않던 것 ${st.coverage.signals.fresh}건)을 썼다.`, '');
+  }
   L.push('## 결론', '');
   L.push(`통합 인사이트 ${run.insights.length}건. 판단 ${u.signals}건 중 ${u.used}건(${pct(u.used, u.signals)}%)이 인사이트에 쓰였다.`, '');
   run.insights.forEach((n, i) => L.push(`${i + 1}. **${n.title}** — ${n.insight}`));
@@ -111,4 +117,59 @@ export function reportMarkdown(project) {
     for (const n of run.notes || []) L.push(`- ${n}`);
   }
   return L.filter((x) => x !== undefined).join('\n');
+}
+
+// ---------- 한 장 보고서 (.html) — 전략 한 장을 그대로 인쇄할 수 있는 한 쪽으로 낸다 ----------
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+export function strategyHtml(project) {
+  const run = project.run; const st = run?.strategy;
+  if (!st) return `<!doctype html><meta charset="utf-8"><title>${esc(project.title)}</title><p>전략 한 장이 아직 없습니다.</p>`;
+  const facts = new Map((project.facts || []).map((f) => [f.id, f]));
+  const usedFacts = [...new Set([...st.pillars.flatMap((p) => p.facts), ...st.fixes.flatMap((x) => x.facts), ...st.boosts.flatMap((x) => x.facts)])].filter((id) => facts.has(id));
+  const ev = (ids) => (ids.length ? `<span class="ev">${ids.map((id) => `#${esc(id)}`).join(' ')}</span>` : '');
+  const short = (id) => st.insights.find((x) => x.id === id)?.name || id;
+  const partName = (id) => { const p = st.pillars.find((x) => x.part === id); return p ? p.label || p.name : ''; };
+  const cv = st.coverage;
+  const pair = (a, b, f) => `<tr><td class="from">${esc(a)}</td><td class="arrow">→</td><td><b>${esc(b)}</b> ${ev(f)}</td></tr>`;
+  return `<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(project.title)} — 전략 한 장</title>
+<style>
+@page { size: A4 landscape; margin: 10mm; }
+* { box-sizing: border-box; } body { margin: 0; padding: 24px 28px; font-family: 'Pretendard', -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; color: #15181C; font-size: 12px; line-height: 1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.top { display: flex; justify-content: space-between; align-items: baseline; font-size: 10.5px; color: #6B7280; border-bottom: 1px solid #15181C; padding-bottom: 6px; }
+h1 { font-size: 34px; line-height: 1.15; margin: 14px 0 4px; letter-spacing: -.01em; } h1 mark { background: #FFD200; padding: 0 6px; }
+.line { font-size: 18px; font-weight: 700; margin: 0; } .principle { margin: 6px 0 0; color: #3F4650; font-size: 13px; }
+h2 { font-size: 10.5px; letter-spacing: .1em; color: #6B7280; margin: 0 0 6px; font-weight: 700; }
+.grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 22px; margin-top: 16px; }
+.pillar { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 10px; padding: 7px 0; border-top: 1px solid #D6DAE0; break-inside: avoid; }
+.pillar .part { font-weight: 700; color: #6B7280; font-size: 11px; padding-top: 2px; } .pillar h3 { margin: 0; font-size: 14px; } .pillar p { margin: 1px 0 0; color: #3F4650; }
+.pillar ul { margin: 3px 0 0; padding: 0; list-style: none; } .pillar li::before { content: '→ '; color: #9AA1AB; }
+.ev { font-family: ui-monospace, Consolas, monospace; font-size: 9.5px; color: #8A919B; } .ins { font-size: 10.5px; color: #3F4650; } .ins::before { content: '◆ '; color: #E0B400; }
+.phases { display: grid; gap: 0; border: 1px solid #15181C; margin-bottom: 14px; } .phases div { padding: 7px 9px; border-left: 1px solid #D6DAE0; } .phases div:first-child { border-left: 0; }
+.phases b { font-size: 10.5px; display: block; } .phases p { margin: 2px 0 0; font-weight: 600; } .phases small { color: #8A919B; font-size: 9.5px; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 12px; } td { padding: 5px 0; border-top: 1px solid #D6DAE0; vertical-align: top; } td.from { color: #6B7280; width: 42%; } td.arrow { width: 18px; color: #9AA1AB; }
+.cov { display: flex; gap: 18px; font-size: 11px; color: #3F4650; margin-top: 10px; } .cov b { font-size: 15px; color: #15181C; }
+.gaps { margin: 0; padding-left: 16px; color: #3F4650; }
+.foot { margin-top: 14px; border-top: 1px solid #15181C; padding-top: 6px; font-size: 9.5px; color: #6B7280; columns: 2; column-gap: 22px; } .foot p { margin: 0 0 2px; break-inside: avoid; } .foot b { font-family: ui-monospace, Consolas, monospace; color: #15181C; }
+.note { font-size: 9.5px; color: #8A919B; margin-top: 8px; }
+</style></head><body>
+<div class="top"><span>${esc(project.title)}</span><span>THE FROM BRAIN · ${esc((run.at || '').slice(0, 10))} · AI의 판단은 예비 판정입니다</span></div>
+<h1><mark>${esc(st.concept.name)}</mark></h1>
+<p class="line">${esc(st.concept.line)}</p>${st.principle ? `<p class="principle">${esc(st.principle)}</p>` : ''}
+<div class="cov"><span><b>${cv.facts.used}</b>/${cv.facts.total} 팩트</span><span><b>${cv.signals.used}</b>/${cv.signals.total} 판단 (새로 끌어온 것 ${cv.signals.fresh})</span><span><b>${cv.nodes.used}</b>/${cv.nodes.total} 노드</span></div>
+<div class="grid">
+<section><h2>축</h2>
+${st.pillars.map((p) => `<div class="pillar"><span class="part">${esc(p.label || '축')}</span><div><h3>${esc(p.name)}</h3><p>${esc(p.guide)}</p>${p.moves.length ? `<ul>${p.moves.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>` : ''}<div>${ev(p.facts)} ${p.insights.map((id) => `<span class="ins">${esc(short(id))}</span>`).join(' ')}</div></div></div>`).join('\n')}
+</section>
+<section>
+${st.phases.length ? `<h2>흐름</h2><div class="phases" style="grid-template-columns: repeat(${st.phases.length}, minmax(0, 1fr))">${st.phases.map((ph) => `<div><b>${esc(ph.when)}</b><p>${esc(ph.line)}</p><small>${esc(ph.pillars.map(partName).filter(Boolean).join(' · '))}</small></div>`).join('')}</div>` : ''}
+${st.fixes.length ? `<h2>푸는 것</h2><table>${st.fixes.map((x) => pair(x.pain, x.answer, x.facts)).join('')}</table>` : ''}
+${st.boosts.length ? `<h2>키우는 것</h2><table>${st.boosts.map((x) => pair(x.strength, x.answer, x.facts)).join('')}</table>` : ''}
+${st.gaps.length ? `<h2>확인할 것</h2><ul class="gaps">${st.gaps.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}
+</section></div>
+<div class="foot">${usedFacts.map((id) => `<p><b>${esc(id)}</b> ${esc(facts.get(id).text)} <i>(${esc(facts.get(id).source)})</i></p>`).join('')}</div>
+<p class="note">근거 번호(#F)는 팩트북의 번호입니다. 사람이 확인하지 않은 팩트는 제출 전에 원문을 대조합니다.</p>
+</body></html>`;
 }

@@ -35,7 +35,7 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
   const state = {
     nodes: [], links: [], byId: new Map(), adj: new Map(), counts: {},
     cam: { x: (SH.BOX.x0 + SH.BOX.x1) / 2, y: (SH.BOX.y0 + SH.BOX.y1) / 2, k: 0.7 }, w: 0, h: 0, dpr: 1,
-    alpha: 0, hover: null, selected: null, focus: null, path: [], pulses: new Map(), captions: [],
+    alpha: 0, hover: null, selected: null, focus: null, tint: null, path: [], pulses: new Map(), captions: [],
     show: { signals: true, dormant: true }, raf: 0, fitted: false, busy: false, theta: reduce ? 0.09 : 0, sin: 0, cos: 1, frame: 0,
   };
 
@@ -278,6 +278,8 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
 
       const pulse = state.pulses.get(n.id);
       if (pulse != null && !reduce) { const t = (now - pulse) / 1500; if (t >= 0 && t < 1) { ctx.globalAlpha = (1 - t) * 0.9; ctx.strokeStyle = COLORS.yellow; ctx.lineWidth = 1.4; ring(x, y, r + 3 + t * 30); } }
+      const tc = state.tint && state.tint.get(n.id);   // 전략 한 장이 기댄 노드 — 색 고리를 두른다
+      if (tc) { ctx.globalAlpha = 0.95; ctx.strokeStyle = tc; ctx.lineWidth = 1.5; ring(x, y, r + 3.2); }
       if (n.id === state.selected) { ctx.globalAlpha = 1; ctx.strokeStyle = COLORS.pink; ctx.lineWidth = 1.6; ring(x, y, r + 5); }
     }
 
@@ -466,6 +468,8 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
     zoom: (f) => zoomAt(state.w / 2, state.h / 2, f),
     /** 인사이트의 근거만 밝히고 인과 사슬을 순서대로 잇는다. null이면 해제 */
     trace(ids, path = []) { state.focus = ids ? new Set(ids) : null; state.path = path; reheat(); draw(performance.now()); },
+    /** 노드에 색 고리를 두른다 — Map(노드 id → 색). null이면 해제 */
+    tint(map) { state.tint = map && map.size ? map : null; draw(performance.now()); },
     pulse(id) { if (state.byId.has(id)) { state.pulses.set(id, performance.now()); loop(); } },
     busy(on) { state.busy = on; loop(); },
     show(key, on) { state.show[key] = on; state.alpha = Math.max(state.alpha, 0.3); reheat(); loop(); },

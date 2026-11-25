@@ -19,13 +19,14 @@ import { frames } from './frames.js';
 import { PERSPECTIVES } from '../../knowledge/tags.js';
 import { AIRPLANE, OPPOSITIONS, GATES, FAMILIES, IDENTITY } from '../../knowledge/nodes.js';
 import { activeLenses, signalPrefix, hints, lensName, validateProject, needsDevelopment } from '../graph/model.js';
+import { strategize } from './strategy.js';
 import { propagate } from '../graph/propagate.js';
 
 const STANCES = new Set(['keep', 'change', 'limit', 'open']);
 const TYPES = new Set(['cause', 'condition', 'reinforce', 'tension']);
 const SOURCES = ['팩트', '브리프', '일반 관찰', '추론', '확인 필요'];
 const ASSUMED = 0.6;   // 팩트 없이 쓴 터널 판단의 비중
-const STAGE_NAMES = { baseline: '기본안', reframe: '프레임', route: '사조 고르기', activate: '노드 판단', link: '연결', integrate: '통합', cross: '교배', screen: '선별', duel: '대결', distinct: '같은 해법 확인', stance: '기조', attack: '공격', revise: '보완', hold: '기조 확인', verdict: '판정', direct: '방향', plan: '기획' };
+const STAGE_NAMES = { strategy: '전략 한 장', baseline: '기본안', reframe: '프레임', route: '사조 고르기', activate: '노드 판단', link: '연결', integrate: '통합', cross: '교배', screen: '선별', duel: '대결', distinct: '같은 해법 확인', stance: '기조', attack: '공격', revise: '보완', hold: '기조 확인', verdict: '판정', direct: '방향', plan: '기획' };
 const LINK_AT_ONCE = 45;   // 한 번의 호출로 잇는 신호 수의 한도. 이보다 많으면 이슈별로 나눈다
 const clamp = (v, d = 0.5) => (Number.isFinite(+v) ? Math.min(1, Math.max(0, +v)) : d);
 const text = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -482,9 +483,26 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
   run.direction = { ...dcheck.direction, check: { ok: dcheck.ok, problems: dcheck.problems }, needDev };
   emit('directed');
 
+  // 전략 한 장 — 좁혀진 인사이트 위에, 전체 판단과 팩트로 과제를 관통하는 전략을 올린다. 실패해도 앞의 결과는 남긴다.
+  if (s.strategy !== false) { try { await strategize({ project, run, call, emit }); } catch (e) { if (signal?.aborted) throw e; run.notes.push(`전략 한 장을 만들지 못했다 — ${e.message}`); } }
+
   // 프레임 — 이긴 안을 기획 틀과 디자인 틀로 정리한다. 틀은 안을 만드는 단계가 아니라 정리하고 검증하는 단계다.
   if (s.frames !== false) await frames({ project, run, call, emit });
   run.ms = Date.now() - started;
   emit('stage', { stage: 'done' });
   return run;
+}
+
+/** 이미 있는 분석 결과 위에 전략 한 장만 만든다 — 호출 1~2회. 앞 단계는 다시 돌리지 않는다. */
+export async function strategizeOnly(project, provider, { signal } = {}) {
+  const run = project.run;
+  if (!run?.insights?.length) throw new Error('먼저 분석을 해야 한다');
+  const call = async (args) => {
+    if (signal?.aborted) throw new Error('취소됨');
+    const r = await provider.json({ ...args, tier: tierOf(args.task), signal });
+    run.calls = (run.calls || 0) + 1;
+    if (r.usage) { run.tokens = run.tokens || { in: 0, out: 0 }; run.tokens.in += r.usage.in || 0; run.tokens.out += r.usage.out || 0; }
+    return r.json;
+  };
+  return strategize({ project, run, call });
 }

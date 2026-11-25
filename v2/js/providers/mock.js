@@ -163,7 +163,26 @@ const creative = ({ run, chapters }) => { const n = run.insights[0].id; const b 
 
 // 같은 해법 묶기 — 목업 후보는 제목으로 만든 묶음 이름이 같으면 한 묶음, 그 밖에는 하나씩
 const distinct = ({ candidates }) => { const m = new Map(); for (const c of candidates) { const k = String(c.title).startsWith('[목업]') ? `[목업] 해법 ${Math.floor(hash(`fam${c.title}`) * 5) + 1}` : c.id; m.set(k, [...(m.get(k) || []), c.id]); } return { groups: [...m].map(([name, ids]) => ({ name: name.startsWith('[목업]') ? name : candidates.find((c) => c.id === ids[0]).title, ids, why: ids.length > 1 ? '[목업] 같은 해법' : '' })) }; };
-const HANDLERS = { plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, distinct, stance, hold, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
+// 전략 한 장 — 쓰이지 않은 판단과 팩트를 끌어와 축마다 나눠 담는다
+function strategy({ project, run }) {
+  const cats = project.categories?.length ? project.categories : [project.category].filter(Boolean);
+  const parts = cats.length > 1 ? cats : ['a1', 'a2', 'a3'];
+  const used = new Set((run.insights || []).flatMap((i) => i.check?.used || []));
+  const live = run.signals.filter((s) => !s.muted);
+  const fresh = live.filter((s) => !used.has(s.id)); const rest = live.filter((s) => used.has(s.id));
+  const facts = (project.facts || []).map((f) => f.id);
+  const pick = (list, i, n) => Array.from({ length: Math.min(n, list.length) }, (_, k) => list[(i * n + k) % list.length]);
+  return {
+    concept: { name: '[목업] 한 흐름 운영', line: '[목업] 실제 모델이 전략의 한 줄을 쓴다' }, principle: '[목업] 건마다 끝내지 않고 기준을 남긴다',
+    pillars: parts.map((part, i) => ({ part, name: `[목업] 축 ${i + 1}`, guide: '[목업] 실제 모델이 쓴다', moves: ['[목업] 할 일 하나'], facts: pick(facts, i, 3), signals: [...pick(fresh, i, 2), ...pick(rest, i, 1)].map((s) => s.id), insights: pick(run.insights || [], i, 1).map((n) => n.id) })),
+    phases: [{ when: '처음', line: '[목업] 기준을 깐다', pillars: parts.slice(0, 2) }, { when: '중간', line: '[목업] 굴린다', pillars: parts }, { when: '끝', line: '[목업] 다음 기준을 낸다', pillars: parts.slice(0, 1) }],
+    fixes: facts.length ? [{ pain: '[목업] 지금의 문제', answer: '[목업] 바꾸는 것', facts: facts.slice(0, 1) }] : [],
+    boosts: facts.length > 1 ? [{ strength: '[목업] 이미 잘하는 것', answer: '[목업] 더 키우는 것', facts: facts.slice(1, 2) }] : [],
+    insights: (run.insights || []).map((n, i) => ({ id: n.id, name: `[목업] 장치 ${i + 1}`, line: '[목업] 실제 모델이 줄여 쓴다', part: parts[i % parts.length] })),
+    gaps: ['[목업] 확인할 것'],
+  };
+}
+const HANDLERS = { strategy, plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, distinct, stance, hold, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
 
 export function createMock({ delay = 0 } = {}) {
   return {
