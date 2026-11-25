@@ -63,9 +63,9 @@ function activate({ project, lens }) {
 const mockScore = (title) => (String(title).startsWith('[목업]') ? 0.1 + hash(title) * 0.3 : 0.6 + hash(title) * 0.4);
 const reframe = ({ project }) => ({ frames: [1, 2, 3].map((n) => ({ frame: `[목업] 문제 정의 ${n} — 실제 모델이 쓴다.`, why: '[목업] 브리프의 정의와 다른 점', risk: '', facts: project.facts?.[0] && n === 1 ? [project.facts[0].id] : [] })) });
 const cross = ({ a, b }) => ({ keeps: { a: '[목업]', b: '[목업]' }, title: `[목업] ${short(a.title.replace('[목업] ', ''), 10)} × ${short(b.title.replace('[목업] ', ''), 10)}`, concept: '[목업] 두 안을 모두 살린 세 번째 안 — 실제 모델이 쓴다.', visual: '[목업] 보이는 모습', gain: '[목업] 사용자가 얻는 것', how: '[목업] 충돌을 푸는 장치' });
-const screen = ({ candidates, baseline }) => ({ screens: candidates.map((c) => { const h = hash(`screen${c.id}${c.title}`); return { id: c.id, nearest: baseline.concepts[Math.floor(h * baseline.concepts.length) % baseline.concepts.length].id, verdict: String(c.title).startsWith('[목업]') ? (h < 0.2 ? '같음' : h < 0.6 ? '일부' : '다름') : (h < 0.5 ? '일부' : '다름'), why: '[목업] 기본안과의 비교는 실제 모델이 쓴다.' }; }) });
+const screen = ({ candidates, baseline }) => ({ screens: candidates.map((c) => { const h = hash(`screen${c.id}${c.title}`); return { id: c.id, nearest: baseline.concepts[Math.floor(h * baseline.concepts.length) % baseline.concepts.length].id, verdict: String(c.title).startsWith('[목업]') ? (h < 0.2 ? '같음' : h < 0.6 ? '일부' : '다름') : (h < 0.5 ? '일부' : '다름'), why: '[목업] 기본안과의 비교는 실제 모델이 쓴다.', family: String(c.title).startsWith('[목업]') ? `[목업] 해법 ${Math.floor(hash(`fam${c.title}`) * 5) + 1}` : c.title, empty: false, breaks: '' }; }) });
 // 고친 안(id가 r로 끝난다)과 고치기 전 안이 겨루면 목업에서는 고치기 전 안이 이긴다 — 예시 문장을 그대로 보여 주기 위해서다
-const duel = ({ pairs }) => ({ duels: pairs.map((p) => ({ pair: p.id, winner: p.a.id.endsWith('r') ? p.b.id : p.b.id.endsWith('r') ? p.a.id : (mockScore(p.a.title) >= mockScore(p.b.title) ? p.a.id : p.b.id), why: '[목업] 이긴 이유는 실제 모델이 쓴다.' })) });
+const duel = ({ pairs }) => ({ duels: pairs.map((p) => ({ pair: p.id, winner: p.a.id.endsWith('r') ? p.b.id : p.b.id.endsWith('r') ? p.a.id : (mockScore(p.a.title) >= mockScore(p.b.title) ? p.a.id : p.b.id), why: '[목업] 이긴 이유는 실제 모델이 쓴다.', notable: hash(`not${p.a.id}${p.b.id}`) < 0.25 ? p.b.id : '', notable_why: '[목업] 뚜렷한 점', unsure: false })) });
 const attack = () => ({ attacks: [{ from: '제약', hit: '[목업] 약점은 실제 모델이 찾는다.', severity: 2 }], keep: '[목업] 지켜야 할 대담한 부분' });
 const revise = ({ cand }) => ({ title: cand.title, concept: cand.concept, visual: cand.visual, gain: cand.gain, keep: '[목업]', change: '[목업]', verdict: '[목업]', fixed: [{ hit: '[목업] 받은 공격', fix: '[목업] 고친 것' }], open: [] });
 
@@ -123,15 +123,15 @@ function baseline({ project }) {
 }
 
 function verdict({ project, insights }) {
-  const LENS = ['ID-JAMAIS', 'ID-FROM', 'ID-BENEFIT', 'ID-ONEU', 'ID-INERTIA', 'ID-YELLOW'];
-  // 예시 프로젝트 — 미리 써 둔 판정은 제목으로 찾는다 (경쟁 단계에서는 후보 id가 달라진다)
+  // 예시 프로젝트 — 미리 써 둔 판정은 제목으로 찾는다 (경쟁 뒤에는 번호가 달라진다)
   const fixed = (i) => (project.id === SAMPLE_ID ? (FIXTURE.verdict || []).find((v) => v.title === i.title) : null);
-  return { verdicts: insights.map((i) => {
-    const f = fixed(i);
-    if (f) return { ...f, insight: i.id };
-    const weak = String(i.title).startsWith('[목업]');
-    const scores = Object.fromEntries(LENS.map((k) => [k, (weak ? 1 : 2) + Math.floor(hash(i.id + k + i.title) * 3)]));
-    return { insight: i.id, scores, why: Object.fromEntries(LENS.map((k) => [k, '[목업] 이유는 실제 모델이 쓴다.'])), verdict: '보완', safe: '', push: '[목업] 더 밀 곳', precedent: '' };
+  const M = '[목업] 실제 모델이 쓴다.';
+  return { verdicts: insights.map((i) => fixed(i) ? { ...fixed(i), insight: i.id } : {
+    insight: i.id,
+    checks: ['브리프의 제약', '접근성', '팩트 근거', '사람이 얻는 것', '자사 색 배제(N7)'].map((item) => ({ item, result: '확인 필요', why: M })),
+    differentiation: { level: '구분됨', against: M, matters: M, only: '', place: M, lasting: '', meaning: '' },
+    effectiveness: { level: '목적 달성', confidence: '추정', purpose: M, society: '', behavior: M, cost: '', feasibility: M, issues: '', beyond: '' },
+    held: ['[목업] 새로 읽히는 느낌 — 시안을 봐야 안다'], verdict: '보류', safe: '', push: '[목업] 더 밀 곳', precedent: '',
   }) };
 }
 

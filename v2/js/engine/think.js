@@ -8,7 +8,8 @@
 //   ⑥ 가드            인사이트가 여러 노드군의 신호를 실제로 지났는지 코드로 확인한다
 //   ⑦ 통합 디렉션     인사이트를 기획·디자인·개발·서비스 관점의 할 일로 묶는다 (호출 1) — 중앙 통제
 import { issuesPrompt, routePrompt, activatePrompt, linkPrompt, integratePrompt, directionPrompt, baselinePrompt, verdictPrompt, researchPrompt } from '../../knowledge/prompts.js';
-import { WEIGHTS, VERDICTS, SEED_PRECEDENTS, weightedScore, normalizeWeights } from '../../knowledge/viewpoint.js';
+import { SEED_PRECEDENTS } from '../../knowledge/viewpoint.js';
+import { DIFFERENTIATION, EFFECTIVENESS, CHECKS, CHECK_RESULTS, VERDICTS4 } from '../../knowledge/criteria.js';
 import { validFacts, acceptResearch } from '../../knowledge/facts.js';
 import { LAYERS } from '../../knowledge/ism-depth.js';
 import { reframePrompt } from '../../knowledge/prompts-arena.js';
@@ -145,19 +146,31 @@ function shapeInsight(raw, check, cluster, n) {
   };
 }
 
-/** 더프롬 판정 정리 — 기준별 점수(1~5)에 가중치를 곱해 0~100으로 만든다. 순서는 점수순이다. */
-export function shapeVerdict(raw, insights, weights = WEIGHTS) {
-  const w = normalizeWeights(weights);
+/**
+ * 더프롬 판정 정리 — 점수가 없다. 확인 항목(통과 · 미달 · 확인 필요), 차별화와 실효성의 판정문과 수준, 보류한 것, 판정.
+ * 인사이트의 순서는 바꾸지 않는다(경쟁에서 정해진 순서다).
+ */
+export function shapeVerdict(raw, insights) {
   const ids = new Set(insights.map((i) => i.id));
+  const answers = (c, v) => Object.fromEntries(c.questions.map((q) => [q.id, text(v?.[q.id])]));
   const items = [];
   for (const v of Array.isArray(raw?.verdicts) ? raw.verdicts : []) {
     const id = text(v.insight);
     if (!ids.has(id) || items.some((x) => x.insight === id)) continue;
-    const scores = Object.fromEntries(Object.keys(w).map((k) => [k, Math.min(5, Math.max(1, Math.round(+v.scores?.[k] || 1)))]));
-    items.push({ insight: id, scores, why: Object.fromEntries(Object.keys(w).map((k) => [k, text(v.why?.[k])])), verdict: VERDICTS.includes(text(v.verdict)) ? text(v.verdict) : '보완', safe: text(v.safe), push: text(v.push), precedent: text(v.precedent), score: weightedScore(scores, w) });
+    const dl = text(v.differentiation?.level); const el = text(v.effectiveness?.level);
+    const differentiation = { level: DIFFERENTIATION.levels.includes(dl) ? dl : '', ...answers(DIFFERENTIATION, v.differentiation) };
+    const effectiveness = { level: EFFECTIVENESS.levels.includes(el) ? el : '', confidence: EFFECTIVENESS.confidence.includes(text(v.effectiveness?.confidence)) ? text(v.effectiveness.confidence) : '추정', ...answers(EFFECTIVENESS, v.effectiveness) };
+    const held = (Array.isArray(v.held) ? v.held : []).map(text).filter(Boolean);
+    // 답하지 못한 물음은 보류로 센다 — 빈칸을 수준으로 덮지 않는다
+    const blank = [...DIFFERENTIATION.questions.filter((q) => !differentiation[q.id]).map((q) => `차별화 · ${q.id}`), ...EFFECTIVENESS.questions.filter((q) => !effectiveness[q.id]).map((q) => `실효성 · ${q.id}`)];
+    items.push({
+      insight: id,
+      checks: (Array.isArray(v.checks) ? v.checks : []).map((c) => ({ item: text(c.item), result: CHECK_RESULTS.includes(text(c.result)) ? text(c.result) : '확인 필요', why: text(c.why) })).filter((c) => CHECKS.includes(c.item)),
+      differentiation, effectiveness, held, blank,
+      verdict: VERDICTS4.includes(text(v.verdict)) ? text(v.verdict) : '보류', safe: text(v.safe), push: text(v.push), precedent: text(v.precedent),
+    });
   }
-  items.sort((a, b) => b.score - a.score || a.insight.localeCompare(b.insight, undefined, { numeric: true }));
-  return { weights: w, items, missing: insights.filter((i) => !items.some((x) => x.insight === i.id)).map((i) => i.id) };
+  return { items, missing: insights.filter((i) => !items.some((x) => x.insight === i.id)).map((i) => i.id) };
 }
 
 /**
@@ -384,7 +397,7 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
 
   // 경쟁 — 묶음 통합안도 후보 중 하나다. 노드의 완성안 · 교배안과 겨뤄 이긴 안이 통합 인사이트가 된다.
   if (useArena && run.proposals.length + run.insights.length >= 2) {
-    await arena({ project, run, call, emit, pool, scoreOf: (raw, list) => shapeVerdict(raw, list, s.weights) });
+    await arena({ project, run, call, emit, pool });
     run.usage = usage(run);
     emit('clustered');
   }
@@ -395,7 +408,7 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
   {
     const p = verdictPrompt(project, run.insights, IDENTITY, run.baseline);
     const raw = await call({ role: 'director', ...p, task: { kind: 'verdict', project, insights: run.insights } });
-    run.verdict = shapeVerdict(raw, run.insights, s.weights);
+    run.verdict = shapeVerdict(raw, run.insights);
     for (const ins of run.insights) ins.from = run.verdict.items.find((v) => v.insight === ins.id) || null;
     if (run.verdict.missing.length) run.notes.push(`더프롬 판정을 받지 못한 인사이트: ${run.verdict.missing.join(', ')}`);
     emit('verdict');

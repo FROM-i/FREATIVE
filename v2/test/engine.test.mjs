@@ -309,34 +309,40 @@ test('사조 — 가져올 것/두고 올 것 대신 시대 · 갈래 · 모순 
   assert.ok(ism.length && ism.every((s) => LAYERS.includes(s.layer) && s.degree >= 0 && s.degree <= 1));
 });
 
-test('더프롬 판정 — 관점이 모든 호출에 들어가고, 가중 합계는 코드가 계산한다', async () => {
+test('더프롬 판정 — 관점이 모든 호출에 들어가고, 점수 없이 판정문 · 수준 · 보류로 답한다', async () => {
   const { shapeVerdict } = await import('../js/engine/think.js');
-  const { WEIGHTS, weightedScore, viewpointBlock, normalizeWeights } = await import('../knowledge/viewpoint.js');
-  const { baselinePrompt } = await import('../knowledge/prompts.js');
+  const { viewpointBlock, WEIGHTS } = await import('../knowledge/viewpoint.js');
+  const { DIFFERENTIATION, EFFECTIVENESS, criteriaBlock } = await import('../knowledge/criteria.js');
+  const { baselinePrompt, verdictPrompt } = await import('../knowledge/prompts.js');
   const p = sample();
   const systems = [];
   const mock = createMock();
   const spy = { ...mock, json: (a) => { systems.push([a.task.kind, a.system]); return mock.json(a); } };
-  const mine = [{ id: 'PR-X', verdict: '기각', what: '테스트용 사례', why: '이유' }];
-  const run = await think(p, spy, { precedents: mine });
+  const run = await think(p, spy, { precedents: [{ id: 'PR-X', verdict: '기각', what: '테스트용 사례', why: '이유' }] });
   for (const [kind, sys] of systems) {
     if (kind === 'baseline') assert.ok(!sys.includes('더프롬의 눈으로'), '기본안은 더프롬의 관점 없이 낸다');
     else assert.ok(sys.startsWith('## 관점 — 더프롬의 눈으로 본다') && sys.includes('테스트용 사례'), `${kind} 호출에 관점과 판정 사례가 들어간다`);
   }
   assert.ok(!baselinePrompt(p).system.includes('자메뷰'));
-  assert.equal(run.verdict.items.length, run.insights.length);
-  assert.deepEqual(run.verdict.items.map((v) => v.score), [...run.verdict.items.map((v) => v.score)].sort((a, b) => b - a), '점수순');
-  assert.ok(run.insights.every((i) => i.from && ['채택', '보완', '기각'].includes(i.from.verdict)));
-  // 가중치 — 자메뷰가 가장 무겁다. 같은 점수 묶음이라도 무거운 기준이 높으면 합계가 높다
-  assert.equal(Math.round(Object.values(normalizeWeights(WEIGHTS)).reduce((a, b) => a + b, 0) * 100), 100);
-  const hi = weightedScore({ 'ID-JAMAIS': 5, 'ID-FROM': 3, 'ID-BENEFIT': 3, 'ID-ONEU': 3, 'ID-INERTIA': 3, 'ID-YELLOW': 1 });
-  const lo = weightedScore({ 'ID-JAMAIS': 1, 'ID-FROM': 3, 'ID-BENEFIT': 3, 'ID-ONEU': 3, 'ID-INERTIA': 3, 'ID-YELLOW': 5 });
-  assert.ok(hi > lo);
-  assert.equal(weightedScore(Object.fromEntries(Object.keys(WEIGHTS).map((k) => [k, 5]))), 100);
-  // 기각된 인사이트는 디렉션의 근거가 되지 않는다
-  const raw = { verdicts: run.insights.map((i, n) => ({ insight: i.id, scores: {}, verdict: n === 0 ? '기각' : '채택' })) };
-  assert.equal(shapeVerdict(raw, run.insights).items.find((v) => v.insight === run.insights[0].id).verdict, '기각');
   assert.ok(viewpointBlock([], WEIGHTS).indexOf('자메뷰') < viewpointBlock([], WEIGHTS).indexOf('노랑'), '무거운 기준이 먼저 나온다');
+  // 두 기준의 정의가 판정과 대결에 들어간다 — 다름이 곧 차별화가 아니고, 실효성은 통과가 아니라 초과달성의 정도다
+  assert.ok(criteriaBlock().includes('다르다는 것만으로는 차별화가 아니다') && criteriaBlock().includes('본래 목적을 얼마나 넘어설 수 있는지'));
+  assert.ok(systems.filter(([k]) => k === 'verdict' || k === 'duel').every(([, sys]) => sys.includes('## 결과를 판단하는 두 기준')));
+  assert.ok(!verdictPrompt(p, run.insights, []).system.includes('1~5점'), '점수를 요구하지 않는다');
+  // 판정의 모양 — 점수가 없다
+  assert.equal(run.verdict.items.length, run.insights.length);
+  for (const i of run.insights) {
+    assert.ok(i.from && ['채택', '보완', '기각', '보류'].includes(i.from.verdict));
+    assert.equal(i.from.score, undefined);
+    assert.ok(DIFFERENTIATION.levels.includes(i.from.differentiation.level) && EFFECTIVENESS.levels.includes(i.from.effectiveness.level));
+    assert.ok(i.from.checks.length === 5 && i.from.checks.every((c) => ['통과', '미달', '확인 필요'].includes(c.result)));
+  }
+  // 답하지 못한 물음은 빈칸으로 남고 보류로 센다. 모르는 수준 · 판정은 보류가 된다
+  const raw = { verdicts: [{ insight: run.insights[0].id, differentiation: { level: '아주 좋음', against: 'x' }, effectiveness: { level: '목적 달성', purpose: 'y' }, verdict: '훌륭함', held: ['시안이 필요하다'] }] };
+  const v = shapeVerdict(raw, run.insights).items[0];
+  assert.equal(v.differentiation.level, ''); assert.equal(v.verdict, '보류'); assert.equal(v.effectiveness.confidence, '추정');
+  assert.equal(v.blank.length, DIFFERENTIATION.questions.length - 1 + EFFECTIVENESS.questions.length - 1);
+  assert.deepEqual(v.held, ['시안이 필요하다']);
 });
 
 test('팩트북 — 출처 조건, 터널 추정 표시, AI 조사 거르기, md 왕복', async () => {
@@ -396,17 +402,28 @@ test('경쟁 — 후보를 모아 기본안과 같은 안을 떨어뜨리고, 1:
   assert.equal(c.candidates, c.node + c.cluster + c.cross);
   assert.ok(c.node >= 10 && c.cluster === 3 && c.cross >= 1, JSON.stringify(c));
   assert.ok(run.proposals.every((x) => ['R0', 'R1', 'R2', 'R3'].includes(x.frame)));
-  // 기본안과 같은 안은 채점에 들어가지 않는다
-  for (const k of a.candidates.filter((x) => x.screen?.verdict === '같음')) { assert.equal(k.score, null); assert.ok(k.status.includes('기본안')); }
-  // 결선은 모두 한 번씩 겨룬다
-  assert.equal(c.finalists, 6); assert.equal(c.duels, 15);
-  assert.equal(a.candidates.filter((x) => x.status === '결선 통과').length, p.settings.insightCount);
-  assert.ok(a.duels.every((d) => d.winner === d.a || d.winner === d.b));
-  // 이긴 안이 통합 인사이트가 되고, 공격 기록이 남는다
+  // 떨어뜨리는 것은 사유가 있을 때뿐이다 — 점수가 없다
+  assert.ok(a.candidates.every((x) => x.score === undefined));
+  for (const k of a.candidates.filter((x) => x.screen?.verdict === '같음')) { assert.equal(k.swiss, null); assert.ok(k.status.includes('기본안')); }
+  // 남은 후보는 조별로 겨루고, 결선은 두 번 판정한다
+  assert.equal(c.finalists, 6);
+  assert.equal(a.duels.filter((d) => d.stage === '결선').length, 15);
+  assert.equal(kinds.filter((k) => k === 'duel').length, 6 + 3 + 3 + 1, '조별 3회전 + 결선 + 결선 다시 + 재대결');
+  assert.ok(a.candidates.filter((x) => x.seat).length === 6 && a.candidates.some((x) => x.seat === '다른 안'), '결선에는 기본안과 다른 안의 자리가 있다');
+  // 최종안은 서로 다른 해법이다
   assert.equal(run.insights.length, p.settings.insightCount);
-  assert.ok(run.insights.every((i) => i.check.ok && i.candidate && i.attacks.length && i.check.used.length));
-  assert.deepEqual(run.insights.map((i) => i.wins), [...run.insights.map((i) => i.wins)].sort((x, y) => y - x), '승수 순');
+  assert.equal(new Set(run.insights.map((i) => i.family)).size, run.insights.length);
+  assert.ok(run.insights.every((i) => i.check.ok && i.candidate && i.attacks.length && i.check.used.length && i.seat));
   assert.equal(kinds.filter((k) => k === 'attack').length, 3); assert.equal(kinds.filter((k) => k === 'revise').length, 3);
+  // 결선 자리 — 승수 상위만으로 채우지 않는다. 같은 해법은 2개까지
+  const { pickSeats, swissPairs } = await import('../js/engine/arena.js');
+  const L = [1, 2, 3, 4, 5, 6, 7].map((n) => ({ id: `K${n}`, origin: { frame: n === 7 ? 'R2' : 'R0' }, screen: { verdict: n === 7 ? '다름' : '일부', family: n <= 3 ? 'same' : `f${n}` } }));
+  const seats = pickSeats(L, { K1: 3, K2: 3, K3: 3, K4: 2, K5: 1, K6: 1, K7: 0 }, { K6: 2 }, [{ winner: 'K5', a: 'K5', b: 'K1' }], 6);
+  assert.deepEqual(seats.map((x) => `${x.c.id}:${x.seat}`), ['K1:상위', 'K2:상위', 'K4:상위', 'K7:다른 안', 'K6:뚜렷한 안', 'K5:상위를 이긴 안']);
+  // 판정이 갈리면 무승부다
+  assert.deepEqual(standings(['K1', 'K2'], [{ a: 'K1', b: 'K2', split: true }], {}).map((x) => x.wins), [0.5, 0.5]);
+  const sp = swissPairs(['K1', 'K2', 'K3', 'K4'], { K1: 1, K2: 1, K3: 0, K4: 0 }, new Set(['K1|K2']), 1);
+  assert.ok(sp.length === 2 && sp.every((x) => [x.a, x.b].sort().join('|') !== 'K1|K2'), '이미 만난 짝은 피한다');
   // 대진과 순위는 계산이다 — 같은 입력이면 같다
   assert.deepEqual(roundRobin(['K1', 'K2', 'K3', 'K4']), roundRobin(['K1', 'K2', 'K3', 'K4']));
   assert.equal(roundRobin(['K1', 'K2', 'K3', 'K4']).length, 6);

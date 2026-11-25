@@ -6,6 +6,7 @@ import { COMMON_INPUT, SEED_INPUT, PERSPECTIVES, tagById, categoryById } from '.
 import { viewpointBlock } from './viewpoint.js';
 import { depthBlock, LAYERS } from './ism-depth.js';
 import { validFacts, factsFor, FACT_KINDS, SOURCE_TYPES } from './facts.js';
+import { criteriaBlock, DIFFERENTIATION, EFFECTIVENESS, CHECKS, CHECK_RESULTS, VERDICTS4 } from './criteria.js';
 
 const j = (v) => JSON.stringify(v, null, 1);
 
@@ -297,32 +298,40 @@ ${baseline?.concepts?.length ? `\n## 브레인 없이 낸 기본안\n${j(baselin
 }
 
 /**
- * 더프롬 판정 — 통합 인사이트를 더프롬의 기준으로 채점하고 채택 · 보완 · 기각을 정한다.
- * 점수의 가중 합계는 코드가 계산한다. 모델은 기준별 점수와 이유만 낸다.
+ * 더프롬 판정 — 최종 안을 차별화와 실효성으로 판단한다. 점수를 매기지 않는다.
+ *   확인할 수 있는 것은 통과 · 미달 · 확인 필요로, 두 기준은 물음에 답한 판정문과 수준으로,
+ *   글만으로 알 수 없는 것은 보류로 남긴다. 최종 결정은 사람이 한다.
  */
 export function verdictPrompt(project, insights, lenses, baseline = null) {
+  const q = (c) => c.questions.map((x) => `"${x.id}": ""`).join(', ');
   return {
     system: `${common(project)}
 
+${criteriaBlock()}
+
 ## 너의 역할 — 더프롬 판정
-통합 인사이트 ${insights.length}건을 더프롬의 디렉터로서 판정한다. 위 "관점"의 기준과 판정 사례가 잣대다.
-많은 사람이 좋다고 할지를 묻지 않는다. **더프롬의 이름으로 클라이언트에게 내보낼 수 있는가**를 묻는다.
+통합 인사이트 ${insights.length}건을 더프롬의 디렉터로서 판정한다. 많은 사람이 좋다고 할지를 묻지 않는다. **더프롬의 이름으로 클라이언트에게 내보낼 수 있는가**를 묻는다.
 
 ## 규칙
-- 기준마다 1~5점. 3점은 "문제는 없지만 더프롬이 아니어도 낼 수 있다"이다. 4점 이상은 그 기준에서 더프롬의 판단이 보일 때만 준다.
-- 인사이트를 서로 비교해서 매긴다. 전부 같은 점수를 주지 않는다.
-- \`verdict\`: 채택(그대로 내보낸다) · 보완(방향은 맞고 고칠 곳이 있다) · 기각(더프롬의 안이 아니다). 판정 사례와 같은 이유에 걸리면 기각한다.
-- \`safe\`: 이 안에서 무난해서 고르기 쉬운 부분. 없으면 빈 문자열.
-- \`push\`: 더프롬답게 더 밀어야 할 곳 한 문장. 채택이어도 쓴다.
-- \`precedent\`: 판정에 쓴 판정 사례가 있으면 그 내용을 한 구절로.
-${baseline?.concepts?.length ? '- 아래 기본안은 더프롬의 관점 없이 낸 안이다. 기본안과 같은 해법이면 "나로부터"와 "자메뷰"는 2점 이하다.' : ''}
+- \`checks\`: 확인할 수 있는 것만 본다 — ${CHECKS.join(' · ')}. 각각 ${CHECK_RESULTS.join(' · ')} 중 하나와 이유 한 문장. 근거가 없으면 "확인 필요"다.
+- \`differentiation\` · \`effectiveness\`: 위 "물을 것"에 한 문장씩 답하고 수준을 고른다. 답할 근거가 없는 물음은 빈 문자열로 두고 \`held\`에 적는다. 지어내지 않는다.
+  - 다르기만 한 안에 "차별화됨"을 주지 않는다. 기본안과 같은 해법이면 "다름에 그침"보다 높을 수 없다.
+  - "목적 초과"는 더 얻는 것이 무엇이고 왜 생기는지 말할 수 있을 때만 준다. 팩트 없이 쓴 판단에만 기대면 \`confidence\`는 "추정"이다.
+- \`held\`: 글만으로 판단할 수 없는 것 — 새로 읽히는 느낌, 조형의 완성도, 시안을 봐야 아는 것, 자료가 없어 알 수 없는 것. 무엇을 보면 판단할 수 있는지와 함께 적는다.
+- \`verdict\`: 채택(그대로 내보낸다) · 보완(방향은 맞고 고칠 곳이 있다) · 기각(더프롬의 안이 아니다) · 보류(시안이나 자료 없이는 정할 수 없다). 판정 사례와 같은 이유에 걸리면 기각한다.
+- \`safe\`: 무난해서 고르기 쉬운 부분. \`push\`: 더프롬답게 더 밀 곳 한 문장.
+- 인사이트끼리 견주어 판정한다. 전부 같은 수준을 주지 않는다.
 
 ## 출력 JSON
-{ "verdicts": [ { "insight": "N1", "scores": { ${lenses.map((l) => `"${l.id}": 0`).join(', ')} }, "why": { ${lenses.map((l) => `"${l.id}": "한 문장"`).join(', ')} }, "verdict": "채택|보완|기각", "safe": "", "push": "", "precedent": "" } ] }`,
+{ "verdicts": [ { "insight": "N1",
+  "checks": [ { "item": "${CHECKS[0]}", "result": "${CHECK_RESULTS.join('|')}", "why": "" } ],
+  "differentiation": { "level": "${DIFFERENTIATION.levels.join('|')}", ${q(DIFFERENTIATION)} },
+  "effectiveness": { "level": "${EFFECTIVENESS.levels.join('|')}", "confidence": "${EFFECTIVENESS.confidence.join('|')}", ${q(EFFECTIVENESS)} },
+  "held": ["판단할 수 없는 것 — 무엇을 보면 알 수 있나"], "verdict": "${VERDICTS4.join('|')}", "safe": "", "push": "", "precedent": "" } ] }`,
     user: `${missionBlock(project)}
 
 ## 통합 인사이트
-${j(insights.map((n) => ({ id: n.id, 제목: n.title, 인사이트: n.insight, 컨셉_방향: n.concept, 보이는_표현: n.visual, 지킬_관성: n.keep, 바꿀_해석: n.change, 달라지는_것: `${n.substitute.who} — ${n.substitute.changes}`, 기본안과의_차이: n.without?.difference })))}
+${j(insights.map((n) => ({ id: n.id, 제목: n.title, 인사이트: n.insight, 컨셉_방향: n.concept, 보이는_표현: n.visual, 지킬_관성: n.keep, 바꿀_해석: n.change, 달라지는_것: `${n.substitute.who} — ${n.substitute.changes}`, 기본안과의_차이: n.without?.difference, ...(n.facts?.length ? { 근거_팩트: n.facts } : {}) })))}
 ${baseline?.concepts?.length ? `\n## 더프롬의 관점 없이 낸 기본안\n${j(baseline.concepts)}\n` : ''}
 더프롬 판정을 JSON으로 출력하라.`,
   };
