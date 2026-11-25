@@ -25,6 +25,8 @@ const STANCES = new Set(['keep', 'change', 'limit', 'open']);
 const TYPES = new Set(['cause', 'condition', 'reinforce', 'tension']);
 const SOURCES = ['팩트', '브리프', '일반 관찰', '추론', '확인 필요'];
 const ASSUMED = 0.6;   // 팩트 없이 쓴 터널 판단의 비중
+const STAGE_NAMES = { baseline: '기본안', reframe: '프레임', route: '사조 고르기', activate: '노드 판단', link: '연결', integrate: '통합', cross: '교배', screen: '선별', duel: '대결', distinct: '같은 해법 확인', stance: '기조', attack: '공격', revise: '보완', hold: '기조 확인', verdict: '판정', direct: '방향', plan: '기획' };
+const LINK_AT_ONCE = 45;   // 한 번의 호출로 잇는 신호 수의 한도. 이보다 많으면 이슈별로 나눈다
 const clamp = (v, d = 0.5) => (Number.isFinite(+v) ? Math.min(1, Math.max(0, +v)) : d);
 const text = (v) => (typeof v === 'string' ? v.trim() : '');
 
@@ -300,7 +302,8 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
   const emit = (type, extra = {}) => onEvent({ type, run, ...extra });
   const call = async (args) => {
     if (signal?.aborted) throw new Error('취소됨');
-    const r = await provider.json({ ...args, tier: tierOf(args.task), signal });
+    let r; try { r = await provider.json({ ...args, tier: tierOf(args.task), signal }); }
+    catch (e) { if (!signal?.aborted && !/^\[/.test(e.message)) e.message = `[${STAGE_NAMES[args.task?.kind] || args.task?.kind || '호출'}] ${e.message}`; throw e; }   // 어느 단계에서 났는지 붙인다
     run.calls++;
     if (r.usage) { run.tokens.in += r.usage.in || 0; run.tokens.out += r.usage.out || 0; }
     return r.json;
@@ -392,8 +395,23 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
 
     // ③ 연결 — 관계를 문장이 아니라 엣지로 남긴다. 사람이 고친 엣지는 지킨다.
     emit('stage', { stage: 'link' });
-    const p = linkPrompt(project, run.signals, lensName);
-    const json = await call({ role: 'brain', ...p, task: { kind: 'link', project, signals: run.signals } });
+    // 신호가 많으면 한 번에 잇지 않는다. 엣지가 신호 수의 1~2배라 답이 길이 제한을 넘는다.
+    // 이슈마다 그 안의 연결을 따로 잇고, 이슈 사이의 연결은 한 번 더 본다
+    const issueIds = [...new Set(run.signals.map((x) => x.issue))];
+    let json;
+    if (run.signals.length > LINK_AT_ONCE && issueIds.length > 1) {
+      const jobs = [...issueIds.map((id) => ({ scope: { within: id }, signals: run.signals.filter((x) => x.issue === id) })).filter((jb) => jb.signals.length > 1),
+        { scope: { across: Math.max(12, issueIds.length * 8) }, signals: run.signals }];
+      const parts = await pool(jobs, s.concurrency, async (jb) => call({ role: 'brain', ...linkPrompt(project, jb.signals, lensName, jb.scope), task: { kind: 'link', project, signals: jb.signals, scope: jb.scope } }));
+      const seen = new Set(); const issueOf = new Map(run.signals.map((x) => [x.id, x.issue]));
+      json = { edges: parts.flatMap((part, i) => (Array.isArray(part?.edges) ? part.edges : []).filter((e) => {
+        const same = issueOf.get(e.from) === issueOf.get(e.to); if (jobs[i].scope.across ? same : !same) return false;   // 맡은 범위 밖의 엣지는 받지 않는다
+        const key = [e.from, e.to].sort().join('|'); if (seen.has(key)) return false; seen.add(key); return true; })) };
+      run.notes.push(`판단이 ${run.signals.length}건이라 연결을 ${jobs.length}번에 나눠 봤다(이슈별 ${jobs.length - 1}번, 이슈 사이 1번)`);
+    } else {
+      const p = linkPrompt(project, run.signals, lensName);
+      json = await call({ role: 'brain', ...p, task: { kind: 'link', project, signals: run.signals } });
+    }
     const { edges, rejected } = normalizeEdges(json, run.signals, run.edges.filter((e) => e.by === 'human'));
     if (rejected) run.notes.push(`이유가 없거나 같은 노드 안의 연결 ${rejected}건을 제외했다`);
     run.edges = edges;

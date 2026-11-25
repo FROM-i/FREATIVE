@@ -766,3 +766,25 @@ test('외곽선 형상 — 전구 · 번개 · 폰을 쥔 손 · 클라우드와
   // 모르는 형상은 기본 뇌로 돌아간다
   assert.equal(shapeFor({ settings: { look: { kind: 'nope' } } }), brainShape);
 });
+
+test('연결 — 판단이 45건을 넘으면 이슈별로 나눠 잇고 이슈 사이를 한 번 더 본다. 실패하면 단계 이름이 붙는다', async () => {
+  const { linkPrompt } = await import('../knowledge/prompts.js');
+  const issues = [{ id: 'I1', root: true, title: '근본 이슈', test: '판정 질문', tags: ['op-process'] }, ...[2, 3, 4, 5].map((n) => ({ id: `I${n}`, title: `하위 이슈 ${n}`, tags: ['dv-ops'] }))];
+  const project = newProject({ title: '이슈 5개', categories: ['ops'], brief: { what: '무엇', purpose: '목적', target: '타겟', success: '성공 기준' }, seed: { ops: { cycle: '연간', standard: '기준' } }, issues });
+  const mock = createMock({ delay: 0 }); const links = [];
+  const provider = { ...mock, json: async (a) => { if (a.task.kind === 'link') links.push({ n: a.task.signals.length, scope: a.task.scope || null, user: a.user, system: a.system }); return mock.json(a); } };
+  const run = await think(project, provider);
+  assert.ok(run.signals.length > 45, `판단 ${run.signals.length}건`);
+  assert.equal(links.length, 6); assert.equal(links.filter((l) => l.scope?.within).length, 5); assert.equal(links.filter((l) => l.scope?.across).length, 1);
+  for (const l of links.filter((x) => x.scope?.within)) { assert.ok(l.n <= 45); assert.match(l.system, new RegExp(`이슈 ${l.scope.within} 안의 신호끼리만`)); }
+  assert.match(links.find((l) => l.scope?.across).system, /서로 다른 이슈의 신호 사이만/);
+  assert.ok(run.edges.length > 0); assert.ok(run.notes.some((n) => /연결을 6번에 나눠/.test(n)));
+  // 이슈가 적으면 한 번에 잇는다
+  links.length = 0;
+  await think(newProject({ ...project, id: undefined, issues: issues.slice(0, 2) }), provider);
+  assert.equal(links.length, 1); assert.equal(links[0].scope, null);
+  assert.doesNotMatch(linkPrompt(project, [], () => '').system, /이번에는/);
+  // 어느 단계에서 실패했는지 메시지에 붙는다
+  const broken = { ...mock, json: async (a) => { if (a.task.kind === 'link') throw new Error('답이 길이 제한을 넘어 잘렸습니다'); return mock.json(a); } };
+  await assert.rejects(() => think(newProject({ ...project, id: undefined }), broken), /^Error: \[연결\] 답이 길이 제한을 넘어/);
+});
