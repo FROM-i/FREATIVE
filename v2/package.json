@@ -1,0 +1,19 @@
+{
+  "name": "thefrom-brain",
+  "productName": "THE FROM BRAIN",
+  "version": "2.0.0-alpha.1",
+  "description": "THE FROM BRAIN — FREATIVE 2.0. 단계를 노드로, 인과와 영향을 엣지로 두고 통합 인사이트를 한 번에 낸다.",
+  "author": "THE FROM",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "build": "node scripts/build-single.mjs",
+    "sync:isms": "node scripts/sync-isms.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10"
+  }
+}
