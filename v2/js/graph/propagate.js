@@ -15,7 +15,7 @@ const byId = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
  * 원인·조건은 결과 쪽으로 온전히, 전제 쪽으로는 절반이 흐른다(많은 판단의 전제가 되는 신호도 중요하다). 강화는 양쪽으로 흐른다.
  * 다른 노드군에서 온 지지는 온전히, 같은 노드군은 절반만 센다. 긴장은 에너지를 주지 않는다.
  */
-export function energies(signals, edges, { damping = 0.5, rounds = 24 } = {}) {
+export function energies(signals, edges, { damping = 0.5, rounds = 24, identityWeight = 1 } = {}) {
   const live = signals.filter((s) => !s.muted);
   const fam = new Map(live.map((s) => [s.id, s.family]));
   const base = new Map(live.map((s) => [s.id, clamp(s.strength)]));
@@ -24,8 +24,10 @@ export function energies(signals, edges, { damping = 0.5, rounds = 24 } = {}) {
     if (!POSITIVE.has(e.type) || !fam.has(e.from) || !fam.has(e.to)) continue;
     const cross = fam.get(e.from) === fam.get(e.to) ? 0.5 : 1;
     const w = clamp(e.weight) * cross;
-    incoming.get(e.to).push({ src: e.from, w });
-    incoming.get(e.from).push({ src: e.to, w: DIRECTED.has(e.type) ? w * 0.5 : w });
+    // 아이덴티티 판단이 주는 지지는 더 무겁다 — 더프롬의 관점과 이어진 판단이 앞에 선다
+    const lift = (id) => (fam.get(id) === 'identity' ? identityWeight : 1);
+    incoming.get(e.to).push({ src: e.from, w: w * lift(e.from) });
+    incoming.get(e.from).push({ src: e.to, w: (DIRECTED.has(e.type) ? w * 0.5 : w) * lift(e.to) });
   }
   let cur = new Map(base);
   for (let r = 0; r < rounds; r++) {

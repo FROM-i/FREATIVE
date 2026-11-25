@@ -7,15 +7,19 @@
 //   ⑤ 통합            묶음마다 통합 인사이트 하나 (묶음당 호출 1)
 //   ⑥ 가드            인사이트가 여러 노드군의 신호를 실제로 지났는지 코드로 확인한다
 //   ⑦ 통합 디렉션     인사이트를 기획·디자인·개발·서비스 관점의 할 일로 묶는다 (호출 1) — 중앙 통제
-import { issuesPrompt, routePrompt, activatePrompt, linkPrompt, integratePrompt, directionPrompt, baselinePrompt } from '../../knowledge/prompts.js';
+import { issuesPrompt, routePrompt, activatePrompt, linkPrompt, integratePrompt, directionPrompt, baselinePrompt, verdictPrompt, researchPrompt } from '../../knowledge/prompts.js';
+import { WEIGHTS, VERDICTS, SEED_PRECEDENTS, weightedScore, normalizeWeights } from '../../knowledge/viewpoint.js';
+import { validFacts, acceptResearch } from '../../knowledge/facts.js';
+import { LAYERS } from '../../knowledge/ism-depth.js';
 import { PERSPECTIVES } from '../../knowledge/tags.js';
-import { AIRPLANE, OPPOSITIONS, GATES, FAMILIES } from '../../knowledge/nodes.js';
+import { AIRPLANE, OPPOSITIONS, GATES, FAMILIES, IDENTITY } from '../../knowledge/nodes.js';
 import { activeLenses, signalPrefix, hints, lensName, validateProject, needsDevelopment } from '../graph/model.js';
 import { propagate } from '../graph/propagate.js';
 
 const STANCES = new Set(['keep', 'change', 'limit', 'open']);
 const TYPES = new Set(['cause', 'condition', 'reinforce', 'tension']);
-const SOURCES = ['브리프', '일반 관찰', '추론', '확인 필요'];
+const SOURCES = ['팩트', '브리프', '일반 관찰', '추론', '확인 필요'];
+const ASSUMED = 0.6;   // 팩트 없이 쓴 터널 판단의 비중
 const clamp = (v, d = 0.5) => (Number.isFinite(+v) ? Math.min(1, Math.max(0, +v)) : d);
 const text = (v) => (typeof v === 'string' ? v.trim() : '');
 
@@ -39,6 +43,7 @@ export async function proposeIssues(project, provider, { signal } = {}) {
 
 function normalizeSignals(raw, lens, project, max, startAt, hinted) {
   const issues = new Map(project.issues.map((i) => [String(i.id).toLowerCase(), i.id]));
+  const factIds = new Set((project.facts || []).map((f) => f.id));
   const perIssue = new Map();
   const out = [];
   let dropped = 0; let shallow = 0;
@@ -51,20 +56,25 @@ function normalizeSignals(raw, lens, project, max, startAt, hinted) {
     // 훑고 지나간 신호는 신호가 아니다 — 생각의 과정을 남기지 못하면 버린다
     const ladder = (Array.isArray(s.ladder) ? s.ladder : []).map(text).filter(Boolean).slice(0, 5);
     const ism = lens.family === 'airplane';
-    const deep = ladder.length >= 3 && (ism ? text(s.origin) && text(s.parallel) && text(s.swap) : true);
+    const deep = ladder.length >= 3 && (ism ? text(s.origin) && text(s.parallel) && (text(s.reading) || text(s.swap)) : true);
     if (!deep) { shallow++; continue; }
     const n = perIssue.get(issue) || 0;
     if (n >= max) { dropped++; continue; }
     perIssue.set(issue, n + 1);
     const hint = hinted.has(`${issue}|${lens.id}`);
+    // 팩트 — 팩트북에 있는 id만 받는다. 터널 판단이 팩트 없이 나오면 추정으로 표시하고 비중을 낮춘다.
+    const facts = [...new Set((Array.isArray(s.facts) ? s.facts : []).map(text).filter((id) => factIds.has(id)))];
+    const assumed = lens.family === 'tunnel' && !facts.length;
+    const base = clamp(s.strength) * (assumed ? ASSUMED : 1) + (facts.length && lens.family !== 'tunnel' ? 0.05 : 0);
     out.push({
       id: `${signalPrefix(lens.id)}-${startAt + out.length + 1}`,
       lens: lens.id, family: lens.family, issue, ladder, claim, effect,
       basis: text(s.basis),
-      ...(ism ? { origin: text(s.origin), parallel: text(s.parallel), treatment: text(s.treatment), swap: text(s.swap), leave: text(s.leave) } : { against: text(s.against) }),
+      ...(ism ? { origin: text(s.origin), parallel: text(s.parallel), strand: text(s.strand), paradox: text(s.paradox), reading: text(s.reading), layer: LAYERS.includes(text(s.layer)) ? text(s.layer) : '원리', degree: clamp(s.degree, 0.5), expression: text(s.expression), swap: text(s.swap), ...(text(s.treatment) ? { treatment: text(s.treatment) } : {}), ...(text(s.leave) ? { leave: text(s.leave) } : {}) } : { against: text(s.against) }),
+      ...(facts.length ? { facts } : {}), ...(assumed ? { assumed: true } : {}), ...(text(s.need) ? { need: text(s.need) } : {}),
       stance: STANCES.has(s.stance) ? s.stance : 'change',
-      strength: Math.min(1, clamp(s.strength) + (hint ? 0.15 : 0)),
-      source: SOURCES.includes(text(s.source)) ? text(s.source) : '추론',
+      strength: +Math.min(1, base + (hint ? 0.15 : 0)).toFixed(3),
+      source: facts.length ? '팩트' : (SOURCES.includes(text(s.source)) && text(s.source) !== '팩트' ? text(s.source) : '추론'),
       hinted: hint || undefined,
     });
   }
@@ -133,6 +143,32 @@ function shapeInsight(raw, check, cluster, n) {
   };
 }
 
+/** 더프롬 판정 정리 — 기준별 점수(1~5)에 가중치를 곱해 0~100으로 만든다. 순서는 점수순이다. */
+export function shapeVerdict(raw, insights, weights = WEIGHTS) {
+  const w = normalizeWeights(weights);
+  const ids = new Set(insights.map((i) => i.id));
+  const items = [];
+  for (const v of Array.isArray(raw?.verdicts) ? raw.verdicts : []) {
+    const id = text(v.insight);
+    if (!ids.has(id) || items.some((x) => x.insight === id)) continue;
+    const scores = Object.fromEntries(Object.keys(w).map((k) => [k, Math.min(5, Math.max(1, Math.round(+v.scores?.[k] || 1)))]));
+    items.push({ insight: id, scores, why: Object.fromEntries(Object.keys(w).map((k) => [k, text(v.why?.[k])])), verdict: VERDICTS.includes(text(v.verdict)) ? text(v.verdict) : '보완', safe: text(v.safe), push: text(v.push), precedent: text(v.precedent), score: weightedScore(scores, w) });
+  }
+  items.sort((a, b) => b.score - a.score || a.insight.localeCompare(b.insight, undefined, { numeric: true }));
+  return { weights: w, items, missing: insights.filter((i) => !items.some((x) => x.insight === i.id)).map((i) => i.id) };
+}
+
+/**
+ * 팩트북 조사 — 웹 검색이 되는 공급자(provider.research)만 쓴다.
+ * 돌려받은 항목은 코드가 다시 거른다: 받는 출처 네 가지 · 원문 주소 · 날짜가 없으면 넣지 않는다.
+ */
+export async function researchFacts(project, provider, { signal, perKind = 3 } = {}) {
+  if (typeof provider.research !== 'function') throw new Error('이 모델은 웹 조사를 지원하지 않습니다. 웹 검색이 되는 모델로 바꾸거나 팩트북 md를 불러오세요.');
+  const p = researchPrompt(project, perKind);
+  const r = await provider.research({ ...p, signal, task: { kind: 'research', project } });
+  return acceptResearch(r.json, project);
+}
+
 /** 디렉션 가드 — 관점마다 방향·할 일·근거 인사이트가 있어야 한다 */
 export function checkDirection(raw, insights, needDev, baseline = null) {
   const ids = new Set(insights.map((i) => i.id));
@@ -178,13 +214,20 @@ export function checkDirection(raw, insights, needDev, baseline = null) {
 /** 유실을 숫자로 — 낸 신호 중 몇 건이 인사이트까지 갔는가 */
 export function usage(run) {
   const live = run.signals.filter((s) => !s.muted);
+  const tunnel = live.filter((s) => s.family === 'tunnel');
   const used = new Set((run.insights || []).flatMap((i) => i.check.used));
   const byFamily = {};
   for (const f of Object.keys(FAMILIES)) {
     const mine = live.filter((s) => s.family === f);
     byFamily[f] = { signals: mine.length, used: mine.filter((s) => used.has(s.id)).length };
   }
-  return { signals: live.length, used: live.filter((s) => used.has(s.id)).length, unused: live.filter((s) => !used.has(s.id)).map((s) => s.id), byFamily };
+  const factsUsed = [...new Set(live.flatMap((s) => s.facts || []))];
+  return {
+    signals: live.length, used: live.filter((s) => used.has(s.id)).length, unused: live.filter((s) => !used.has(s.id)).map((s) => s.id), byFamily,
+    // 팩트 — 판단 몇 건이 실제 자료에 기댔는가, 터널 판단 중 추정은 몇 건인가
+    backed: live.filter((s) => s.facts?.length).length, factsUsed,
+    tunnel: { signals: tunnel.length, backed: tunnel.filter((s) => s.facts?.length).length, assumed: tunnel.filter((s) => s.assumed).length },
+  };
 }
 
 /**
@@ -193,13 +236,15 @@ export function usage(run) {
  * @param {object} o
  * @param {'full'|'add'|'relink'} o.mode  full 처음부터 · add 새 이슈만 발화 · relink 신호·엣지는 두고 전파·통합만
  */
-export async function think(project, provider, { onEvent = () => {}, signal, mode = 'full' } = {}) {
+export async function think(project, provider, { onEvent = () => {}, signal, mode = 'full', precedents = SEED_PRECEDENTS } = {}) {
   if (!project.issues.some((i) => text(i.title))) throw new Error('이슈가 없습니다. 근본 이슈를 하나 이상 넣어 주세요.');
   // 세팅 점검 — 틀을 채운 이슈만 발화에 들어간다. 태그가 비면 규칙 기반 추천을 붙인다.
   const setup = validateProject(project);
   if (setup.blocking) throw new Error(`세팅이 끝나지 않았습니다: ${setup.problems.filter((x) => x.where.startsWith('이슈')).map((x) => `${x.where} — ${x.what}`).join(' / ')}`);
   const whole = project;
-  project = { ...project, issues: setup.ready };
+  const fb = validFacts(project);
+  // 모든 호출이 더프롬의 관점(가중치 · 판정 사례)과 팩트북을 받는다
+  project = { ...project, issues: setup.ready, facts: fb.facts, view: { precedents } };
   const s = project.settings;
   const started = Date.now();
   const prev = mode === 'full' ? null : project.run;
@@ -209,9 +254,12 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
     picks: prev?.picks || [], signals: prev ? prev.signals.map((x) => ({ ...x })) : [],
     edges: prev ? prev.edges.map((x) => ({ ...x })) : [], energy: {}, clusters: [], insights: [],
     baseline: prev?.baseline || null,
+    facts: { total: fb.facts.length, rejected: fb.rejected, unchecked: fb.facts.filter((f) => f.by === 'ai' && !f.checked).length },
     failed: [], notes: setup.problems.map((x) => `세팅: ${x.where} — ${x.what}`), calls: 0, tokens: { in: 0, out: 0 },
     setup: { ok: setup.ok, issues: setup.ready.map((i) => ({ id: i.id, tags: i.tags, auto: i.autoTags })), skipped: whole.issues.filter((i) => !setup.ready.some((r) => r.id === i.id)).map((i) => i.id) },
   };
+  if (fb.rejected) run.notes.push(`팩트북: 출처 조건을 채우지 못한 ${fb.rejected}건을 제외했다`);
+  if (!fb.facts.length) run.notes.push('팩트북이 비어 있다 — 터널 판단은 모두 추정으로 표시된다');
   const emit = (type, extra = {}) => onEvent({ type, run, ...extra });
   const call = async (args) => {
     if (signal?.aborted) throw new Error('취소됨');
@@ -296,7 +344,7 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
 
   // ④ 전파·수렴 — 결정적 계산
   emit('stage', { stage: 'propagate' });
-  const result = propagate(run.signals, run.edges, { count: s.insightCount });
+  const result = propagate(run.signals, run.edges, { count: s.insightCount, identityWeight: s.identityWeight ?? 1.5 });
   run.energy = Object.fromEntries([...result.energy].map(([k, v]) => [k, +v.toFixed(3)]));
   run.clusters = result.clusters;
   run.link = result.stats;
@@ -322,10 +370,22 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
     return insight;
   });
   run.usage = usage(run);
+  for (const ins of run.insights) ins.facts = [...new Set(ins.check.used.flatMap((id) => sigMap.get(id)?.facts || []))];
 
-  // ⑦ 통합 디렉션 — 관점별 할 일. 가드에 걸리면 이유를 붙여 한 번 다시 쓴다.
+  // 더프롬 판정 — 통합 인사이트를 더프롬의 기준(가중치 · 판정 사례)으로 채점한다. 합계는 코드가 계산한다.
+  emit('stage', { stage: 'verdict' });
+  {
+    const p = verdictPrompt(project, run.insights, IDENTITY, run.baseline);
+    const raw = await call({ role: 'director', ...p, task: { kind: 'verdict', project, insights: run.insights } });
+    run.verdict = shapeVerdict(raw, run.insights, s.weights);
+    for (const ins of run.insights) ins.from = run.verdict.items.find((v) => v.insight === ins.id) || null;
+    if (run.verdict.missing.length) run.notes.push(`더프롬 판정을 받지 못한 인사이트: ${run.verdict.missing.join(', ')}`);
+    emit('verdict');
+  }
+
+  // ⑦ 통합 디렉션 — 관점별 할 일. 가드에 걸리면 이유를 붙여 한 번 다시 쓴다. 기각된 인사이트는 넣지 않는다.
   emit('stage', { stage: 'direct' });
-  const good = run.insights.filter((i) => i.check.ok);
+  const good = run.insights.filter((i) => i.check.ok && i.from?.verdict !== '기각');
   const basis = good.length ? good : run.insights;
   const needDev = needsDevelopment(project);
   let dcheck; let dnote = '';

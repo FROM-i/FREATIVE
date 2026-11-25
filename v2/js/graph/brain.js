@@ -129,6 +129,13 @@ export function seats(nodes) {
     const r = issues.length > 6 ? 78 : 58;
     seat.set(n.id, { x: CORE.x + Math.cos(a) * r, y: CORE.y + Math.sin(a) * r * 0.8, k: 0.1 });
   });
+  // 팩트 — 소뇌에 줄지어 놓는다. 기억해 둔 자료의 자리다.
+  const facts = nodes.filter((n) => n.type === 'fact');
+  facts.forEach((n, i) => {
+    const cols = Math.min(6, Math.max(3, Math.ceil(Math.sqrt(facts.length * 1.6))));
+    const row = Math.floor(i / cols); const col = i % cols;
+    seat.set(n.id, { x: CEREBELLUM.x - 62 + col * (124 / Math.max(1, cols - 1)), y: CEREBELLUM.y - 30 + row * 20, k: 0.14 });
+  });
   for (const n of nodes) {
     if (n.type === 'gate') seat.set(n.id, { x: 628, y: 612, k: 0.12 });
     if (n.type === 'project') seat.set(n.id, { x: 664, y: 716, k: 0.12 });

@@ -99,6 +99,7 @@ export const DEFAULTS = {
   ismCount: 4,          // Airplane에서 발화시킬 사조 수 (대립 쌍 1개 포함)
   signalsPerLens: 1,    // 노드 하나가 이슈 하나에 내는 신호의 최대 수 — 얕은 둘보다 깊은 하나
   insightCount: 3,      // 통합 인사이트 수 N
+  identityWeight: 1.5,  // 아이덴티티 판단이 다른 판단을 지지하는 힘의 배수 — 더프롬의 관점이 무게중심
   concurrency: 4,       // 동시 호출 수
   minFamilies: 2,       // 통합 인사이트가 반드시 걸쳐야 하는 기본 노드군 수 (3이면 모두)
   minLenses: 3,         // 통합 인사이트가 근거로 삼아야 하는 서로 다른 노드 수

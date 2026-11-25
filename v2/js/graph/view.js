@@ -38,7 +38,7 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
   };
 
   // ---------- 데이터 ----------
-  const radius = (n) => ({ lens: n.dormant || n.muted ? 3 : 5.5, gate: 4.5, project: 6, issue: 8.5, insight: 12, signal: 2.6 + 3.4 * (n.energy || 0) }[n.type] || 4);
+  const radius = (n) => ({ lens: n.dormant || n.muted ? 3 : 5.5, gate: 4.5, project: 6, issue: 8.5, insight: 12, signal: 2.6 + 3.4 * (n.energy || 0), fact: 3.4 }[n.type] || 4);
   const visible = (n) => n.type !== 'hub' && (n.type !== 'signal' || state.show.signals) && (!(n.type === 'lens' && n.dormant) || state.show.dormant);
 
   function setData({ nodes, links }) {
@@ -46,7 +46,7 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
     const next = nodes.map((n) => { const old = state.byId.get(n.id); const node = old ? Object.assign(old, n) : { ...n, vx: 0, vy: 0 }; node.seat = seat.get(n.id) || null; node.r = radius(node); return node; });
     const fresh = next.filter((n) => n.x == null);
     state.nodes = next; state.byId = new Map(next.map((n) => [n.id, n]));
-    for (const type of ['project', 'hub', 'issue', 'lens', 'gate', 'signal', 'insight']) {
+    for (const type of ['project', 'hub', 'issue', 'lens', 'gate', 'fact', 'signal', 'insight']) {
       for (const n of fresh.filter((f) => f.type === type)) {
         if (n.seat) { n.x = n.seat.x; n.y = n.seat.y; n.z = type === 'lens' ? thickness(n.x, n.y) * 0.9 : 0; }
         else if (type === 'signal') {
@@ -204,7 +204,7 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
       if (!visible(l.a) || !visible(l.b)) continue;
       const active = !on || (on.has(l.source) && on.has(l.target));
       const judged = JUDGED.has(l.kind);
-      const structural = l.kind === 'emit' || l.kind === 'target';
+      const structural = l.kind === 'emit' || l.kind === 'target' || l.kind === 'evidence';
       const near = l.source === (state.hover || state.selected) || l.target === (state.hover || state.selected);
       if (structural && !(near || (state.focus && active))) continue;
       const w = l.weight || 0.5;
@@ -253,6 +253,7 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
       else if (n.type === 'lens') { if (dim) { ctx.strokeStyle = COLORS.holo; ring(x, y, r); } else { ctx.fillStyle = COLORS.holo; disc(x, y, r * 0.62); ctx.strokeStyle = COLORS.holo; ctx.globalAlpha *= 0.6; ring(x, y, r + 2.5); } }
       else if (n.type === 'gate') { ctx.strokeStyle = COLORS.holo; ring(x, y, r); ctx.beginPath(); ctx.moveTo(x - r, y); ctx.lineTo(x + r, y); ctx.stroke(); }
       else if (n.type === 'project') { ctx.strokeStyle = COLORS.holo; ring(x, y, r); ring(x, y, r + 4); }
+      else if (n.type === 'fact') { ctx.fillStyle = COLORS.holo; ctx.fillRect(x - r * 0.75, y - 0.9, r * 1.5, 1.8); ctx.strokeStyle = n.unchecked ? COLORS.red : COLORS.holo; ring(x, y, r); }
       else { ctx.fillStyle = COLORS.holo; disc(x, y, r); }
 
       const pulse = state.pulses.get(n.id);

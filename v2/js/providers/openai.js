@@ -76,5 +76,15 @@ export function createOpenAI(config = {}, { getKey = () => '', getCode = () => '
       }
       throw new Error('OpenAI 요청 실패 — 선택 항목을 빼도 거절됨');
     },
+    /**
+     * 웹 조사 — Responses API의 웹 검색 도구를 켜고 부른다. 팩트북 조사에만 쓴다.
+     * 돌려받은 항목은 엔진이 출처 조건으로 다시 거른다. 실제 키로는 아직 확인하지 못했다.
+     */
+    async research({ system, user, signal }) {
+      const model = c.models.brain || c.models.director;
+      const body = { model, instructions: system, input: [{ role: 'user', content: [{ type: 'input_text', text: user }] }], tools: [{ type: 'web_search' }] };
+      const r = await post('/responses', body, signal);
+      return { json: parseJSON(readResponse(r)), model, usage: r.usage ? { in: r.usage.input_tokens || 0, out: r.usage.output_tokens || 0 } : null };
+    },
   };
 }

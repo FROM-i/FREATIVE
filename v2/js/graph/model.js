@@ -17,6 +17,7 @@ export function newProject(seed = {}) {
     category: seed.category || null,                       // 여섯 분류 중 하나 (knowledge/tags.js)
     brief: { what: '', purpose: '', target: '', product: '', channel: '', note: '', ...(seed.brief || {}) },   // 공통 인풋
     seed: { ...(seed.seed || {}) },                        // 분류별 인풋 — { [분류]: { [칸]: 값 } }
+    facts: (seed.facts || []).map((f) => ({ ...f })),      // 팩트북 — 출처가 있는 실제 자료 (knowledge/facts.js)
     issues: (seed.issues || []).map((i, n) => ({ id: i.id || `I${n + 1}`, title: '', detail: '', test: '', root: false, tags: [], ...i })),
     settings: { ...DEFAULTS, muted: [], pinned: [], ...(seed.settings || {}) },
     run: seed.run || null,
@@ -139,6 +140,10 @@ export function buildGraph(project) {
       link(s.lens, s.id, 'emit');
       if (ids.has(s.issue)) link(s.id, s.issue, 'target');
     }
+    // 팩트 — 판단이 기댄 팩트만 브레인 맵에 올린다 (소뇌 자리)
+    const cited = new Set(run.signals.flatMap((x) => x.facts || []));
+    for (const f of (project.facts || []).filter((x) => cited.has(x.id))) add({ id: f.id, type: 'fact', name: f.text, source: f.source, size: 1.5, unchecked: f.by === 'ai' && !f.checked });
+    for (const x of run.signals) for (const fid of x.facts || []) if (cited.has(fid) && nodes.some((n) => n.id === fid)) link(x.id, fid, 'evidence');
     for (const e of run.edges) link(e.from, e.to, e.type, { id: e.id, weight: e.weight, why: e.why, judged: true, by: e.by });
     for (const ins of run.insights || []) {
       add({ id: ins.id, type: 'insight', name: ins.title, size: 4.5, flagged: !ins.check?.ok });
@@ -163,6 +168,8 @@ export function describe(project, id) {
   if (signal) return { kind: 'signal', signal, edges: edgesOf(id), insights: (run.insights || []).filter((i) => i.check?.used?.includes(id)) };
   const insight = (run?.insights || []).find((i) => i.id === id);
   if (insight) return { kind: 'insight', insight };
+  const fact = (project.facts || []).find((f) => f.id === id);
+  if (fact) return { kind: 'fact', fact, signals: signals.filter((x) => (x.facts || []).includes(id)) };
   if (id === project.id) return { kind: 'project' };
   return null;
 }

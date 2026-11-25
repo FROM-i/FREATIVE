@@ -30,7 +30,7 @@ test('사고 패스 — 발화 · 연결 · 수렴 · 통합이 한 번에 돈�
   const events = [];
   const run = await think(p, createMock(), { onEvent: (e) => events.push(e.type === 'stage' ? e.stage : e.type) });
   const lenses = IDENTITY.length + TUNNEL.length + p.settings.ismCount;
-  assert.equal(run.calls, 1 + 1 + lenses + 1 + p.settings.insightCount + 1, '호출 수 = 기본안 1 + 사조 고르기 1 + 노드 수 + 연결 1 + 인사이트 수 + 디렉션 1');
+  assert.equal(run.calls, 1 + 1 + lenses + 1 + p.settings.insightCount + 1 + 1, '호출 수 = 기본안 1 + 사조 고르기 1 + 노드 수 + 연결 1 + 인사이트 수 + 더프롬 판정 1 + 디렉션 1');
   assert.equal(new Set(run.signals.map((s) => s.lens)).size, lenses, '모든 노드가 발화했다');
   assert.deepEqual(events.filter((e) => ['route', 'activate', 'link', 'propagate', 'integrate', 'direct', 'done'].includes(e)), ['route', 'activate', 'link', 'propagate', 'integrate', 'direct', 'done']);
   assert.ok(OPPOSITIONS.some((o) => run.picks.some((x) => x.id === o.a) && run.picks.some((x) => x.id === o.b)), '대립하는 사조 쌍이 들어 있다');
@@ -106,7 +106,7 @@ test('사람의 개입 — 엣지를 고치면 발화 없이 전파·통합만 �
   const kinds = [];
   const mock = createMock();
   const again = await think(p, { name: 'spy', json: (a) => { kinds.push(a.task.kind); return mock.json(a); } }, { mode: 'relink' });
-  assert.ok(kinds.length > again.clusters.length && kinds.every((k) => k === 'integrate' || k === 'direct'), '통합·디렉션 호출만 있다');
+  assert.ok(kinds.length > again.clusters.length && kinds.every((k) => k === 'integrate' || k === 'direct' || k === 'verdict'), '통합·판정·디렉션 호출만 있다');
   assert.equal(again.signals.length, 26);
   assert.ok(!again.clusters.some((c) => c.members.includes('BRUTAL-1')));
   assert.notDeepEqual(again.clusters.map((c) => c.members.join()), before);
@@ -290,4 +290,95 @@ test('기본안 대조 — 브레인 없이 낸 안을 먼저 받고, 통합 인
   const again = await think(p, spy, { mode: 'relink' });
   assert.ok(!kinds.includes('baseline'));
   assert.deepEqual(again.baseline, run.baseline);
+});
+
+test('사조 — 가져올 것/두고 올 것 대신 시대 · 갈래 · 모순 · 읽기 · 층과 세기로 받는다', async () => {
+  const { ISM_DEPTH, LAYERS, depthBlock } = await import('../knowledge/ism-depth.js');
+  const { activatePrompt } = await import('../knowledge/prompts.js');
+  const { AIRPLANE } = await import('../knowledge/nodes.js');
+  assert.equal(Object.keys(ISM_DEPTH).length, 16);
+  for (const a of AIRPLANE) { const d = ISM_DEPTH[a.id]; assert.ok(d && d.era && d.question && d.paradox && d.strands.length >= 2, a.id); }
+  const p = sample();
+  const pr = activatePrompt(p, AIRPLANE.find((a) => a.id === 'ISM-SWISS'), 1);
+  assert.ok(pr.system.includes(depthBlock('ISM-SWISS')), '사조의 깊이 자료가 프롬프트에 들어간다');
+  for (const k of ['"strand"', '"paradox"', '"reading"', '"layer"', '"degree"']) assert.ok(pr.system.includes(k), k);
+  assert.ok(!pr.system.includes('"leave"') && !pr.system.includes('"treatment"'), '두고 올 것 · 다루는 방식 칸은 없다');
+  const run = await think(p, createMock());
+  const ism = run.signals.filter((s) => s.family === 'airplane');
+  assert.ok(ism.length && ism.every((s) => LAYERS.includes(s.layer) && s.degree >= 0 && s.degree <= 1));
+});
+
+test('더프롬 판정 — 관점이 모든 호출에 들어가고, 가중 합계는 코드가 계산한다', async () => {
+  const { shapeVerdict } = await import('../js/engine/think.js');
+  const { WEIGHTS, weightedScore, viewpointBlock, normalizeWeights } = await import('../knowledge/viewpoint.js');
+  const { baselinePrompt } = await import('../knowledge/prompts.js');
+  const p = sample();
+  const systems = [];
+  const mock = createMock();
+  const spy = { ...mock, json: (a) => { systems.push([a.task.kind, a.system]); return mock.json(a); } };
+  const mine = [{ id: 'PR-X', verdict: '기각', what: '테스트용 사례', why: '이유' }];
+  const run = await think(p, spy, { precedents: mine });
+  for (const [kind, sys] of systems) {
+    if (kind === 'baseline') assert.ok(!sys.includes('더프롬의 눈으로'), '기본안은 더프롬의 관점 없이 낸다');
+    else assert.ok(sys.startsWith('## 관점 — 더프롬의 눈으로 본다') && sys.includes('테스트용 사례'), `${kind} 호출에 관점과 판정 사례가 들어간다`);
+  }
+  assert.ok(!baselinePrompt(p).system.includes('자메뷰'));
+  assert.equal(run.verdict.items.length, run.insights.length);
+  assert.deepEqual(run.verdict.items.map((v) => v.score), [...run.verdict.items.map((v) => v.score)].sort((a, b) => b - a), '점수순');
+  assert.ok(run.insights.every((i) => i.from && ['채택', '보완', '기각'].includes(i.from.verdict)));
+  // 가중치 — 자메뷰가 가장 무겁다. 같은 점수 묶음이라도 무거운 기준이 높으면 합계가 높다
+  assert.equal(Math.round(Object.values(normalizeWeights(WEIGHTS)).reduce((a, b) => a + b, 0) * 100), 100);
+  const hi = weightedScore({ 'ID-JAMAIS': 5, 'ID-FROM': 3, 'ID-BENEFIT': 3, 'ID-ONEU': 3, 'ID-INERTIA': 3, 'ID-YELLOW': 1 });
+  const lo = weightedScore({ 'ID-JAMAIS': 1, 'ID-FROM': 3, 'ID-BENEFIT': 3, 'ID-ONEU': 3, 'ID-INERTIA': 3, 'ID-YELLOW': 5 });
+  assert.ok(hi > lo);
+  assert.equal(weightedScore(Object.fromEntries(Object.keys(WEIGHTS).map((k) => [k, 5]))), 100);
+  // 기각된 인사이트는 디렉션의 근거가 되지 않는다
+  const raw = { verdicts: run.insights.map((i, n) => ({ insight: i.id, scores: {}, verdict: n === 0 ? '기각' : '채택' })) };
+  assert.equal(shapeVerdict(raw, run.insights).items.find((v) => v.insight === run.insights[0].id).verdict, '기각');
+  assert.ok(viewpointBlock([], WEIGHTS).indexOf('자메뷰') < viewpointBlock([], WEIGHTS).indexOf('노랑'), '무거운 기준이 먼저 나온다');
+});
+
+test('팩트북 — 출처 조건, 터널 추정 표시, AI 조사 거르기, md 왕복', async () => {
+  const { factProblem, validFacts, acceptResearch, factsToMarkdown, parseFactbook } = await import('../knowledge/facts.js');
+  const { researchFacts } = await import('../js/engine/think.js');
+  const ok = { id: 'F1', kind: 'stat', text: '사실', sourceType: 'stat', source: '통계청', date: '2026-01', url: 'https://example.go.kr/a', by: 'ai', checked: false };
+  assert.equal(factProblem(ok), '');
+  assert.ok(factProblem({ ...ok, url: '' }).includes('주소'));
+  assert.ok(factProblem({ ...ok, date: '' }).includes('날짜'));
+  assert.ok(factProblem({ ...ok, sourceType: 'blog' }).includes('출처 유형'));
+  assert.ok(factProblem({ ...ok, sourceType: 'internal' }).includes('내부 자료'), 'AI는 내부 자료를 만들 수 없다');
+  assert.equal(factProblem({ ...ok, by: 'human', sourceType: 'internal', url: '', date: '' }), '', '직접 입력은 내부 자료를 쓸 수 있다');
+  // 팩트가 없으면 터널 판단은 모두 추정이고 비중이 낮다
+  const bare = sample(); bare.facts = [];
+  const r0 = await think(bare, createMock());
+  assert.equal(r0.usage.tunnel.assumed, r0.usage.tunnel.signals);
+  assert.ok(r0.notes.some((n) => n.includes('팩트북이 비어')));
+  // 팩트가 있으면 근거가 붙고 추정이 준다
+  const p = sample();
+  const r1 = await think(p, createMock());
+  assert.ok(r1.usage.tunnel.backed > 0 && r1.usage.tunnel.assumed < r0.usage.tunnel.assumed);
+  assert.ok(r1.signals.filter((s) => s.facts).every((s) => s.source === '팩트' && s.facts.every((id) => ['F1', 'F2'].includes(id))));
+  const a0 = r0.signals.find((s) => s.family === 'tunnel' && s.assumed); const a1 = r1.signals.find((s) => s.id === a0.id);
+  if (a1 && !a1.assumed) assert.ok(a1.strength > a0.strength, '팩트가 붙은 터널 판단이 더 무겁다');
+  assert.ok(r1.insights.some((i) => i.facts.length), '인사이트에 근거 팩트가 모인다');
+  // AI 조사 — 받는 출처 · 주소 · 날짜가 없으면 거른다
+  const raw = { facts: [
+    { kind: 'stat', text: '통과', sourceType: 'stat', source: '통계청', date: '2026-02', url: 'https://kosis.kr/x', quote: '구절' },
+    { kind: 'trend', text: '기사', sourceType: 'news', source: '어느 신문', date: '2026-02', url: 'https://news.example.com/x' },
+    { kind: 'notice', text: '주소 없음', sourceType: 'press', source: '회사', date: '2026-02', url: '' },
+    { kind: 'stat', text: '통과', sourceType: 'stat', source: '통계청', date: '2026-02', url: 'https://kosis.kr/x' },
+  ], missing: ['공시를 찾지 못함'] };
+  const got = acceptResearch(raw, { facts: [ok] });
+  assert.equal(got.facts.length, 1); assert.equal(got.facts[0].id, 'F2'); assert.equal(got.facts[0].checked, false);
+  assert.equal(got.rejected.length, 3); assert.deepEqual(got.missing, ['공시를 찾지 못함']);
+  await assert.rejects(() => researchFacts(p, createMock()), /웹 조사/);
+  const viaProvider = await researchFacts({ ...p, facts: [] }, { research: async () => ({ json: raw }) });
+  assert.equal(viaProvider.facts.length, 1);
+  // md 왕복
+  const proj = { title: '테스트', facts: [ok, { ...got.facts[0] }, { id: 'F9', kind: 'habit', text: '직접 넣은 것', sourceType: 'internal', source: '브리프', date: '', url: '', by: 'human', checked: true }] };
+  const md = factsToMarkdown(proj);
+  const back = parseFactbook(md);
+  assert.equal(back.length, 3);
+  assert.deepEqual(back.map((f) => [f.id, f.kind, f.sourceType, f.source, f.url, f.by, f.checked]).sort(), proj.facts.map((f) => [f.id, f.kind, f.sourceType, f.source, f.url, f.by, f.checked]).sort());
+  assert.equal(validFacts({ facts: back }).facts.length, 3);
 });

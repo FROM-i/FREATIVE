@@ -44,9 +44,53 @@
 | ④ | 묶기 | 지지도와 묶음을 계산한다. AI를 부르지 않아서 같은 입력이면 같은 결과가 나온다 | 0 |
 | ⑤ | 통합 | 묶음마다 통합 인사이트 1건 | 3 |
 | ⑥ | 검증 | 인사이트가 묶음의 모든 노드군을 거쳤는지 ID로 센다. 걸리면 이유를 붙여 1번 다시 쓴다 | 걸린 건당 +1 |
+| ⑥′ | 더프롬 판정 | 인사이트를 더프롬의 기준 6개로 채점하고 채택 · 보완 · 기각을 정한다. 가중 합계는 코드가 계산한다 | 1 |
 | ⑦ | 통합 디렉션 | 인사이트를 기획 · 디자인 · 개발 · 서비스 관점의 할 일로 정리하고, 인사이트마다 기본안과 같은 해법인지 판정한다 | 1 |
 
-기본값이면 21회다.
+기본값이면 22회다. 팩트북 조사는 따로 1회다.
+
+### 더프롬의 관점 — 판단의 무게중심 (`knowledge/viewpoint.js`)
+
+판단이 폭넓은 평균이 아니라 더프롬의 관점에서 출발하게 하는 장치다.
+
+1. **모든 호출의 맨 앞에 관점을 넣는다.** "중립 심사자가 아니라 더프롬의 디렉터로 본다"는 지시, 기준 6개와 무게, 판정 사례가 들어간다. ⓪ 기본안만 예외다. 기본안은 더프롬의 관점 없이 낸 안이어야 비교 기준이 된다.
+2. **기준별 무게.** 자메뷰 25 · 나로부터 20 · 사람이 얻는 것 20 · 1U 15 · 관성/해석 10 · 노랑 10 (%). 설정에서 바꾼다.
+3. **판정 사례.** 대표와 디렉터가 실제로 내린 채택 · 기각과 이유다. 인사이트에서 채택 · 기각을 누르고 이유를 적으면 쌓인다. 프로젝트와 따로 저장하고, 최근 12건을 모든 분석에 넣는다. 처음 5건은 2026-11-25 대표 판정에서 옮겼다.
+4. **아이덴티티 판단의 지지는 1.5배.** 묶기 계산에서 아이덴티티 판단과 연결된 판단의 지지도가 더 오른다 (`identityWeight`).
+5. **더프롬 판정 (⑥′).** 기준마다 1~5점과 이유를 받고, 코드가 무게를 곱해 0~100점으로 만든다. 3점은 "더프롬이 아니어도 낼 수 있다"이다. 기각된 인사이트는 통합 디렉션의 근거로 쓰지 않는다.
+
+### 사조 읽기 — 해도 되는 것 / 안 되는 것으로 나누지 않는다 (`knowledge/ism-depth.js`)
+
+사조마다 시대 조건 · 던진 질문 · 사조 안의 갈래 · 내부 모순 · 후대의 변용을 적어 두었다 (16개, 초안 — 사내 검수 필요). 사조 노드는 이 자료와 카드 원문을 읽고 아래를 쓴다.
+
+| 칸 | 내용 |
+|---|---|
+| `origin` | 어떤 시대 조건에서 무엇 때문에 나왔나 |
+| `parallel` | 이 이슈에서 그때와 같은 압력 |
+| `strand` | 고른 갈래와 이유, 다른 갈래였다면 달라질 점 |
+| `paradox` | 사조의 모순이 이 이슈에서 나타나는 모습과 기울일 방향 |
+| `reading` | 이 사조의 눈으로 읽은 해석 3~5문장 |
+| `layer` · `degree` | 어느 층(태도 · 원리 · 방법 · 표현)에서 얼마나 세게(0~1) 쓰나 |
+| `expression` | 표현 층일 때, 어떻게 보이는가 |
+| `swap` | 이 사조를 빼면 무너지는 것 |
+
+카드의 "가져올 것 · 두고 올 것"은 지난 적용 메모로만 보여 주고 규칙으로 쓰지 않는다. `treatment`(다섯 가지 중 택일)와 `leave` 칸은 없앴다.
+
+### 팩트북 — 터널을 실제 자료로 좁힌다 (`knowledge/facts.js`)
+
+| 항목 | 내용 |
+|---|---|
+| 종류 | 트렌드 · 타겟 습성 · 통계 · 공시 · 브랜드 공지 · 이슈 |
+| 받는 출처 | 공식 통계 · 공시 · 브랜드 공식 자료 · 보도자료 원문. 직접 입력에 한해 내부 자료(브리프 · 클라이언트 자료) |
+| 받지 않는 것 | 언론 기사 · 블로그 · 커뮤니티 · 위키 · 출처 없는 자료 |
+| AI 조사 | 웹 검색이 되는 모델이 채운다(`researchFacts`). 원문 주소와 날짜가 없으면 코드가 버린다. 넣은 항목은 사람이 원문을 확인하기 전까지 "확인 전"으로 표시한다 |
+| 파일 | md로 내보내고 다시 읽는다 (`factsToMarkdown` · `parseFactbook`) |
+
+- 팩트북은 모든 노드에 전달한다. 터널 레이어는 자기 종류를 먼저 본다 (시장 = 트렌드 · 통계 · 공시 · 이슈, 브랜드 = 브랜드 공지 · 공시 · 이슈, 타겟 = 타겟 습성 · 통계, 사용 습관 = 타겟 습성 · 트렌드).
+- 판단은 기댄 팩트의 ID를 적는다. 팩트북에 없는 ID는 코드가 지운다.
+- **팩트 없이 쓴 터널 판단은 "추정"으로 표시하고 강도를 0.6배로 낮춘다.** 팩트북이 비면 터널 판단 전체가 추정이다.
+- 인사이트마다 근거 팩트를 모아 보여 준다. 화면 요약에 "터널 판단 n건 중 팩트 근거 n건 · 추정 n건"을 표시한다.
+- 2026-11-25 평가 실행에서는 터널 판단 10건의 출처가 추론 6건 · 브리프 4건이었고 실제 자료는 0건이었다.
 
 ### 깊이 — 노드를 훑지 않게 하는 장치
 
@@ -60,12 +104,10 @@
 | `origin` | 이 사조가 무엇에 반대해서 나왔나 | 사조 |
 | `parallel` | 그 반대가 이 과제의 무엇과 같은 구조인가 | 사조 |
 | `ladder` | 현상 → 왜 → 본질, 3단계 이상 | 전체 |
-| `treatment` | 그래서 이 과제에서 무엇을 어떻게 하나 | 사조 |
 | `swap` | 다른 사조를 넣었다면 무엇이 달라지나 | 사조 |
-| `leave` | 사조에서 가져오지 않을 것 | 사조 |
 | `against` | 이 판단에 대한 반론 | 아이덴티티 · 터널 |
 
-3. **얕은 판단은 코드가 뺀다.** `ladder`가 3단계 미만이거나 사조 판단에 `origin` · `parallel` · `swap`이 비어 있으면 제외하고 건수를 기록한다.
+3. **얕은 판단은 코드가 뺀다.** `ladder`가 3단계 미만이거나 사조 판단에 `origin` · `parallel` · `reading`(또는 `swap`)이 비어 있으면 제외하고 건수를 기록한다.
 
 ### 기본안 대조 — 브레인을 쓴 효과를 실행마다 확인
 
@@ -79,14 +121,16 @@
 
 ```
 project { id, title, category, brief{what,purpose,target,product,channel,note}, seed{[분류]:{칸:값}},
+          facts[{id,kind,text,sourceType,source,date,url,quote,by,checked}],
           issues[{id,title,detail,test,root,tags[]}],
-          settings{ismCount,signalsPerLens,insightCount,concurrency,minFamilies,minLenses,muted[],pinned[]},
+          settings{ismCount,signalsPerLens,insightCount,identityWeight,weights{},concurrency,minFamilies,minLenses,muted[],pinned[]},
           run }
 
 run { at, provider, mode, setup, picks[{id,why}],
-      signals[{id,lens,family,issue,ladder[],claim,basis,effect,stance,strength,origin?,parallel?,treatment?,swap?,leave?,against?}],
+      signals[{id,lens,family,issue,ladder[],claim,basis,effect,stance,strength,origin?,parallel?,strand?,paradox?,reading?,layer?,degree?,expression?,swap?,against?,facts?[],assumed?,need?}],
       edges[{id,from,to,type,weight,why,by}],          // by: 'ai' | 'human'
-      baseline{concepts[{id,title,concept,visual}],common},
+      baseline{concepts[{id,title,concept,visual}],common}, facts{total,rejected,unchecked},
+      verdict{weights,items[{insight,scores{},why{},verdict,safe,push,precedent,score}]},
       energy{signalId: 0~1}, clusters[], insights[], direction, link{}, usage{}, failed[], notes[], calls, tokens, ms }
 
 direction { headline, perspectives{planning,design,development?,service: {direction,actions[],from[],need[]}},
@@ -147,7 +191,9 @@ e ← (1 − d)·강도 + d·(1 − exp(−지지))        d = 0.5, 24회 반복
 |---|---|
 | `sub` | ⓪ 기본안 · ② 분석 |
 | `brain` | ① 사조 고르기 · ③ 연결 |
-| `director` | 이슈 뽑기 · ⑤ 통합 · ⑦ 통합 디렉션 |
+| `director` | 이슈 뽑기 · ⑤ 통합 · ⑥′ 더프롬 판정 · ⑦ 통합 디렉션 |
+
+웹 조사는 `research({ system, user, signal })`를 가진 공급자만 한다. 지금은 OpenAI 공급자에만 있다(Responses API의 웹 검색 도구). 실제 키로는 확인하지 못했다.
 
 ## 8. 보안
 

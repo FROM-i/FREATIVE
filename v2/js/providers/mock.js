@@ -49,7 +49,8 @@ function activate({ project, lens }) {
       effect: '[목업] 누구의 무엇이 달라지는지는 실제 모델이 쓴다.',
       strength: +(0.5 + h * 0.4).toFixed(2),
       source: '추론',
-      ...(lens.family === 'airplane' ? { origin: `[목업] ${short(lens.summary, 60)}`, parallel: '[목업] 이 이슈에서 같은 구조를 가진 것', treatment: '다시 읽는다', swap: '[목업] 이 사조여야 하는 이유', leave: `[목업] ${short(lens.leave[0], 40)}` } : { against: '[목업] 통념의 틀린 점' }),
+      ...(lens.family === 'airplane' ? { origin: `[목업] ${short(lens.summary, 60)}`, parallel: '[목업] 이 이슈에서 같은 압력', strand: '[목업] 고른 갈래', paradox: '[목업] 사조의 모순', reading: '[목업] 이 사조의 눈으로 읽은 해석 — 실제 모델이 쓴다.', layer: ['태도', '원리', '방법', '표현'][Math.floor(h * 4) % 4], degree: +(0.4 + h * 0.5).toFixed(2), swap: '[목업] 이 사조여야 하는 이유' } : { against: '[목업] 통념의 틀린 점' }),
+      ...(lens.family === 'tunnel' && project.facts?.length ? { facts: [project.facts[Math.floor(h * project.facts.length) % project.facts.length].id] } : {}),
     };
   });
   return { signals: [...fromFixture, ...templated] };
@@ -108,6 +109,15 @@ function baseline({ project }) {
   return { concepts: [1, 2, 3].map((n) => ({ title: `[목업] 기본안 ${n}`, concept: '[목업] 브리프만 읽고 낸 안 — 실제 모델이 쓴다.', visual: '[목업] 보이는 모습' })), common: '[목업] 세 안의 공통 해법' };
 }
 
+function verdict({ project, insights }) {
+  const LENS = ['ID-JAMAIS', 'ID-FROM', 'ID-BENEFIT', 'ID-ONEU', 'ID-INERTIA', 'ID-YELLOW'];
+  if (project.id === SAMPLE_ID && FIXTURE.verdict) return { verdicts: FIXTURE.verdict.filter((v) => insights.some((i) => i.id === v.insight)) };
+  return { verdicts: insights.map((i) => {
+    const scores = Object.fromEntries(LENS.map((k) => [k, 2 + Math.floor(hash(i.id + k + i.title) * 3)]));
+    return { insight: i.id, scores, why: Object.fromEntries(LENS.map((k) => [k, '[목업] 이유는 실제 모델이 쓴다.'])), verdict: '보완', safe: '', push: '[목업] 더 밀 곳', precedent: '' };
+  }) };
+}
+
 function direct({ project, insights, needDev }) {
   const ids = insights.map((i) => i.id);
   if (project.id === SAMPLE_ID && FIXTURE.direction) return { ...FIXTURE.direction, overlap: (FIXTURE.direction.overlap || []).filter((o) => ids.includes(o.insight)) };
@@ -121,7 +131,7 @@ function direct({ project, insights, needDev }) {
   };
 }
 
-const HANDLERS = { baseline, direct, issues: ({ project }) => issues(project), route, activate, link, integrate };
+const HANDLERS = { baseline, verdict, direct, issues: ({ project }) => issues(project), route, activate, link, integrate };
 
 export function createMock({ delay = 0 } = {}) {
   return {

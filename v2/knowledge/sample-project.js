@@ -19,6 +19,11 @@ export const SAMPLE = {
     channel: '역사·골목의 옥외 매체, 도서관 현장, 구청 SNS',
     note: '도서관의 경쟁자는 서점이 아니라 퇴근 후 휴대폰을 보는 시간이다.',
   },
+  // 팩트북 — 예시 브리프에 적힌 내용만 옮겼다. 실제 조사 자료가 아니다.
+  facts: [
+    { id: 'F1', kind: 'notice', text: '이 도서관은 야간 개관을 운영한다.', sourceType: 'internal', source: '예시 브리프', date: '', url: '', by: 'human', checked: true },
+    { id: 'F2', kind: 'habit', text: '타겟은 퇴근 후 휴대폰을 보며 시간을 보낸다고 브리프에 적혀 있다.', sourceType: 'internal', source: '예시 브리프', date: '', url: '', by: 'human', checked: true },
+  ],
   issues: [
     { id: 'I1', root: true, title: '동네 직장인에게 도서관이 "책 빌리는 곳"에서 "퇴근 후 들르는 곳"이 된다', detail: '과업은 캠페인, 목적은 대출 건수다. 그 아래에서 바뀌어야 하는 것은 도서관에 가는 이유다.', test: '이 안이 있으면, 책을 빌릴 일이 없는 날에도 들르게 되는가?', tags: ['mk-campaign', 'sv-growth'] },
     { id: 'I2', root: false, title: '읽을 시간이 없다고 느끼는 사람에게 책 한 권은 부담이다', detail: '퇴근 후에는 휴대폰이 끝없는 읽을거리를 준다. [[타겟]]이 실제로 망설이는 지점을 본다.', test: '', tags: ['pl-journey', 'pl-content'] },
@@ -274,3 +279,17 @@ FIXTURE.direction = {
     { insight: 'N3', baseline: 'B3', verdict: '다름', why: '기본안은 안내문으로 조용히 시키고, 이 안은 입구에서 동선을 나눈다.' },
   ],
 };
+
+// 터널 판단에 근거 팩트를 붙인다 — 브랜드 판단은 F1, 타겟 · 사용 습관 판단은 F2
+for (const [lens, fact] of [['TN-BRAND', 'F1'], ['TN-TARGET', 'F2'], ['TN-USAGE', 'F2']]) for (const sig of FIXTURE.signals[lens] || []) sig.facts = [fact];
+
+// 더프롬 판정 — 예시. 기준별 점수와 이유, 채택 · 보완 · 기각
+const V = (insight, s, verdict, safe, push, why) => ({ insight, scores: { 'ID-JAMAIS': s[0], 'ID-FROM': s[1], 'ID-BENEFIT': s[2], 'ID-ONEU': s[3], 'ID-INERTIA': s[4], 'ID-YELLOW': s[5] }, why: { 'ID-JAMAIS': why[0], 'ID-FROM': why[1], 'ID-BENEFIT': why[2], 'ID-ONEU': why[3], 'ID-INERTIA': why[4], 'ID-YELLOW': why[5] }, verdict, safe, push, precedent: '' });
+FIXTURE.verdict = [
+  V('N1', [4, 4, 4, 3, 5, 4], '채택', '', '문구 한 줄에 그치지 않게, 반납 안내부터 연체 안내까지 같은 말투로 묶는다.',
+    ['늘 보던 반납 안내가 다르게 읽힌다.', '빌릴 책이 없으면 갈 이유가 없다는 판단에서 출발했다.', '빌릴 일이 없는 날에도 들를 이유가 생긴다.', '문구 외의 접점으로 번지는 규칙이 약하다.', '시설과 절차를 그대로 둔다.', '안내를 읽는 모든 이용자에게 닿는다.']),
+  V('N2', [4, 3, 5, 4, 4, 4], '채택', '', '걸리는 시간 표시를 서가 밖 안내물까지 같은 형식으로 넓힌다.',
+    ['책을 권수가 아니라 걸리는 시간으로 보게 한다.', '읽을 시간이 없다는 말의 실제 이유를 짚었지만 근거가 브리프 한 줄이다.', '한 번 방문에 끝나는 읽을거리를 얻는다.', '시간 표시 하나에서 서가 · 표지 · 교체 주기가 나온다.', '서가 구조는 그대로다.', '긴 글이 부담인 사람도 쓸 수 있다.']),
+  V('N3', [2, 3, 4, 3, 4, 5], '보완', '동선을 나누는 해법은 다른 공공시설에서도 흔히 쓴다.', '나누는 데서 끝내지 말고, 들르는 사람과 공부하는 사람이 서로를 방해하지 않고도 한 공간에 있다고 느낄 장치를 찾는다.',
+    ['동선 분리는 익숙한 해법이라 새로 읽히지 않는다.', '누가 밀려나는지는 봤지만 해법은 통념에 가깝다.', '기존 이용자가 자리를 지킨다.', '입구 안내 외의 접점으로 이어지지 않는다.', '열람실 구조를 지킨다.', '두 이용자 모두를 배제하지 않는다.']),
+];

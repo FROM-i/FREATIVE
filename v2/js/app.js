@@ -3,22 +3,29 @@
 import { newProject, buildGraph, describe, nextIssueId, lensName, activeLenses, uid, validateProject } from './graph/model.js';
 import { CATEGORIES, TAGS, COMMON_INPUT, SEED_INPUT, PERSPECTIVES, tagById, categoryById, recommendTags, recommendCategory } from '../knowledge/tags.js';
 import { createView } from './graph/view.js';
-import { think, proposeIssues } from './engine/think.js';
+import { think, proposeIssues, researchFacts } from './engine/think.js';
+import { FACT_KINDS, SOURCE_TYPES, factKind, sourceType, factProblem, validFacts, nextFactId, factsToMarkdown, parseFactbook } from '../knowledge/facts.js';
+import { WEIGHTS, SEED_PRECEDENTS, normalizeWeights } from '../knowledge/viewpoint.js';
+import { ISM_DEPTH } from '../knowledge/ism-depth.js';
 import { reportMarkdown } from './engine/report.js';
 import { createMock } from './providers/mock.js';
 import { createOpenAI, OPENAI_DEFAULTS } from './providers/openai.js';
 import { createClaudePage } from './providers/claude-page.js';
 import { SAMPLE, SAMPLE_ID } from '../knowledge/sample-project.js';
-import { FAMILIES, LENSES, DEFAULTS } from '../knowledge/nodes.js';
+import { FAMILIES, LENSES, DEFAULTS, IDENTITY } from '../knowledge/nodes.js';
 
 const LS = 'thefrom-brain:v1';
+// 판정 사례 — 프로젝트와 따로 저장한다. 프로젝트가 바뀌어도 더프롬의 판정은 이어진다.
+const LS_CASES = 'thefrom-brain:precedents';
+function loadCases() { try { const raw = JSON.parse(localStorage.getItem(LS_CASES) || 'null'); if (Array.isArray(raw)) return raw; } catch { /* 저장소를 못 쓰면 기본 사례만 */ } return SEED_PRECEDENTS.map((c) => ({ ...c })); }
+function saveCases(list) { try { localStorage.setItem(LS_CASES, JSON.stringify(list)); } catch { /* 저장 실패는 화면을 막지 않는다 */ } }
 const $ = (id) => document.getElementById(id);
 const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
 const clip = (s, n) => (String(s || '').length > n ? `${String(s).slice(0, n)}…` : String(s || ''));
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const TYPE = { cause: '원인', condition: '조건', reinforce: '강화', tension: '충돌' };
 const STANCE = { keep: '지킬 관성', change: '바꿀 해석', limit: '넘지 않을 경계', open: '비어 있는 자리' };
-const STAGE = { baseline: '기본안 받는 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
+const STAGE = { baseline: '기본안 받는 중', verdict: '더프롬 판정 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
 
 /** DOM 만들기 — 글자는 언제나 텍스트 노드로 들어간다 */
 function h(tag, attrs, ...kids) {
@@ -77,7 +84,7 @@ async function go(mode = 'full') {
   try {
     const provider = await getProvider();
     const result = await think(target, provider, {
-      mode, signal: ctrl.signal,
+      mode, signal: ctrl.signal, precedents: loadCases(),
       onEvent(e) {
         const r = S.running;
         if (e.type === 'stage') { r.stage = e.stage; if (e.stage === 'activate') r.total = activeLenses(target, e.run.picks).length; if (e.stage === 'integrate') r.count = e.run.clusters.length; }
@@ -202,6 +209,108 @@ function bind(obj, key, { area = false, graph = false, ...attrs } = {}) {
   });
 }
 
+// ---------- 팩트북 ----------
+const FACT_STATE = (f) => (f.by === 'ai' ? (f.checked ? 'AI 조사 · 확인함' : 'AI 조사 · 확인 전') : '직접 입력');
+function factbookBoard(p) {
+  p.facts = p.facts || [];
+  const { facts: ok } = validFacts(p);
+  const unchecked = ok.filter((f) => f.by === 'ai' && !f.checked).length;
+  const touch = () => { p.updated = new Date().toISOString(); S.dirty = true; persist(); rerender(); };
+  const draft = S.factDraft || (S.factDraft = { kind: 'stat', sourceType: 'stat', text: '', source: '', date: '', url: '' });
+  const set = (k) => (e) => { draft[k] = e.target.value; };
+  const add = () => {
+    const f = { id: nextFactId(p), ...draft, text: draft.text.trim(), source: draft.source.trim(), by: 'human', checked: true };
+    const why = factProblem(f);
+    if (why) { toast(`팩트를 넣지 못했다 — ${why}`, true); return; }
+    p.facts.push(f); S.factDraft = null; touch();
+  };
+  const research = async () => {
+    if (S.researching) return;
+    S.researching = true; rerender();
+    try {
+      const provider = await getProvider();
+      const got = await researchFacts(p, provider);
+      p.facts.push(...got.facts);
+      S.researchNote = { added: got.facts.length, rejected: got.rejected, missing: got.missing };
+      toast(`팩트 ${got.facts.length}건 추가 · 출처 조건으로 제외 ${got.rejected.length}건`);
+    } catch (e) { toast(e.message, true); } finally { S.researching = false; touch(); }
+  };
+  const importMd = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const list = parseFactbook(await file.text());
+    const have = new Set(p.facts.map((f) => f.id));
+    for (const f of list) { if (have.has(f.id)) f.id = nextFactId({ facts: [...p.facts] }); p.facts.push(f); have.add(f.id); }
+    toast(`팩트북에서 ${list.length}건을 읽었다`); e.target.value = ''; touch();
+  };
+  const note = S.researchNote;
+  return h('section', { class: 'sec' }, h('h2', null, '팩트북', h('small', null, '출처가 있는 실제 자료')),
+    h('p', { class: 'lead sm' }, ok.length ? `팩트 ${ok.length}건${unchecked ? ` · 사람이 원문을 확인하지 않은 것 ${unchecked}건` : ''}${p.facts.length - ok.length ? ` · 출처 조건 미달로 제외 ${p.facts.length - ok.length}건` : ''}` : '팩트가 없다. 터널(시장 · 브랜드 · 타겟 · 사용 습관) 판단이 모두 추정으로 표시된다.'),
+    h('p', { class: 'small' }, `받는 출처: ${SOURCE_TYPES.filter((t) => t.ai).map((t) => t.name).join(' · ')}. 언론 기사 · 블로그 · 출처 없는 자료는 받지 않는다.`),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn', type: 'button', disabled: S.researching ? '' : null, onclick: research }, S.researching ? '조사하는 중…' : 'AI 조사로 채우기'),
+      h('label', { class: 'btn', style: 'display:inline-flex;align-items:center' }, '팩트북 md 불러오기', h('input', { type: 'file', accept: '.md,text/markdown,text/plain', class: 'sr', onchange: importMd })),
+      h('button', { class: 'btn', type: 'button', onclick: () => saveFile(`${fileName(p)}-팩트북.md`, factsToMarkdown(p)) }, '팩트북 md 내보내기')),
+    note ? h('div', { class: 'banner' }, `조사 결과: 추가 ${note.added}건.`, note.rejected.length ? ` 제외 ${note.rejected.length}건 — ${note.rejected.slice(0, 4).map((r) => `${clip(r.text, 18)}(${r.why})`).join(', ')}.` : '', note.missing.length ? ` 찾지 못한 것: ${note.missing.join(' / ')}` : '') : null,
+    p.facts.length ? h('ul', { class: 'list' }, p.facts.map((f) => {
+      const why = factProblem(f);
+      return h('li', { class: why ? 'off' : '' },
+        h('div', { class: 'row' }, h('span', { class: 'chip fill' }, f.id), h('span', { class: 'chip ghost' }, factKind(f.kind)?.name || '?'), h('span', { class: `chip ${f.by === 'ai' && !f.checked ? 'warn' : 'ghost'}` }, FACT_STATE(f)), why ? h('span', { class: 'chip warn' }, `제외 — ${why}`) : null),
+        f.text,
+        h('p', { class: 'small' }, `${sourceType(f.sourceType)?.name || '출처 유형 없음'} — ${f.source || '출처 없음'}${f.date ? ` · ${f.date}` : ''}`, f.quote ? ` · "${f.quote}"` : ''),
+        h('div', { class: 'row' },
+          /^https?:\/\//i.test(f.url || '') ? h('a', { class: 'link', href: f.url, target: '_blank', rel: 'noopener noreferrer' }, '원문 열기') : null,
+          f.by === 'ai' ? h('button', { class: 'btn sm', type: 'button', onclick: () => { f.checked = !f.checked; touch(); } }, f.checked ? '확인 취소' : '원문 확인함') : null,
+          h('button', { class: 'btn sm', type: 'button', onclick: () => { p.facts = p.facts.filter((x) => x !== f); touch(); } }, '지우기')));
+    })) : null,
+    h('details', null, h('summary', { class: 'small' }, '직접 넣기'),
+      h('div', { class: 'grid3' },
+        field('종류', h('select', { onchange: set('kind') }, FACT_KINDS.map((k) => h('option', { value: k.id, selected: draft.kind === k.id ? '' : null }, k.name)))),
+        field('출처 유형', h('select', { onchange: set('sourceType') }, SOURCE_TYPES.map((t) => h('option', { value: t.id, selected: draft.sourceType === t.id ? '' : null }, t.name)))),
+        field('날짜', h('input', { type: 'text', placeholder: '2026-03', value: draft.date, oninput: set('date') }))),
+      field('사실 한 문장', h('input', { type: 'text', value: draft.text, oninput: set('text') })),
+      field('출처 (기관 · 문서 이름)', h('input', { type: 'text', value: draft.source, oninput: set('source') })),
+      field('원문 주소', h('input', { type: 'text', placeholder: 'https://', value: draft.url, oninput: set('url') })),
+      h('button', { class: 'btn', type: 'button', onclick: add }, '팩트 추가')));
+}
+
+// ---------- 더프롬의 관점 ----------
+function weightRow(p) {
+  const w = normalizeWeights(p.settings.weights || WEIGHTS);
+  return h('div', null, h('p', { class: 'small' }, '더프롬 판정의 기준별 무게 (%) — 합은 자동으로 100에 맞춘다'),
+    h('div', { class: 'grid3' }, IDENTITY.map((l) => field(l.name, h('input', { type: 'number', min: 0, max: 100, step: 5, value: Math.round(w[l.id] * 100), onchange: (e) => { p.settings.weights = normalizeWeights({ ...w, [l.id]: Math.max(0, +e.target.value || 0) / 100 }); S.dirty = true; persist(); rerender(); } })))));
+}
+function casesBoard() {
+  const list = loadCases();
+  return h('section', { class: 'sec' }, h('h2', null, '판정 사례', h('small', null, `${list.length}건 · 모든 분석에 들어간다`)),
+    h('p', { class: 'small' }, '대표와 디렉터가 실제로 내린 판정이다. 인사이트에서 채택 · 기각을 누르면 여기에 쌓이고, 다음 분석부터 같은 잣대로 쓴다. 최근 12건이 쓰인다.'),
+    h('ul', { class: 'list' }, list.map((c) => h('li', null, h('div', { class: 'row' }, h('span', { class: `chip ${c.verdict === '기각' ? 'warn' : 'y'}` }, c.verdict), h('strong', null, clip(c.what, 60)),
+      h('button', { class: 'btn sm', type: 'button', onclick: () => { saveCases(loadCases().filter((x) => x.id !== c.id)); rerender(); } }, '지우기')), c.why))));
+}
+/** 사람의 판정 — 인사이트에 채택 · 기각과 이유를 남기면 판정 사례가 된다 */
+function humanVerdict(n) {
+  const d = (S.caseDraft && S.caseDraft.id === n.id) ? S.caseDraft : (S.caseDraft = { id: n.id, why: '' });
+  const save = (verdict) => {
+    if (!d.why.trim()) { toast('이유를 한 문장 적어야 사례로 쓸 수 있다.', true); return; }
+    const list = loadCases();
+    list.push({ id: `PR-${Date.now().toString(36)}`, verdict, what: `${n.title} — ${clip(n.insight, 90)}`, why: d.why.trim(), at: new Date().toISOString().slice(0, 10) });
+    saveCases(list); n.human = { verdict, why: d.why.trim() }; S.caseDraft = null; persist(); toast(`판정 사례로 저장했다 (${verdict})`); rerender();
+  };
+  return h('div', { class: 'tension' }, h('b', null, n.human ? `내 판정: ${n.human.verdict}` : '내 판정 남기기'),
+    n.human ? n.human.why : h('div', null,
+      h('input', { type: 'text', placeholder: '이유 한 문장 — 다음 분석의 잣대가 된다', value: d.why, oninput: (e) => { d.why = e.target.value; } }),
+      h('div', { class: 'row' }, h('button', { class: 'btn sm', type: 'button', onclick: () => save('채택') }, '채택'), h('button', { class: 'btn sm', type: 'button', onclick: () => save('기각') }, '기각'))));
+}
+function fromBoard(n) {
+  const v = n.from; if (!v) return null;
+  const w = normalizeWeights(S.project.settings.weights || WEIGHTS);
+  return h('div', null, h('p', { class: 'small' }, `더프롬 판정 ${v.score}점 — 기준별 점수(1~5)에 무게를 곱했다`),
+    h('div', { class: 'bars' }, IDENTITY.slice().sort((a, b) => w[b.id] - w[a.id]).flatMap((l) => [h('span', null, `${l.name.split(' — ')[0]} ${Math.round(w[l.id] * 100)}%`), h('div', { class: 'track' }, h('i', { style: `width:${v.scores[l.id] * 20}%` })), h('span', null, `${v.scores[l.id]}점`)])),
+    h('ul', { class: 'bullets' }, IDENTITY.filter((l) => v.why[l.id]).map((l) => h('li', null, `${l.name.split(' — ')[0]}: ${v.why[l.id]}`))),
+    v.safe ? h('p', { class: 'small' }, `무난해서 고르기 쉬운 부분: ${v.safe}`) : null,
+    v.push ? h('p', null, h('strong', null, `더 밀 곳: ${v.push}`)) : null,
+    v.precedent ? h('p', { class: 'small' }, `쓴 판정 사례: ${v.precedent}`) : null);
+}
+
 function missionTab() {
   const p = S.project; const b = p.brief; const c = S.config;
   const out = [];
@@ -239,6 +348,8 @@ function missionTab() {
       c.detail ? h('p', { class: 'small' }, c.detail) : null, c.test ? h('p', { class: 'small' }, `판정 질문: ${c.test}`) : null)))) : null));
 
   const v = validateProject(p);
+  out.push(factbookBoard(p));
+
   out.push(h('section', { class: 'sec' }, h('h2', null, '세팅 점검', h('small', null, `분석에 들어가는 이슈 ${v.ready.length}/${p.issues.length}건`)),
     v.ok ? h('p', { class: 'note' }, '빠진 칸이 없다.')
       : h('ul', { class: 'bullets' }, v.problems.map((x) => h('li', null, h('strong', null, `${x.where} `), x.what))),
@@ -248,7 +359,9 @@ function missionTab() {
     Array.from({ length: max - min + 1 }, (_, n) => h('option', { value: min + n, selected: (p.settings[key] ?? DEFAULTS[key]) === min + n }, min + n))));
   out.push(h('section', { class: 'sec' }, h('h2', null, '분석 설정'),
     h('div', { class: 'grid3' }, num('ismCount', '분석할 사조 수', 2, 6), num('insightCount', '통합 인사이트 수', 1, 5), num('signalsPerLens', '노드·이슈당 판단', 1, 3)),
-    h('p', { class: 'small' }, `호출 수 = 기본안 1 + 사조 고르기 1 + 노드 ${10 + (p.settings.ismCount ?? DEFAULTS.ismCount)} + 연결 1 + 인사이트 ${p.settings.insightCount ?? DEFAULTS.insightCount} + 디렉션 1 (검증에 걸리면 1회씩 더)`)));
+    h('p', { class: 'small' }, `호출 수 = 기본안 1 + 사조 고르기 1 + 노드 ${10 + (p.settings.ismCount ?? DEFAULTS.ismCount)} + 연결 1 + 인사이트 ${p.settings.insightCount ?? DEFAULTS.insightCount} + 더프롬 판정 1 + 디렉션 1 (검증에 걸리면 1회씩 더)`),
+    weightRow(p)));
+  out.push(casesBoard());
 
   const o = c.openai;
   const cfg = (obj, key, attrs) => h('input', { type: 'text', value: obj[key] || '', ...attrs, oninput: (e) => { obj[key] = e.target.value.trim(); persist(); } });
@@ -354,19 +467,22 @@ function insightTab() {
     h('p', { class: 'lead' }, `통합 인사이트 ${run.insights.length}건. 판단 ${u.signals}건 중 `, h('em', null, `${u.used}건(${pct(u.used, u.signals)}%)`), '이 인사이트에 쓰였다.'),
     h('div', { class: 'bars' }, Object.keys(FAMILIES).flatMap((f) => { const b = u.byFamily[f]; return [h('span', null, FAMILIES[f].short), h('div', { class: 'track' }, h('i', { style: `width:${pct(b.used, b.signals)}%` })), h('span', null, `${b.used}/${b.signals}건`)]; })),
     h('p', { class: 'small' }, `연결 ${k.edges}건 중 ${k.crossFamily}건(${pct(k.crossFamily, k.edges)}%)이 서로 다른 노드군 사이다. 충돌 ${k.byType.tension}건.${flagged ? ` 검증을 통과하지 못한 인사이트 ${flagged}건.` : ''}`),
+    u.tunnel ? h('p', { class: 'small' }, `터널 판단 ${u.tunnel.signals}건 중 팩트에 기댄 것 ${u.tunnel.backed}건, 추정 ${u.tunnel.assumed}건.${run.facts?.unchecked ? ` 사람이 확인하지 않은 팩트 ${run.facts.unchecked}건.` : ''}`) : null,
+    run.verdict?.items?.length ? h('p', { class: 'small' }, `더프롬 판정: ${['채택', '보완', '기각'].map((v) => `${v} ${run.verdict.items.filter((x) => x.verdict === v).length}건`).join(' · ')}`) : null,
     p.example && run.provider === 'mock' ? h('p', { class: 'small' }, '예시 결과 — 미리 써 둔 답이다. 실제 모델의 품질을 보여 주지 않는다.') : null));
 
   const board = directionBoard(run); if (board) out.push(board);
   const base = baselineBoard(run); if (base) out.push(base);
 
   out.push(h('section', { class: 'sec' }, h('h2', null, '통합 인사이트', h('small', null, '누르면 브레인 맵에 근거 경로가 켜진다')),
-    ...run.insights.map((n, idx) => {
+    ...[...run.insights].sort((a, b) => (b.from?.score ?? -1) - (a.from?.score ?? -1)).map((n, idx) => {
       const open = S.open === n.id; const c = n.check;
       return h('article', { class: `insight${c.ok ? '' : ' flag'}${open ? ' on' : ''}` },
         h('button', { class: 'open', type: 'button', 'aria-expanded': String(open), onclick: () => { S.open = open ? null : n.id; S.selected = null; if (S.open) traceInsight(n.id); else { view.trace(null); view.select(null); } rerender(); } },
-          h('span', { class: 'no' }, idx + 1), h('div', null, h('h3', null, n.title), h('p', { class: 'one' }, n.insight), overlapOf(run, n.id) ? h('span', { class: `chip ${overlapOf(run, n.id).verdict === '같음' ? 'warn' : 'ghost'}` }, OVERLAP_LABEL[overlapOf(run, n.id).verdict]) : null)),
+          h('span', { class: 'no' }, idx + 1), h('div', null, h('h3', null, n.title), h('p', { class: 'one' }, n.insight), n.from ? h('span', { class: `chip ${n.from.verdict === '기각' ? 'warn' : n.from.verdict === '채택' ? 'y' : 'ghost'}` }, `더프롬 ${n.from.verdict} · ${n.from.score}점`) : null, ' ', overlapOf(run, n.id) ? h('span', { class: `chip ${overlapOf(run, n.id).verdict === '같음' ? 'warn' : 'ghost'}` }, OVERLAP_LABEL[overlapOf(run, n.id).verdict]) : null)),
         open ? h('div', { class: 'more' },
           c.ok ? null : h('div', { class: 'banner warn' }, h('strong', null, '검증 미통과 — '), c.problems.join(' / ')),
+          fromBoard(n), humanVerdict(n),
           h('div', null, h('div', { class: 'cover', role: 'img', 'aria-label': '근거 판단의 노드군 구성' }, Object.keys(FAMILIES).map((f) => h('i', { class: f, style: `width:${pct(c.byFamily[f], c.used.length)}%` }))),
             h('div', { class: 'cover-key' }, h('strong', null, `근거 판단 ${c.used.length}건`), Object.keys(FAMILIES).map((f) => h('span', null, `${FAMILIES[f].short} ${c.byFamily[f]}건`)), h('span', null, `노드 ${c.lenses.length}개`))),
           h('ol', { class: 'chain' }, n.chain.map((s, i) => h('li', null, h('span', { class: 'step' }, i + 1),
@@ -381,6 +497,7 @@ function insightTab() {
             h('dt', null, '근본 이슈에 적용하면'), h('dd', null, `${n.substitute.who} — ${n.substitute.changes}`),
             h('dt', null, '판정 질문의 답'), h('dd', null, n.verdict),
             n.without?.baseline ? [h('dt', null, n.without.nearest ? `가까운 기본안 ${n.without.nearest}` : '노드 없이 냈을 안'), h('dd', null, n.without.baseline), h('dt', null, '이 안의 차이'), h('dd', null, h('strong', null, n.without.difference))] : null,
+            n.facts?.length ? [h('dt', null, '근거 팩트'), h('dd', null, n.facts.map((id) => { const f = (p.facts || []).find((x) => x.id === id); return h('div', null, `${id} ${f ? `${clip(f.text, 60)} (${f.source})` : ''}`); }))] : [h('dt', null, '근거 팩트'), h('dd', null, '없음 — 시장 · 타겟에 대한 말은 추정이다')],
             h('dt', null, '자사 색 배제 점검'), h('dd', null, n.gate)),
           n.open.length ? h('div', null, h('p', { class: 'small' }, '사람이 확인할 것'), h('ul', { class: 'bullets' }, n.open.map((x) => h('li', null, x)))) : null) : null);
     })));
@@ -403,8 +520,17 @@ function insightTab() {
 function nodeTab() {
   const p = S.project; const run = p.run;
   const d = S.selected ? describe(p, S.selected) : null;
-  if (!d || d.kind === 'project' || d.kind === 'insight') return [h('section', { class: 'sec' }, h('p', { class: 'lead' }, '왼쪽 브레인에서 노드를 선택하세요.'), h('p', { class: 'note' }, '기준 노드는 판단 기준과 낸 판단를, 판단는 다른 판단와의 연결을 보여 준다. 연결은 여기서 고치거나 끊을 수 있다.'))];
+  if (!d || d.kind === 'project' || d.kind === 'insight') return [h('section', { class: 'sec' }, h('p', { class: 'lead' }, '왼쪽 브레인에서 노드를 선택하세요.'), h('p', { class: 'note' }, '기준 노드는 판단 기준과 낸 판단을, 판단은 다른 판단과의 연결을 보여 준다. 연결은 여기서 고치거나 끊을 수 있다.'))];
   const sigRow = (s) => h('li', null, h('div', { class: 'row' }, h('button', { class: 'link id', type: 'button', onclick: () => selectNode(s.id, true) }, s.id), h('span', { class: 'chip ghost' }, s.issue), h('span', { class: 'chip ghost' }, STANCE[s.stance]), s.muted ? h('span', { class: 'chip red' }, '꺼짐') : null), s.claim);
+
+  if (d.kind === 'fact') {
+    const f = d.fact;
+    return [h('section', { class: 'sec' }, h('div', { class: 'row' }, h('span', { class: 'chip fill' }, f.id), h('span', { class: 'chip ghost' }, factKind(f.kind)?.name || '팩트'), h('span', { class: `chip ${f.by === 'ai' && !f.checked ? 'warn' : 'ghost'}` }, FACT_STATE(f))),
+      h('p', { class: 'lead' }, f.text),
+      h('dl', { class: 'kv' }, h('dt', null, '출처'), h('dd', null, `${sourceType(f.sourceType)?.name || ''} — ${f.source}${f.date ? ` · ${f.date}` : ''}`), f.quote ? [h('dt', null, '근거 구절'), h('dd', null, f.quote)] : null,
+        /^https?:\/\//i.test(f.url || '') ? [h('dt', null, '원문'), h('dd', null, h('a', { class: 'link', href: f.url, target: '_blank', rel: 'noopener noreferrer' }, f.url))] : null)),
+    h('section', { class: 'sec' }, h('h2', null, `이 팩트에 기댄 판단 ${d.signals.length}건`), h('ul', { class: 'list' }, d.signals.map(sigRow)))];
+  }
 
   if (d.kind === 'hub') {
     return [h('section', { class: 'sec' }, h('span', { class: `chip ${d.hub.family}` }, '기본 노드군'), h('p', { class: 'lead' }, d.hub.name), h('p', { class: 'note' }, d.hub.role),
@@ -423,7 +549,11 @@ function nodeTab() {
         : h('div', { class: 'row' }, h('button', { class: 'btn sm', type: 'button', onclick: () => flip('muted') }, muted ? '다음 분석부터 다시 켠다' : '다음 분석부터 끈다'),
           ism ? h('button', { class: 'btn sm', type: 'button', onclick: () => flip('pinned') }, pinned ? '고정 풀기' : '다음 분석에 반드시 분석') : null)),
     ism ? h('section', { class: 'sec' }, h('h2', null, '원리'), h('ul', { class: 'bullets' }, l.principles.map((x) => h('li', null, x))),
-      h('h2', null, '가져올 것'), h('ul', { class: 'bullets' }, l.take.map((x) => h('li', null, x))), h('h2', null, '두고 올 것'), h('ul', { class: 'bullets' }, l.leave.map((x) => h('li', null, x)))) : null,
+      ISM_DEPTH[l.id] ? [h('h2', null, '시대 조건'), h('p', null, ISM_DEPTH[l.id].era), h('h2', null, '던진 질문'), h('p', null, ISM_DEPTH[l.id].question),
+        h('h2', null, '사조 안의 갈래'), h('ul', { class: 'bullets' }, ISM_DEPTH[l.id].strands.map((x) => h('li', null, `${x.name} — ${x.how}`))),
+        h('h2', null, '내부 모순'), h('p', null, ISM_DEPTH[l.id].paradox), h('h2', null, '후대의 변용'), h('p', null, ISM_DEPTH[l.id].after),
+        h('p', { class: 'small' }, '깊이 자료는 초안이다. 사내 검수 뒤 고정한다.')] : null,
+      h('h2', null, '지난 적용 메모', h('small', null, '규칙이 아니다')), h('ul', { class: 'bullets' }, [...l.take, ...l.leave].map((x) => h('li', null, x)))) : null,
     d.kind === 'lens' ? h('section', { class: 'sec' }, h('h2', null, `낸 판단 ${d.signals.length}건`), d.signals.length ? h('ul', { class: 'list' }, d.signals.map(sigRow)) : h('p', { class: 'note' }, run ? '이번 분석에서 분석하지 않았다.' : '아직 분석하지 않았다.')) : null];
   }
 
@@ -447,12 +577,18 @@ function nodeTab() {
     h('p', { class: 'lead' }, s.claim),
     h('div', null, h('p', { class: 'small' }, '판단에 이른 단계'), h('ol', { class: 'chain' }, (s.ladder || []).map((x, i) => h('li', null, h('span', { class: 'step dim' }, i + 1), h('div', null, x))))),
     h('dl', { class: 'kv' },
-      s.origin ? [h('dt', null, '사조가 겨눈 것'), h('dd', null, s.origin), h('dt', null, '이 이슈의 같은 구조'), h('dd', null, s.parallel), h('dt', null, '다루는 방식'), h('dd', null, s.treatment || '—'), h('dt', null, '이 사조여야 하는 이유'), h('dd', null, s.swap)] : null,
+      s.origin ? [h('dt', null, '시대'), h('dd', null, s.origin), h('dt', null, '지금의 같은 압력'), h('dd', null, s.parallel),
+        s.strand ? [h('dt', null, '고른 갈래'), h('dd', null, s.strand)] : null, s.paradox ? [h('dt', null, '사조의 모순'), h('dd', null, s.paradox)] : null,
+        s.reading ? [h('dt', null, '읽기'), h('dd', null, h('strong', null, s.reading))] : null,
+        s.layer ? [h('dt', null, '층 · 세기'), h('dd', null, `${s.layer} · ${Math.round((s.degree ?? 0.5) * 100)}%`)] : null, s.expression ? [h('dt', null, '표현'), h('dd', null, s.expression)] : null,
+        h('dt', null, '이 사조여야 하는 이유'), h('dd', null, s.swap || '—')] : null,
+      s.facts?.length ? [h('dt', null, '근거 팩트'), h('dd', null, s.facts.map((id) => { const f = (p.facts || []).find((x) => x.id === id); return h('div', null, `${id} ${f ? `${clip(f.text, 60)} (${f.source})` : ''}`); }))] : null,
+      s.assumed ? [h('dt', null, '주의'), h('dd', null, '팩트 없이 쓴 추정이다. 비중을 낮췄다.')] : null, s.need ? [h('dt', null, '필요한 자료'), h('dd', null, s.need)] : null,
       s.against ? [h('dt', null, '통념의 틀린 점'), h('dd', null, s.against)] : null,
       h('dt', null, '달라지는 것'), h('dd', null, s.effect), h('dt', null, '근거'), h('dd', null, s.basis || '—'),
       s.leave ? [h('dt', null, '두고 올 것'), h('dd', null, s.leave)] : null,
       h('dt', null, '대입한 이슈'), h('dd', null, h('button', { class: 'link', type: 'button', onclick: () => selectNode(s.issue, true) }, `${s.issue} ${clip(p.issues.find((i) => i.id === s.issue)?.title, 36)}`)),
-      h('dt', null, '강도 → 지지도'), h('dd', null, `${s.strength.toFixed(2)} → ${(run.energy?.[s.id] ?? 0).toFixed(2)} (다른 노드의 판단가 뒷받침할수록 오른다)`),
+      h('dt', null, '강도 → 지지도'), h('dd', null, `${s.strength.toFixed(2)} → ${(run.energy?.[s.id] ?? 0).toFixed(2)} (다른 노드의 판단이 뒷받침할수록 오른다. 아이덴티티 판단의 지지는 더 무겁다)`),
       d.insights.length ? [h('dt', null, '쓰인 인사이트'), h('dd', null, d.insights.map((n) => h('button', { class: 'link', type: 'button', style: 'display:block', onclick: () => onSelect({ id: n.id, type: 'insight' }) }, n.title)))] : null),
     h('div', { class: 'row' }, h('button', { class: 'btn sm', type: 'button', onclick: () => { s.muted = !s.muted; S.dirty = true; persist(); refreshGraph(); rerender(); } }, s.muted ? '판단 다시 켜기' : '이 판단 끄기'))),
   h('section', { class: 'sec' }, h('h2', null, `연결 ${d.edges.length}건`, h('small', null, '수정 후 다시 묶기')),
