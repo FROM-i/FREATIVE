@@ -77,7 +77,7 @@ export const TUNNEL = [
 
 export const AIRPLANE = ISMS.map((i) => ({
   ...i, source: 'catalog-ism.md', rules: CORE.airplane,
-  criteria: '사조를 원리 층위에서 가져왔는가. 두고 올 것을 적었는가. 형태·색·서체를 빌리면 코스튬이다.',
+  criteria: '사조의 겉모습(형태 · 색 · 서체)이 아니라 원리를 가져왔는가. 가져오지 않을 것을 적었는가.',
   ask: '이 사조가 당대에 겨눈 것과 같은 구조가 이 이슈 안 어디에 있는가. 그 자리에 이 사조의 원리를 넣으면 기존의 것(관습·정해진 전술)을 어떻게 다루게 되는가 — 지킨다 · 다시 읽는다 · 옮긴다 · 잇는다 · 덜어낸다.',
 }));
 

@@ -23,6 +23,7 @@
   --line: rgba(207, 227, 242, .14);
   --line-2: rgba(207, 227, 242, .3);
   --yellow: #FFD200;
+  --pink: #FF4FB0;   /* 계보 — 기본 노드에서 최종안까지의 연결 */
   --red: #E85E53;
   --red-soft: #F2938A;
   --blue: #9EA3E3;
@@ -141,7 +142,9 @@ ul, ol { list-style: none; }
 
 .chip { display: inline-flex; align-items: center; height: calc(var(--u) * 2.5); padding: 0 calc(var(--u) * .75); font-size: 11px; font-weight: 600; border: 1px solid var(--line-2); color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .chip.fill { background: var(--text); border-color: var(--text); color: var(--ground); font-family: var(--mono); }
-.chip.y { background: var(--yellow); border-color: var(--yellow); color: var(--ground); }
+.chip.y { background: none; border-color: var(--yellow); color: var(--yellow); }
+.chip.y.fill { background: var(--yellow); color: var(--ground); }
+.chip.pink { border-color: var(--pink); color: var(--pink); }
 .chip.red { border-color: var(--red); color: var(--red-soft); }
 .chip.identity { border-color: var(--holo); color: var(--text); }
 .chip.airplane { border-color: var(--blue); color: var(--blue); }
@@ -236,3 +239,15 @@ details[open] > summary { margin-bottom: var(--u); }
 }
 @media (max-width: 420px) { .views { grid-template-columns: minmax(0, 1fr); } .grid2, .grid3 { grid-template-columns: minmax(0, 1fr); } .kv { grid-template-columns: minmax(0, 1fr); gap: calc(var(--u) * .25) 0; } .kv dd { margin-bottom: var(--u); } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* 색의 위계 — 노랑은 결과(1순위 인사이트와 실행 버튼)에만 채운다. 2 · 3순위는 테두리만. 계보는 분홍 */
+.insight:not(:first-of-type) .no { background: none; border: 1px solid var(--yellow); color: var(--yellow); }
+/* 통합 인사이트 상세 — 브레인 맵 위에 뜨는 창 */
+.modal-back { position: fixed; inset: 0; background: rgba(4, 5, 7, .72); display: grid; place-items: center; z-index: 50; }
+.modal { width: min(880px, 92vw); max-height: 88vh; overflow: auto; background: var(--surface); border: 1px solid var(--yellow); padding: calc(var(--u) * 4); }
+.modal > .row:first-child .btn { margin-left: auto; }
+.modal h2 { font-size: 22px; line-height: 30px; margin: 0 0 calc(var(--u) * 1.5); color: var(--yellow); }
+.modal .lineage { display: flex; flex-wrap: wrap; gap: calc(var(--u) * .75); align-items: center; margin: calc(var(--u) * 2) 0; }
+.modal .lineage .arrow { color: var(--pink); }
+.modal .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 3); }
+@media (max-width: 760px) { .modal .grid2 { grid-template-columns: 1fr; } }

@@ -7,7 +7,8 @@ const TAU = Math.PI * 2;
 const hash = (s) => { let h = 2166136261; for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967295; };
 const clip = (s, n) => (String(s).length > n ? `${String(s).slice(0, n)}…` : String(s));
 
-export const COLORS = { ground: '#08090B', holo: '#CFE3F2', yellow: '#FFD200', red: '#E85E53' };
+// 색의 위계 — 흰색: 재료(기준 노드 · 판단 · 팩트) / 분홍: 계보(기본 노드에서 최종안까지의 연결) / 노랑: 결과(통합 인사이트) / 빨강: 충돌 · 미달
+export const COLORS = { ground: '#08090B', holo: '#CFE3F2', yellow: '#FFD200', red: '#E85E53', pink: '#FF4FB0' };
 const HOLO = '207,227,242';
 const FONT = 'Pretendard, "Pretendard Variable", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif';
 const MONO = 'ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace';
@@ -175,7 +176,11 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
   function draw(now = 0) {
     if (!state.w) return;
     state.sin = Math.sin(state.theta); state.cos = Math.cos(state.theta);
-    const { k } = state.cam; const on = lit();
+    const { k } = state.cam;
+    // 계보에 든 노드는 흐리게 하지 않는다 — 기본 노드에서 최종안까지 한눈에 보여야 한다
+    const lineNow = lineageOf(state.selected);
+    const base = lit();
+    const on = lineNow ? new Set([...(base || []), ...lineNow.lenses.map((x) => x.id), ...lineNow.signals.map((x) => x.id), ...lineNow.uses.map(([, ins]) => ins.id), ...(state.selected ? [state.selected] : [])]) : base;
     ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1; ctx.setLineDash([]);
     ctx.fillStyle = COLORS.ground; ctx.fillRect(0, 0, state.w, state.h);
@@ -211,8 +216,8 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
       ctx.setLineDash([]); ctx.lineWidth = 1;
       let alpha;
       if (l.kind === 'tension') { ctx.strokeStyle = COLORS.red; ctx.setLineDash([4, 4]); ctx.lineWidth = 0.9 + w * 0.7; alpha = 0.75; }
-      else if (l.kind === 'use') { ctx.strokeStyle = COLORS.yellow; alpha = on && active ? 0.55 : 0.16; ctx.lineWidth = 0.8; }
-      else if (l.kind === 'hint') { ctx.strokeStyle = COLORS.yellow; ctx.setLineDash([1, 5]); alpha = 0.6; }
+      else if (l.kind === 'use') { ctx.strokeStyle = COLORS.pink; alpha = on && active ? 0.5 : 0.12; ctx.lineWidth = 0.8; }
+      else if (l.kind === 'hint') { ctx.strokeStyle = COLORS.holo; ctx.setLineDash([1, 5]); alpha = 0.6; }
       else if (judged) { ctx.strokeStyle = COLORS.holo; ctx.lineWidth = 0.5 + w * 0.9; alpha = 0.16 + w * 0.34; if (l.kind === 'condition') ctx.setLineDash([2, 3]); }
       else { ctx.strokeStyle = COLORS.holo; alpha = 0.22; ctx.lineWidth = 0.6; }
       ctx.globalAlpha = alpha * (active ? 1 : 0.1);
@@ -223,10 +228,23 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
     }
     ctx.setLineDash([]);
 
+    // 계보 — 고른 것이 어느 기본 노드에서 나와 어느 최종안까지 갔는지를 분홍 선으로 잇는다
+    //   기본 노드군(IDENTITY · AIRPLANE · TUNNEL) → 기준 노드 → 판단 → 통합 인사이트
+    const line = lineNow;
+    if (line) {
+      ctx.setLineDash([]); ctx.strokeStyle = COLORS.pink; ctx.lineJoin = 'round';
+      const seg = (x1, y1, x2, y2, w, a) => { ctx.globalAlpha = a; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); };
+      for (const lens of line.lenses) { const cap = state.captions.find((q) => q.id === `HUB-${lens.family.toUpperCase()}`); if (cap) { const [x, y] = at(lens); seg((cap.x0 + cap.x1) / 2, (cap.y0 + cap.y1) / 2, x, y, 1.4, 0.9); } }
+      for (const sg of line.signals) { const from = state.byId.get(sg.lens); if (from && line.lenses.includes(from)) { const [x1, y1] = at(from); const [x2, y2] = at(sg); seg(x1, y1, x2, y2, 1.2, 0.8); } }
+      for (const [sg, ins] of line.uses) { const [x1, y1] = at(sg); const [x2, y2] = at(ins); seg(x1, y1, x2, y2, 1.6, 0.95); }
+      ctx.fillStyle = COLORS.pink; ctx.globalAlpha = 1;
+      for (const n of [...line.lenses, ...line.signals]) { const [x, y] = at(n); disc(x, y, 2.2); }
+    }
+
     // 사고의 경로 — 선택한 인사이트의 인과 사슬을 순서대로 잇는다
     const pathNodes = state.path.map((id) => state.byId.get(id)).filter(Boolean);
     if (pathNodes.length > 1) {
-      ctx.globalAlpha = 0.95; ctx.strokeStyle = COLORS.yellow; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
+      ctx.globalAlpha = 0.95; ctx.strokeStyle = COLORS.pink; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
       ctx.beginPath(); pathNodes.forEach((n, i) => { const [x, y] = at(n); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.stroke();
     }
 
@@ -258,7 +276,7 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
 
       const pulse = state.pulses.get(n.id);
       if (pulse != null && !reduce) { const t = (now - pulse) / 1500; if (t >= 0 && t < 1) { ctx.globalAlpha = (1 - t) * 0.9; ctx.strokeStyle = COLORS.yellow; ctx.lineWidth = 1.4; ring(x, y, r + 3 + t * 30); } }
-      if (n.id === state.selected) { ctx.globalAlpha = 1; ctx.strokeStyle = COLORS.yellow; ctx.lineWidth = 1.6; ring(x, y, r + 5); }
+      if (n.id === state.selected) { ctx.globalAlpha = 1; ctx.strokeStyle = COLORS.pink; ctx.lineWidth = 1.6; ring(x, y, r + 5); }
     }
 
     // 글자
@@ -266,7 +284,7 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
       const active = !on || on.has(n.id);
       const step = state.path.indexOf(n.id);
       const [x, y] = at(n); const r = Math.max(1.4, n.r * k);
-      if (step >= 0) { ctx.globalAlpha = 1; ctx.fillStyle = COLORS.yellow; disc(x + r + 9, y - r - 7, 8); text(String(step + 1), x + r + 9, y - r - 6.5, `700 10.5px ${MONO}`, COLORS.ground, 'center'); }
+      if (step >= 0) { ctx.globalAlpha = 1; ctx.fillStyle = COLORS.pink; disc(x + r + 9, y - r - 7, 8); text(String(step + 1), x + r + 9, y - r - 6.5, `700 10.5px ${MONO}`, COLORS.ground, 'center'); }
       if (!active) continue;
       const hot = n.id === state.hover || n.id === state.selected;
       const dim = n.muted || (n.type === 'lens' && n.dormant);
@@ -297,7 +315,7 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
       const cnt = state.counts[family] || { lenses: 0, signals: 0 }; const id = `HUB-${family.toUpperCase()}`;
       const lit2 = !on || state.selected === id; const al = lobe.caption.align;
       ctx.globalAlpha = lit2 ? 0.95 : 0.35;
-      const w1 = text(lobe.label, x, y, `700 11px ${MONO}`, state.selected === id ? COLORS.yellow : COLORS.holo, al, 2.4);
+      const w1 = text(lobe.label, x, y, `700 11px ${MONO}`, state.selected === id ? COLORS.pink : COLORS.holo, al, 2.4);
       ctx.globalAlpha = lit2 ? 0.55 : 0.2;
       text(lobe.sub, x, y + 16, `500 10.5px ${FONT}`, COLORS.holo, al);
       text(`${String(cnt.lenses).padStart(2, '0')} NODES  ${String(cnt.signals).padStart(2, '0')} SIGNALS`, x, y + 31, `500 9.5px ${MONO}`, COLORS.holo, al, 0.8);
@@ -354,6 +372,24 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
   }
 
   // ---------- 입력 ----------
+  /** 계보 — 고른 것에서 위(기본 노드)와 아래(최종안)로 이어지는 노드들 */
+  function lineageOf(id) {
+    if (!id) return null;
+    const nodes = state.nodes; const n = state.byId.get(id);
+    const hub = /^HUB-/.test(id) ? id.slice(4).toLowerCase() : null;
+    let lenses = []; let signals = null;
+    if (hub) lenses = nodes.filter((x) => x.type === 'lens' && x.family === hub && !x.dormant);
+    else if (!n) return null;
+    else if (n.type === 'lens') lenses = [n];
+    else if (n.type === 'signal') { signals = [n]; lenses = [state.byId.get(n.lens)].filter(Boolean); }
+    else if (n.type === 'insight') { signals = state.links.filter((l) => l.kind === 'use' && l.source === n.id).map((l) => l.b); lenses = [...new Set(signals.map((x) => state.byId.get(x.lens)).filter(Boolean))]; }
+    else return null;
+    if (!signals) { const ids = new Set(lenses.map((l) => l.id)); signals = nodes.filter((x) => x.type === 'signal' && ids.has(x.lens) && !x.muted); }
+    const sid = new Set(signals.map((x) => x.id));
+    const uses = state.links.filter((l) => l.kind === 'use' && sid.has(l.target) && (!n || n.type !== 'insight' || l.source === n.id)).map((l) => [l.b, l.a]);
+    return { lenses, signals, uses };
+  }
+
   function pick(sx, sy) {
     let best = null; let bd = Infinity;
     for (const n of state.nodes) {
