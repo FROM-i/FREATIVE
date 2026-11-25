@@ -22,12 +22,12 @@
     </div>
     <div class="run">
       <span id="run-status" class="status" role="status" aria-live="polite"></span>
-      <button type="button" class="btn go" id="btn-think">사고 시작</button>
+      <button type="button" class="btn go" id="btn-think">분석 시작</button>
     </div>
   </header>
 
   <main class="stage">
-    <section class="universe" aria-label="Brain 유니버스">
+    <section class="universe" aria-label="Brain 브레인 맵">
       <canvas id="universe" tabindex="0" aria-label="뇌 형상 위에 노드와 연결을 그린 그래프. 방향키로 이동, +와 -로 확대·축소, 0으로 전체 보기."></canvas>
       <div class="hud stats" id="stats"></div>
       <div class="hud notice" id="notice" hidden></div>
@@ -35,15 +35,15 @@
       <div class="hud tools">
         <ul class="legend" aria-label="범례">
           <li><i class="k k-lens"></i>기준 노드</li>
-          <li><i class="k k-signal"></i>신호</li>
+          <li><i class="k k-signal"></i>판단</li>
           <li><i class="k k-issue"></i>이슈</li>
           <li><i class="k k-insight"></i>통합 인사이트</li>
           <li><i class="e"></i>연결</li>
-          <li><i class="e e-tension"></i>긴장</li>
+          <li><i class="e e-tension"></i>충돌</li>
         </ul>
         <div class="toggles">
-          <label><input type="checkbox" id="show-signals" checked> 신호</label>
-          <label><input type="checkbox" id="show-dormant" checked> 잠든 사조</label>
+          <label><input type="checkbox" id="show-signals" checked> 판단</label>
+          <label><input type="checkbox" id="show-dormant" checked> 쓰지 않은 사조</label>
           <button type="button" class="sq" id="zoom-out" aria-label="축소">−</button>
           <button type="button" class="sq" id="zoom-in" aria-label="확대">+</button>
           <button type="button" class="sq wide" id="zoom-fit">전체</button>

@@ -42,13 +42,14 @@ function activate({ project, lens }) {
     const h = hash(lens.id + i.id + i.title);
     return {
       issue: i.id,
+      ladder: ['[목업] 현상', '[목업] 왜', '[목업] 본질 — 실제 모델이 원문을 읽고 쓴다.'],
       claim: `[목업] ${lens.name} → "${short(i.title)}": ${lens.ask.split('.')[0]}.`,
       basis: lens.criteria,
       stance: STANCE[Math.floor(h * 4) % 4],
       effect: '[목업] 누구의 무엇이 달라지는지는 실제 모델이 쓴다.',
       strength: +(0.5 + h * 0.4).toFixed(2),
       source: '추론',
-      ...(lens.family === 'airplane' ? { leave: `[목업] ${short(lens.leave[0], 40)}` } : {}),
+      ...(lens.family === 'airplane' ? { origin: `[목업] ${short(lens.summary, 60)}`, parallel: '[목업] 이 이슈에서 같은 구조를 가진 것', treatment: '다시 읽는다', swap: '[목업] 이 사조여야 하는 이유', leave: `[목업] ${short(lens.leave[0], 40)}` } : { against: '[목업] 통념의 틀린 점' }),
     };
   });
   return { signals: [...fromFixture, ...templated] };
@@ -93,16 +94,34 @@ function integrate({ project, cluster }) {
   const t = cluster.edges.find((e) => e.type === 'tension');
   return {
     title: `[목업] 묶음 ${cluster.id}`,
-    insight: `[목업] 신호 ${sigs.length}건이 수렴한 자리다. 통합 인사이트 문장은 실제 모델이 쓴다.`,
+    insight: `[목업] 판단 ${sigs.length}건을 묶은 자리다. 통합 인사이트 문장은 실제 모델이 쓴다.`,
     chain: sigs.map((s, i) => ({ signal: s.id, role: t && (s.id === t.from || s.id === t.to) ? '긴장' : ROLES[Math.min(i, ROLES.length - 1)], says: short(s.claim.replace('[목업] ', ''), 48) })),
-    tension: t ? { a: t.from, b: t.to, resolve: '[목업] 긴장을 푸는 방법은 실제 모델이 쓴다.' } : null,
+    tension: t ? { a: t.from, b: t.to, resolve: '[목업] 충돌 해결 방법은 실제 모델이 쓴다.' } : null,
     keep: '[목업] 지킬 관성', change: '[목업] 바꿀 해석', concept: '[목업] 컨셉 방향', visual: '[목업] 보이는 표현 방향',
     substitute: { who: '[목업] 타겟', changes: '[목업] 근본 이슈에 넣은 결과는 실제 모델이 쓴다.' },
-    verdict: '[목업]', gate: '통과', open: [],
+    verdict: '[목업]', gate: '통과', open: [], without: { nearest: 'B1', baseline: '[목업] 노드를 빼면 나왔을 안', difference: '[목업] 지금 안과의 차이' },
   };
 }
 
-const HANDLERS = { issues: ({ project }) => issues(project), route, activate, link, integrate };
+function baseline({ project }) {
+  if (project.id === SAMPLE_ID && FIXTURE.baseline) return FIXTURE.baseline;
+  return { concepts: [1, 2, 3].map((n) => ({ title: `[목업] 기본안 ${n}`, concept: '[목업] 브리프만 읽고 낸 안 — 실제 모델이 쓴다.', visual: '[목업] 보이는 모습' })), common: '[목업] 세 안의 공통 해법' };
+}
+
+function direct({ project, insights, needDev }) {
+  const ids = insights.map((i) => i.id);
+  if (project.id === SAMPLE_ID && FIXTURE.direction) return { ...FIXTURE.direction, overlap: (FIXTURE.direction.overlap || []).filter((o) => ids.includes(o.insight)) };
+  const one = (n) => ({ direction: '[목업] 이 관점의 방향은 실제 모델이 쓴다.', actions: ['[목업] 바로 할 일 1', '[목업] 바로 할 일 2'], from: [ids[n % ids.length]], need: [] });
+  return {
+    headline: '[목업] 총괄 디렉션 한 문장',
+    perspectives: { planning: one(0), design: one(1), development: needDev ? one(2) : null, service: one(2) },
+    development_reason: needDev ? '' : '[목업] 구현이 필요한 과제가 아니다',
+    conflicts: [], priority: [{ what: '[목업] 먼저 할 일', owner: 'planning', from: ids[0] }, { what: '[목업] 다음 할 일', owner: 'design', from: ids[0] }],
+    overlap: ids.map((id) => ({ insight: id, baseline: 'B1', verdict: '일부', why: '[목업] 기본안과의 비교는 실제 모델이 쓴다.' })),
+  };
+}
+
+const HANDLERS = { baseline, direct, issues: ({ project }) => issues(project), route, activate, link, integrate };
 
 export function createMock({ delay = 0 } = {}) {
   return {

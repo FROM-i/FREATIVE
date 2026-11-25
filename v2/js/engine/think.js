@@ -1,13 +1,16 @@
 // 사고 패스 — 1.x의 직렬 파이프라인을 대신한다.
 //   ① 여행지 고르기   Airplane에서 발화할 사조를 고른다 (호출 1)
 //   ② 발화            모든 기준 노드가 같은 원문(미션·이슈)을 받고 동시에 신호를 낸다 (노드당 호출 1)
+//                     노드는 방법론 원문을 읽고 생각의 과정(현상→왜→본질, 사조는 원론·같은 구조·바꿔치기 시험)을 남긴다
 //   ③ 연결            신호 사이의 인과·조건·강화·긴장을 엣지로 판단한다 (호출 1)
 //   ④ 전파·수렴       에너지와 묶음을 계산한다 (AI 없음 · 결정적)
 //   ⑤ 통합            묶음마다 통합 인사이트 하나 (묶음당 호출 1)
 //   ⑥ 가드            인사이트가 여러 노드군의 신호를 실제로 지났는지 코드로 확인한다
-import { issuesPrompt, routePrompt, activatePrompt, linkPrompt, integratePrompt } from '../../knowledge/prompts.js';
+//   ⑦ 통합 디렉션     인사이트를 기획·디자인·개발·서비스 관점의 할 일로 묶는다 (호출 1) — 중앙 통제
+import { issuesPrompt, routePrompt, activatePrompt, linkPrompt, integratePrompt, directionPrompt, baselinePrompt } from '../../knowledge/prompts.js';
+import { PERSPECTIVES } from '../../knowledge/tags.js';
 import { AIRPLANE, OPPOSITIONS, GATES, FAMILIES } from '../../knowledge/nodes.js';
-import { activeLenses, signalPrefix, hints, lensName } from '../graph/model.js';
+import { activeLenses, signalPrefix, hints, lensName, validateProject, needsDevelopment } from '../graph/model.js';
 import { propagate } from '../graph/propagate.js';
 
 const STANCES = new Set(['keep', 'change', 'limit', 'open']);
@@ -38,28 +41,34 @@ function normalizeSignals(raw, lens, project, max, startAt, hinted) {
   const issues = new Map(project.issues.map((i) => [String(i.id).toLowerCase(), i.id]));
   const perIssue = new Map();
   const out = [];
-  let dropped = 0;
+  let dropped = 0; let shallow = 0;
   for (const s of Array.isArray(raw?.signals) ? raw.signals : []) {
     const issue = issues.get(String(s.issue || '').toLowerCase());
     const claim = text(s.claim);
     const effect = text(s.effect);
     // 누구의 무엇이 달라지는지 쓰지 못한 신호는 버린다 (thinking.md 3.3)
     if (!issue || !claim || !effect) { dropped++; continue; }
+    // 훑고 지나간 신호는 신호가 아니다 — 생각의 과정을 남기지 못하면 버린다
+    const ladder = (Array.isArray(s.ladder) ? s.ladder : []).map(text).filter(Boolean).slice(0, 5);
+    const ism = lens.family === 'airplane';
+    const deep = ladder.length >= 3 && (ism ? text(s.origin) && text(s.parallel) && text(s.swap) : true);
+    if (!deep) { shallow++; continue; }
     const n = perIssue.get(issue) || 0;
     if (n >= max) { dropped++; continue; }
     perIssue.set(issue, n + 1);
     const hint = hinted.has(`${issue}|${lens.id}`);
     out.push({
       id: `${signalPrefix(lens.id)}-${startAt + out.length + 1}`,
-      lens: lens.id, family: lens.family, issue, claim, effect,
-      basis: text(s.basis), leave: text(s.leave) || undefined,
+      lens: lens.id, family: lens.family, issue, ladder, claim, effect,
+      basis: text(s.basis),
+      ...(ism ? { origin: text(s.origin), parallel: text(s.parallel), treatment: text(s.treatment), swap: text(s.swap), leave: text(s.leave) } : { against: text(s.against) }),
       stance: STANCES.has(s.stance) ? s.stance : 'change',
       strength: Math.min(1, clamp(s.strength) + (hint ? 0.15 : 0)),
       source: SOURCES.includes(text(s.source)) ? text(s.source) : '추론',
       hinted: hint || undefined,
     });
   }
-  return { signals: out, dropped };
+  return { signals: out, dropped, shallow };
 }
 
 function normalizeEdges(raw, signals, keep = []) {
@@ -93,16 +102,17 @@ export function checkInsight(raw, cluster, signals, settings) {
   const lenses = [...new Set(used.map((id) => sig.get(id).lens))];
   const problems = [];
   if (!text(raw?.insight)) problems.push('통합 인사이트 문장이 없다');
-  if (used.length < 3) problems.push(`인과 사슬이 지난 신호가 ${used.length}건뿐이다 (3건 이상)`);
+  if (used.length < 3) problems.push(`근거로 쓴 판단이 ${used.length}건뿐이다 (3건 이상)`);
   if (cluster.families.length < settings.minFamilies) problems.push(`이 묶음은 노드군 ${cluster.families.length}개에만 걸쳐 있다 (${settings.minFamilies}개 이상)`);
   const missing = cluster.families.filter((f) => !families.includes(f));
-  if (missing.length) problems.push(`사슬이 ${missing.map((f) => FAMILIES[f].short).join(' · ')} 신호를 지나지 않았다`);
+  if (missing.length) problems.push(`${missing.map((f) => FAMILIES[f].short).join(' · ')} 판단을 근거로 쓰지 않았다`);
   const needLenses = Math.min(settings.minLenses, cluster.lenses.length);
   if (lenses.length < needLenses) problems.push(`근거 노드가 ${lenses.length}개뿐이다 (${needLenses}개 이상)`);
-  if (!text(raw?.substitute?.changes)) problems.push('근본 이슈에 넣었을 때 달라지는 것을 쓰지 않았다');
+  if (!text(raw?.substitute?.changes)) problems.push('근본 이슈에 적용했을 때 달라지는 점을 쓰지 않았다');
   const t = raw?.tension;
   const tension = t && members.has(t.a) && members.has(t.b) && text(t.resolve) ? { a: t.a, b: t.b, resolve: text(t.resolve) } : null;
-  if (cluster.tensions > 0 && !tension) problems.push('묶음 안의 긴장을 어떻게 푸는지 쓰지 않았다');
+  if (cluster.tensions > 0 && !tension) problems.push('판단 사이의 충돌을 어떻게 푸는지 쓰지 않았다');
+  if (!text(raw?.without?.baseline) || !text(raw?.without?.difference)) problems.push('노드 없이 냈을 안과의 차이를 쓰지 않았다');
   return {
     ok: problems.length === 0, problems, chain, tension, used, byFamily, families, lenses,
     foreign: chainRaw.length - chain.length,
@@ -117,8 +127,51 @@ function shapeInsight(raw, check, cluster, n) {
     keep: text(raw.keep), change: text(raw.change), concept: text(raw.concept), visual: text(raw.visual),
     substitute: { who: text(raw.substitute?.who), changes: text(raw.substitute?.changes) },
     verdict: text(raw.verdict), gate: text(raw.gate) || '통과',
+    without: { nearest: text(raw.without?.nearest), baseline: text(raw.without?.baseline), difference: text(raw.without?.difference) },
     open: (Array.isArray(raw.open) ? raw.open : []).map(text).filter(Boolean),
     check: { ok: check.ok, problems: check.problems, used: check.used, byFamily: check.byFamily, families: check.families, lenses: check.lenses, foreign: check.foreign },
+  };
+}
+
+/** 디렉션 가드 — 관점마다 방향·할 일·근거 인사이트가 있어야 한다 */
+export function checkDirection(raw, insights, needDev, baseline = null) {
+  const ids = new Set(insights.map((i) => i.id));
+  const list = (v) => (Array.isArray(v) ? v : []).map(text).filter(Boolean);
+  const problems = [];
+  const perspectives = {};
+  for (const v of PERSPECTIVES) {
+    const r = raw?.perspectives?.[v.id];
+    if (!r) {
+      if (v.id === 'development' && !needDev && text(raw?.development_reason)) continue;
+      problems.push(v.id === 'development' && !needDev ? '개발 관점을 뺐는데 이유가 없다' : `${v.name} 관점이 없다`);
+      continue;
+    }
+    const from = list(r.from).filter((id) => ids.has(id));
+    const actions = list(r.actions);
+    if (!text(r.direction)) problems.push(`${v.name} 관점의 방향이 없다`);
+    if (!actions.length) problems.push(`${v.name} 관점에 바로 할 일이 없다`);
+    if (!from.length) problems.push(`${v.name} 관점이 어느 통합 인사이트에서 왔는지 없다`);
+    perspectives[v.id] = { direction: text(r.direction), actions, from, need: list(r.need) };
+  }
+  if (!text(raw?.headline)) problems.push('총괄 디렉션 한 문장이 없다');
+  const owners = new Set(Object.keys(perspectives));
+  const priority = (Array.isArray(raw?.priority) ? raw.priority : []).map((p) => ({ what: text(p.what), owner: text(p.owner), from: ids.has(p.from) ? p.from : '' })).filter((p) => p.what && owners.has(p.owner));
+  if (priority.length < 2) problems.push('먼저 할 일의 순서가 없다');
+  // 기본안 대조 — 통합을 쓴 호출이 아니라 디렉션 호출이 따로 판정한다
+  const VERDICTS = ['같음', '일부', '다름'];
+  const bids = new Set((baseline?.concepts || []).map((c) => c.id));
+  const overlap = (Array.isArray(raw?.overlap) ? raw.overlap : []).map((o) => ({ insight: text(o.insight), baseline: bids.has(text(o.baseline)) ? text(o.baseline) : '', verdict: VERDICTS.includes(text(o.verdict)) ? text(o.verdict) : '', why: text(o.why) })).filter((o) => ids.has(o.insight) && o.verdict);
+  if (bids.size && insights.some((i) => !overlap.some((o) => o.insight === i.id))) problems.push('기본안과 같은지 판정하지 않은 통합 인사이트가 있다');
+  const used = new Set(Object.values(perspectives).flatMap((p) => p.from));
+  return {
+    ok: problems.length === 0, problems,
+    direction: {
+      headline: text(raw?.headline), perspectives, developmentReason: perspectives.development ? '' : text(raw?.development_reason),
+      conflicts: (Array.isArray(raw?.conflicts) ? raw.conflicts : []).map((c) => ({ between: list(c.between).filter((b) => owners.has(b)), what: text(c.what), resolve: text(c.resolve) })).filter((c) => c.between.length === 2 && c.what),
+      priority,
+      unusedInsights: insights.filter((i) => !used.has(i.id)).map((i) => i.id),
+      overlap,   // 통합 인사이트가 기본안과 같은 해법인지 — 같음 · 일부 · 다름   // 어느 관점에도 쓰이지 않은 인사이트
+    },
   };
 }
 
@@ -142,6 +195,11 @@ export function usage(run) {
  */
 export async function think(project, provider, { onEvent = () => {}, signal, mode = 'full' } = {}) {
   if (!project.issues.some((i) => text(i.title))) throw new Error('이슈가 없습니다. 근본 이슈를 하나 이상 넣어 주세요.');
+  // 세팅 점검 — 틀을 채운 이슈만 발화에 들어간다. 태그가 비면 규칙 기반 추천을 붙인다.
+  const setup = validateProject(project);
+  if (setup.blocking) throw new Error(`세팅이 끝나지 않았습니다: ${setup.problems.filter((x) => x.where.startsWith('이슈')).map((x) => `${x.where} — ${x.what}`).join(' / ')}`);
+  const whole = project;
+  project = { ...project, issues: setup.ready };
   const s = project.settings;
   const started = Date.now();
   const prev = mode === 'full' ? null : project.run;
@@ -150,7 +208,9 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
     at: new Date().toISOString(), provider: provider.name, mode,
     picks: prev?.picks || [], signals: prev ? prev.signals.map((x) => ({ ...x })) : [],
     edges: prev ? prev.edges.map((x) => ({ ...x })) : [], energy: {}, clusters: [], insights: [],
-    failed: [], notes: [], calls: 0, tokens: { in: 0, out: 0 },
+    baseline: prev?.baseline || null,
+    failed: [], notes: setup.problems.map((x) => `세팅: ${x.where} — ${x.what}`), calls: 0, tokens: { in: 0, out: 0 },
+    setup: { ok: setup.ok, issues: setup.ready.map((i) => ({ id: i.id, tags: i.tags, auto: i.autoTags })), skipped: whole.issues.filter((i) => !setup.ready.some((r) => r.id === i.id)).map((i) => i.id) },
   };
   const emit = (type, extra = {}) => onEvent({ type, run, ...extra });
   const call = async (args) => {
@@ -160,6 +220,17 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
     if (r.usage) { run.tokens.in += r.usage.in || 0; run.tokens.out += r.usage.out || 0; }
     return r.json;
   };
+
+  // ⓪ 기본안 — 기준 노드 없이 브리프만 읽고 낸 안. 통합 인사이트와 대조하는 기준이다.
+  if (mode === 'full') {
+    emit('stage', { stage: 'baseline' });
+    const p = baselinePrompt(project);
+    const json = await call({ role: 'sub', ...p, task: { kind: 'baseline', project } });
+    const concepts = (Array.isArray(json?.concepts) ? json.concepts : []).map((c, i) => ({ id: `B${i + 1}`, title: text(c.title), concept: text(c.concept), visual: text(c.visual) })).filter((c) => c.concept).slice(0, 3);
+    run.baseline = concepts.length ? { concepts, common: text(json.common) } : null;
+    if (!run.baseline) run.notes.push('기본안을 받지 못해 대조 없이 진행했다');
+    emit('baseline');
+  }
 
   if (mode !== 'relink') {
     // ① 여행지 고르기 — 사람이 고정했거나 [[지목]]한 사조는 그대로 넣는다
@@ -199,8 +270,9 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
         const p = activatePrompt(scoped, lens, s.signalsPerLens);
         const json = await call({ role: 'sub', ...p, task: { kind: 'activate', project: scoped, lens, max: s.signalsPerLens } });
         const startAt = run.signals.filter((x) => x.lens === lens.id).length;
-        const { signals, dropped } = normalizeSignals(json, lens, scoped, s.signalsPerLens, startAt, hinted);
-        if (dropped) run.notes.push(`${lens.name}: 대입을 쓰지 못했거나 넘친 신호 ${dropped}건을 버렸다`);
+        const { signals, dropped, shallow } = normalizeSignals(json, lens, scoped, s.signalsPerLens, startAt, hinted);
+        if (dropped) run.notes.push(`${lens.name}: 달라지는 점을 쓰지 못했거나 개수를 넘긴 판단 ${dropped}건을 제외했다`);
+        if (shallow) run.notes.push(`${lens.name}: 근거 단계 없이 쓴 판단 ${shallow}건을 제외했다`);
         run.signals.push(...signals);
         emit('fire', { lens: lens.id, signals });
       } catch (e) {
@@ -210,14 +282,14 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
       }
     });
     if (run.failed.length > lenses.length / 2) throw new Error(`노드 ${lenses.length}개 중 ${run.failed.length}개가 응답하지 못했습니다: ${run.failed[0].error}`);
-    if (run.signals.length < 3) throw new Error('신호가 3건보다 적어 연결할 수 없습니다.');
+    if (run.signals.length < 3) throw new Error('판단이 3건보다 적어 연결할 수 없습니다.');
 
     // ③ 연결 — 관계를 문장이 아니라 엣지로 남긴다. 사람이 고친 엣지는 지킨다.
     emit('stage', { stage: 'link' });
     const p = linkPrompt(project, run.signals, lensName);
     const json = await call({ role: 'brain', ...p, task: { kind: 'link', project, signals: run.signals } });
     const { edges, rejected } = normalizeEdges(json, run.signals, run.edges.filter((e) => e.by === 'human'));
-    if (rejected) run.notes.push(`이유가 없거나 같은 노드 안의 연결 ${rejected}건을 받지 않았다`);
+    if (rejected) run.notes.push(`이유가 없거나 같은 노드 안의 연결 ${rejected}건을 제외했다`);
     run.edges = edges;
     emit('linked');
   }
@@ -229,7 +301,7 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
   run.clusters = result.clusters;
   run.link = result.stats;
   emit('clustered');
-  if (!run.clusters.length) throw new Error('수렴한 묶음이 없습니다. 신호 사이의 연결이 너무 적습니다.');
+  if (!run.clusters.length) throw new Error('묶을 수 있는 판단이 없습니다. 판단 사이의 연결이 너무 적습니다.');
 
   // ⑤ 통합 + ⑥ 가드 — 통과하지 못하면 이유를 붙여 한 번 다시 쓴다. 그래도 안 되면 표시해서 남긴다.
   emit('stage', { stage: 'integrate' });
@@ -238,7 +310,7 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
     const cluster = { ...c, signals: c.members.map((id) => sigMap.get(id)), edges: run.edges.filter((e) => c.edges.includes(e.id)) };
     let raw; let check; let note = '';
     for (let attempt = 0; attempt < 2; attempt++) {
-      const p = integratePrompt(project, cluster, lensName, GATES, note);
+      const p = integratePrompt(project, cluster, lensName, GATES, note, run.baseline);
       raw = await call({ role: 'director', ...p, task: { kind: 'integrate', project, cluster, attempt } });
       check = checkInsight(raw, c, run.signals, s);
       if (check.ok) break;
@@ -250,6 +322,22 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
     return insight;
   });
   run.usage = usage(run);
+
+  // ⑦ 통합 디렉션 — 관점별 할 일. 가드에 걸리면 이유를 붙여 한 번 다시 쓴다.
+  emit('stage', { stage: 'direct' });
+  const good = run.insights.filter((i) => i.check.ok);
+  const basis = good.length ? good : run.insights;
+  const needDev = needsDevelopment(project);
+  let dcheck; let dnote = '';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const p = directionPrompt(project, basis, needDev, dnote, run.baseline);
+    const raw = await call({ role: 'director', ...p, task: { kind: 'direct', project, insights: basis, needDev, attempt } });
+    dcheck = checkDirection(raw, basis, needDev, run.baseline);
+    if (dcheck.ok) break;
+    dnote = `앞서 쓴 디렉션은 다음 이유로 받지 않았다: ${dcheck.problems.join(' / ')}`;
+  }
+  run.direction = { ...dcheck.direction, check: { ok: dcheck.ok, problems: dcheck.problems }, needDev };
+  emit('directed');
   run.ms = Date.now() - started;
   emit('stage', { stage: 'done' });
   return run;

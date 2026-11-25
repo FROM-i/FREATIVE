@@ -30,9 +30,9 @@ test('사고 패스 — 발화 · 연결 · 수렴 · 통합이 한 번에 돈�
   const events = [];
   const run = await think(p, createMock(), { onEvent: (e) => events.push(e.type === 'stage' ? e.stage : e.type) });
   const lenses = IDENTITY.length + TUNNEL.length + p.settings.ismCount;
-  assert.equal(run.calls, 1 + lenses + 1 + p.settings.insightCount, '호출 수 = 여행지 1 + 노드 수 + 연결 1 + 인사이트 수');
+  assert.equal(run.calls, 1 + 1 + lenses + 1 + p.settings.insightCount + 1, '호출 수 = 기본안 1 + 사조 고르기 1 + 노드 수 + 연결 1 + 인사이트 수 + 디렉션 1');
   assert.equal(new Set(run.signals.map((s) => s.lens)).size, lenses, '모든 노드가 발화했다');
-  assert.deepEqual(events.filter((e) => ['route', 'activate', 'link', 'propagate', 'integrate', 'done'].includes(e)), ['route', 'activate', 'link', 'propagate', 'integrate', 'done']);
+  assert.deepEqual(events.filter((e) => ['route', 'activate', 'link', 'propagate', 'integrate', 'direct', 'done'].includes(e)), ['route', 'activate', 'link', 'propagate', 'integrate', 'direct', 'done']);
   assert.ok(OPPOSITIONS.some((o) => run.picks.some((x) => x.id === o.a) && run.picks.some((x) => x.id === o.b)), '대립하는 사조 쌍이 들어 있다');
   assert.equal(run.insights.length, 3);
   for (const ins of run.insights) {
@@ -75,7 +75,7 @@ test('가드 — 한 노드군만 인용한 인사이트는 통과하지 못한�
   const bad = { insight: '터널만 본 결론', chain: oneFamily.map((signal) => ({ signal, role: '전제', says: '…' })), substitute: { who: '누구', changes: '무엇' } };
   const check = checkInsight(bad, c, run.signals, p.settings);
   assert.equal(check.ok, false);
-  assert.ok(check.problems.some((x) => x.includes('지나지 않았다')));
+  assert.ok(check.problems.some((x) => x.includes('근거로 쓰지 않았다')));
   // 묶음에 없는 신호는 사슬에서 빠진다
   const foreign = checkInsight({ ...bad, chain: [{ signal: 'NOPE-9', role: '전제', says: '' }] }, c, run.signals, p.settings);
   assert.equal(foreign.foreign, 1);
@@ -106,7 +106,7 @@ test('사람의 개입 — 엣지를 고치면 발화 없이 전파·통합만 �
   const kinds = [];
   const mock = createMock();
   const again = await think(p, { name: 'spy', json: (a) => { kinds.push(a.task.kind); return mock.json(a); } }, { mode: 'relink' });
-  assert.ok(kinds.length >= again.clusters.length && kinds.every((k) => k === 'integrate'), '통합 호출만 있다');
+  assert.ok(kinds.length > again.clusters.length && kinds.every((k) => k === 'integrate' || k === 'direct'), '통합·디렉션 호출만 있다');
   assert.equal(again.signals.length, 26);
   assert.ok(!again.clusters.some((c) => c.members.includes('BRUTAL-1')));
   assert.notDeepEqual(again.clusters.map((c) => c.members.join()), before);
@@ -116,7 +116,7 @@ test('이슈 추가 — 새 이슈에만 발화하고 사람이 고친 엣지는
   const p = sample();
   p.run = await think(p, createMock());
   p.run.edges.push({ id: 'H1', from: 'FROM-1', to: 'USAGE-1', type: 'cause', weight: 0.9, why: '사람이 이은 연결', by: 'human' });
-  p.issues.push({ id: 'I4', title: '사서의 업무가 늘어난다', detail: '', test: '', root: false });
+  p.issues.push({ id: 'I4', title: '사서의 업무가 늘어난다', detail: '', test: '', root: false, tags: ['sv-ops'] });
   const run = await think(p, createMock(), { mode: 'add' });
   const fresh = run.signals.filter((s) => s.issue === 'I4');
   assert.equal(fresh.length, new Set(run.signals.map((s) => s.lens)).size, '노드마다 새 이슈에 신호 1건');
@@ -126,7 +126,7 @@ test('이슈 추가 — 새 이슈에만 발화하고 사람이 고친 엣지는
 });
 
 test('예시가 아닌 프로젝트 — 목업 틀 문장으로도 구조가 선다', async () => {
-  const p = newProject({ title: '테스트', brief: { what: '무엇', purpose: '목적', target: '타겟' }, issues: [{ title: '근본 이슈', root: true, test: '질문' }, { title: '이슈 둘' }] });
+  const p = newProject({ title: '테스트', brief: { what: '무엇', purpose: '목적', target: '타겟' }, category: 'planning', issues: [{ title: '근본 이슈', root: true, test: '질문', tags: ['pl-service'] }, { title: '이슈 둘', tags: ['ds-ui'] }] });
   const proposed = await proposeIssues(p, createMock());
   assert.ok(proposed.some((i) => i.root));
   p.run = await think(p, createMock());
@@ -141,6 +141,7 @@ test('예시가 아닌 프로젝트 — 목업 틀 문장으로도 구조가 선
 
 test('이슈가 없으면 시작하지 않는다 · 노드 절반 넘게 실패하면 멈춘다', async () => {
   await assert.rejects(think(newProject({ title: 'x' }), createMock()), /이슈가 없습니다/);
+  await assert.rejects(think(newProject({ title: 'x', issues: [{ title: '판정 질문 없는 근본 이슈', root: true, tags: ['pl-service'] }] }), createMock()), /세팅이 끝나지 않았습니다/);
   const mock = createMock();
   const flaky = { name: 'flaky', json: (a) => (a.task.kind === 'activate' ? Promise.reject(new Error('503')) : mock.json(a)) };
   await assert.rejects(think(sample(), flaky), /응답하지 못했습니다/);
@@ -173,7 +174,7 @@ test('보고서 — 결론이 먼저 나오고, 비율에는 건수가 함께 �
   const md = reportMarkdown(p);
   assert.ok(md.indexOf('## 결론') < md.indexOf('## N1.'));
   const u = p.run.usage;
-  assert.ok(md.includes(`신호 ${u.signals}건 중 ${u.used}건(${Math.round((u.used / u.signals) * 100)}%)`));
+  assert.ok(md.includes(`판단 ${u.signals}건 중 ${u.used}건(${Math.round((u.used / u.signals) * 100)}%)`));
   assert.match(md, /노드군 사이 \d+건, \d+%/);
   assert.ok(!md.includes('undefined'));
 });
@@ -191,4 +192,102 @@ test('뇌 형상 — 점 구름과 노드 자리가 형상 안에 있고 언제�
   const mean = (f, k) => { const s = g.nodes.filter((x) => x.type === 'lens' && x.family === f).map((x) => seat.get(x.id)[k]); return s.reduce((a, c) => a + c, 0) / s.length; };
   assert.ok(mean('identity', 'x') < b.CENTER.x && mean('airplane', 'x') > b.CENTER.x && mean('tunnel', 'y') > b.CENTER.y);
   assert.deepEqual([...b.seats(g.nodes)], [...seat]);
+});
+
+test('깊이 — 생각의 과정 없이 훑은 신호는 버린다', async () => {
+  const mock = createMock();
+  const skim = { name: 'skim', async json(a) {
+    const r = await mock.json(a);
+    if (a.task.kind === 'activate' && a.task.lens.family === 'airplane') r.json.signals.forEach((s) => { delete s.swap; });      // 바꿔치기 시험을 빼먹은 사조
+    if (a.task.kind === 'activate' && a.task.lens.id === 'ID-FROM') r.json.signals.forEach((s) => { s.ladder = ['정의만 옮김']; }); // 한 줄짜리
+    return r;
+  } };
+  const run = await think(sample(), skim);
+  assert.ok(!run.signals.some((s) => s.family === 'airplane'), '원론·같은 구조·바꿔치기 시험이 없는 사조 신호는 들어오지 않는다');
+  assert.ok(!run.signals.some((s) => s.lens === 'ID-FROM'));
+  assert.ok(run.notes.some((n) => n.includes('근거 단계 없이')));
+  for (const s of run.signals) assert.ok(s.ladder.length >= 3);
+  // 걷어내기를 쓰지 않은 인사이트는 가드에 걸린다
+  const c = run.clusters[0];
+  const base = { insight: 'x', chain: c.members.map((signal) => ({ signal, role: '전제', says: '' })), substitute: { changes: '달라짐' }, tension: null };
+  assert.ok(checkInsight(base, c, run.signals, sample().settings).problems.some((p) => p.includes('노드 없이 냈을 안')));
+});
+
+test('프롬프트 — 사조 노드는 카드 원문 전체와 방법론 규칙을 받는다', () => {
+  const p = sample();
+  const ism = AIRPLANE.find((a) => a.id === 'ISM-BRUTAL');
+  const a = activatePrompt(p, ism, 1);
+  assert.ok(a.system.includes(ism.card) && a.system.includes('규칙 1') && a.system.includes('바꿔치기 시험'));
+  const b = activatePrompt(p, IDENTITY.find((l) => l.id === 'ID-JAMAIS'), 1);
+  assert.ok(b.system.includes('익숙한 것을 처음 보는 것처럼 느끼는 것') && b.system.includes('ladder'));
+});
+
+test('세팅 — 같은 글이면 같은 태그가 추천되고, 틀을 채우지 않은 이슈는 발화에 들어가지 않는다', async () => {
+  const T = await import('../knowledge/tags.js');
+  const { validateProject, needsDevelopment } = await import('../js/graph/model.js');
+  assert.equal(T.CATEGORIES.length, 6);
+  for (const t of T.TAGS) assert.ok(T.categoryById(t.category) && t.keywords.length, t.id);
+  for (const c of T.CATEGORIES) assert.ok(T.SEED_INPUT[c.id].filter((f) => f.required).length >= 2, `${c.name} 필수 인풋`);
+  const text = '토스 미니앱 결과 화면의 UI를 다시 만들고 공유로 재방문을 늘린다';
+  const a = T.recommendTags(text); const b = T.recommendTags(text);
+  assert.deepEqual(a, b);
+  assert.ok(a.some((r) => r.id === 'ds-ui') && a.some((r) => r.id === 'dv-platform') && a.every((r) => r.because.length));
+  assert.deepEqual(T.recommendTags(''), []);
+
+  const p = newProject({ title: 't', category: 'design', brief: { what: 'a', purpose: 'b', target: 'c' }, seed: { design: { deliverable: '3화면', moment: '결과 화면' } },
+    issues: [{ title: '결과 화면의 UI가 납득을 주지 못한다', root: true, test: '응답을 가리키며 말할 수 있는가' }, { title: '글에서 아무것도 못 찾는 이슈' }, { title: '' }] });
+  const v = validateProject(p);
+  assert.equal(v.ready.length, 1);
+  assert.ok(v.ready[0].autoTags && v.ready[0].tags.includes('ds-ui'), '태그가 비면 추천을 붙인다');
+  assert.equal(v.problems.length, 2);
+  assert.equal(needsDevelopment(p, v.ready), false);
+  const run = await think(p, createMock());
+  assert.deepEqual(run.setup.skipped, ['I2', 'I3']);
+  assert.ok(run.signals.every((s) => s.issue === 'I1'));
+  assert.ok(validateProject(newProject({ title: 'x' })).problems.some((x) => x.where === '분류'));
+});
+
+test('통합 디렉션 — 관점마다 방향·할 일·근거가 있고, 개발은 필요할 때만 들어간다', async () => {
+  const { checkDirection } = await import('../js/engine/think.js');
+  const p = sample();
+  const run = await think(p, createMock());
+  const d = run.direction;
+  assert.ok(d.check.ok, d.check.problems.join(' / '));
+  assert.deepEqual(Object.keys(d.perspectives), ['planning', 'design', 'service']);
+  assert.ok(d.developmentReason && !d.needDev);
+  for (const v of Object.values(d.perspectives)) assert.ok(v.direction && v.actions.length && v.from.length);
+  assert.ok(d.priority.length >= 2 && d.conflicts.length === 1);
+  // 개발 태그가 붙으면 개발 관점이 필수가 된다
+  const ins = run.insights;
+  const noDev = { headline: 'h', perspectives: { planning: { direction: 'd', actions: ['a'], from: ['N1'] }, design: { direction: 'd', actions: ['a'], from: ['N1'] }, service: { direction: 'd', actions: ['a'], from: ['N1'] } }, development_reason: '필요 없음', priority: [{ what: 'x', owner: 'planning', from: 'N1' }, { what: 'y', owner: 'design', from: 'N1' }] };
+  assert.ok(checkDirection(noDev, ins, false).ok);
+  assert.ok(checkDirection(noDev, ins, true).problems.some((x) => x.includes('개발')));
+  // 근거 없는 디렉션은 받지 않는다
+  const bare = JSON.parse(JSON.stringify(noDev)); bare.perspectives.design.from = ['N9'];
+  assert.ok(checkDirection(bare, ins, false).problems.some((x) => x.includes('디자인')));
+  assert.deepEqual(checkDirection(noDev, ins, false).direction.unusedInsights, ['N2', 'N3']);
+});
+
+test('기본안 대조 — 브레인 없이 낸 안을 먼저 받고, 통합 인사이트마다 같은 해법인지 따로 판정한다', async () => {
+  const { checkDirection } = await import('../js/engine/think.js');
+  const p = sample();
+  const kinds = [];
+  const mock = createMock();
+  const spy = { ...mock, json: (a) => { kinds.push(a.task.kind); return mock.json(a); } };
+  const run = await think(p, spy);
+  assert.equal(kinds[0], 'baseline', '기본안을 가장 먼저 받는다');
+  assert.equal(run.baseline.concepts.length, 3);
+  assert.deepEqual(run.baseline.concepts.map((c) => c.id), ['B1', 'B2', 'B3']);
+  assert.ok(run.insights.every((i) => ['B1', 'B2', 'B3'].includes(i.without.nearest)), '인사이트마다 가장 가까운 기본안을 적는다');
+  assert.equal(run.direction.overlap.length, run.insights.length);
+  assert.ok(run.direction.overlap.every((o) => ['같음', '일부', '다름'].includes(o.verdict)));
+  // 판정이 빠진 인사이트가 있으면 디렉션을 받지 않는다
+  const raw = { headline: 'h', perspectives: { planning: { direction: 'd', actions: ['a'], from: ['N1'] }, design: { direction: 'd', actions: ['a'], from: ['N1'] }, service: { direction: 'd', actions: ['a'], from: ['N1'] } }, development_reason: '필요 없음', priority: [{ what: 'x', owner: 'planning', from: 'N1' }, { what: 'y', owner: 'design', from: 'N1' }], overlap: [{ insight: 'N1', baseline: 'B1', verdict: '같음', why: 'w' }] };
+  assert.ok(checkDirection(raw, run.insights, false, run.baseline).problems.some((x) => x.includes('기본안')));
+  // 다시 묶기는 기본안을 새로 받지 않고 이전 것을 쓴다
+  kinds.length = 0;
+  p.run = run;
+  const again = await think(p, spy, { mode: 'relink' });
+  assert.ok(!kinds.includes('baseline'));
+  assert.deepEqual(again.baseline, run.baseline);
 });

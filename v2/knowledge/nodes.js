@@ -1,7 +1,9 @@
 // THE FROM BRAIN — 기본 노드.
 // 노드 하나 = 판단 기준 하나. 기준(criteria)과 이슈에 던지는 질문(ask)을 여기서만 고친다.
+// 노드는 한 줄 정의로 생각하지 않는다 — 방법론 원문(text · card)을 읽고 생각한다. 원문은 scripts/sync-knowledge.mjs 가 가져온다.
 // 출처: FREATIVE 1.x knowledge/brain.json(렌즈) · 방법론 CORE(core.md) · 05_layer(터널 레이어).
 import { ISMS, OPPOSITIONS } from './isms.js';
+import { CORE } from './core.js';
 
 export const FAMILIES = {
   identity: { id: 'identity', hub: 'HUB-IDENTITY', name: 'THE FROM 아이덴티티', short: '아이덴티티', role: '판단의 출발점 — 무엇을 지키고 무엇을 새로 볼지 정한다' },
@@ -74,14 +76,18 @@ export const TUNNEL = [
 ];
 
 export const AIRPLANE = ISMS.map((i) => ({
-  ...i, source: 'catalog-ism.md',
+  ...i, source: 'catalog-ism.md', rules: CORE.airplane,
   criteria: '사조를 원리 층위에서 가져왔는가. 두고 올 것을 적었는가. 형태·색·서체를 빌리면 코스튬이다.',
-  ask: '이 사조의 원리 하나로 이 이슈의 기존 것(관습·정해진 전술)을 다르게 다룬다 — 지킨다 · 다시 읽는다 · 옮긴다 · 잇는다 · 덜어낸다 중 무엇인가.',
+  ask: '이 사조가 당대에 겨눈 것과 같은 구조가 이 이슈 안 어디에 있는가. 그 자리에 이 사조의 원리를 넣으면 기존의 것(관습·정해진 전술)을 어떻게 다루게 되는가 — 지킨다 · 다시 읽는다 · 옮긴다 · 잇는다 · 덜어낸다.',
 }));
 
 export { OPPOSITIONS };
 
 export const HUBS = Object.values(FAMILIES).map((f) => ({ id: f.hub, type: 'hub', family: f.id, name: f.name, role: f.role }));
+
+for (const l of IDENTITY) l.text = CORE[l.id];
+for (const g of GATES) g.text = CORE[g.id];
+for (const l of TUNNEL) l.text = CORE.tunnel;
 
 /** 발화하는 기본 노드 전체 (문 제외) */
 export const LENSES = [...IDENTITY, ...AIRPLANE, ...TUNNEL];
@@ -91,7 +97,7 @@ export const lensById = (id) => LENSES.find((n) => n.id === id) || GATES.find((n
 /** 기본 설정 — 한 번의 사고에 쓰는 양 */
 export const DEFAULTS = {
   ismCount: 4,          // Airplane에서 발화시킬 사조 수 (대립 쌍 1개 포함)
-  signalsPerLens: 2,    // 노드 하나가 이슈에 내는 신호의 최대 수
+  signalsPerLens: 1,    // 노드 하나가 이슈 하나에 내는 신호의 최대 수 — 얕은 둘보다 깊은 하나
   insightCount: 3,      // 통합 인사이트 수 N
   concurrency: 4,       // 동시 호출 수
   minFamilies: 2,       // 통합 인사이트가 반드시 걸쳐야 하는 기본 노드군 수 (3이면 모두)
