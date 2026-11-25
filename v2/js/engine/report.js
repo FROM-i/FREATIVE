@@ -50,7 +50,9 @@ export function reportMarkdown(project) {
   if (run.arena) {
     const c = run.arena.counts;
     L.push('## 경쟁 기록', '', `후보 ${c.candidates}개(노드의 완성안 ${c.node} · 묶음 통합안 ${c.cluster} · 충돌 교배 ${c.cross}). 사유가 있어 탈락 ${c.screened}개, 나머지는 점수 없이 ${c.duels}번 겨뤘다. 결선에서 판정이 갈린 대결 ${c.splits}건. 기본안에 없는 해법인데 떨어진 후보 ${c.different}개. 고친 안이 채택된 것 ${c.revised}건.`, '');
-    if (run.frames?.length) L.push('다시 정의한 문제', ...run.frames.map((f) => `- ${f.id} ${f.frame} — ${f.why}`), '');
+    if (c.groups != null) L.push(`결선 ${c.finalists}개를 다시 견주니 서로 다른 해법은 ${c.groups}개였다. 같은 해법이라 빠진 안 ${c.merged}개, 예비에서 올린 안 ${c.reserve}개.`, '');
+    if (run.scope?.gap) L.push(`근본 이슈가 덮지 못하는 것: ${run.scope.gap}`, '');
+    if (run.frames?.length) L.push('다시 정의한 문제', ...run.frames.map((f) => `- ${f.id} ${f.frame}${f.success ? ' [성공 기준을 겨눔]' : ''} — ${f.why}`), '');
     L.push('| 후보 | 출처 | 기본안 대조 | 해법 묶음 | 결선 자리 | 조별 승 | 결선 승 | 결과 | 제목 |', '|---|---|---|---|---|---|---|---|---|', ...[...run.arena.candidates].sort((x, y) => (x.rank ?? 99) - (y.rank ?? 99) || (y.swiss ?? -1) - (x.swiss ?? -1)).map((k) => `| ${k.id} | ${k.from} | ${k.screen?.verdict || '-'} | ${k.family || '-'} | ${k.seat || '-'} | ${k.swiss ?? '-'} | ${k.wins ?? '-'} | ${k.status}${k.contested ? ' · 판정 갈림' : ''} | ${k.title} |`), '');
   }
 

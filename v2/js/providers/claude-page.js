@@ -2,7 +2,7 @@
 // 보는 사람의 Claude에게 묻는다. 키가 필요 없고, 첫 호출에서 동의를 묻는다.
 import { parseJSON } from '../engine/json.js';
 
-const TIER = { director: 'complex', brain: 'complex', sub: 'default' };
+const TIER = { director: 'complex', brain: 'complex', sub: 'default', judge: 'complex' };
 
 /** 쓸 수 없으면 null */
 export async function createClaudePage() {

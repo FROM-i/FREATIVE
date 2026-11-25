@@ -284,7 +284,7 @@ FIXTURE.direction = {
 for (const [lens, fact] of [['TN-BRAND', 'F1'], ['TN-TARGET', 'F2'], ['TN-USAGE', 'F2']]) for (const sig of FIXTURE.signals[lens] || []) sig.facts = [fact];
 
 // 더프롬 판정 — 예시. 점수 없이 확인 항목, 차별화와 실효성의 판정문, 보류한 것을 적는다
-const CK = (r) => ['브리프의 제약', '접근성', '팩트 근거', '사람이 얻는 것', '자사 색 배제(N7)'].map((item, i) => ({ item, result: r[i][0], why: r[i][1] }));
+const CK = (r) => [...['브리프의 제약', '접근성', '팩트 근거', '사람이 얻는 것', '자사 색 배제(N7)'].map((item, i) => ({ item, result: r[i][0], why: r[i][1] })), { item: '성공 기준', result: '확인 필요', why: '브리프에 성공 기준이 적혀 있지 않다.' }];
 FIXTURE.verdict = [
   { title: '친근한 안내 문구로 재방문 습관 유도', verdict: '채택',
     checks: CK([['통과', '새 시설 없이 기존 안내물만 바꾼다.'], ['통과', '안내를 읽는 모든 이용자에게 닿는다.'], ['확인 필요', '야간 개관은 브리프에 있지만 재방문 수치는 자료가 없다.'], ['통과', '빌릴 일이 없는 날에도 들를 이유가 생긴다.'], ['통과', '더프롬의 형상이나 색을 쓰지 않는다.']]),

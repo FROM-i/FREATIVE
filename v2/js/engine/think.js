@@ -9,7 +9,7 @@
 //   ⑦ 통합 디렉션     인사이트를 기획·디자인·개발·서비스 관점의 할 일로 묶는다 (호출 1) — 중앙 통제
 import { issuesPrompt, routePrompt, activatePrompt, linkPrompt, integratePrompt, directionPrompt, baselinePrompt, verdictPrompt, researchPrompt } from '../../knowledge/prompts.js';
 import { SEED_PRECEDENTS } from '../../knowledge/viewpoint.js';
-import { DIFFERENTIATION, EFFECTIVENESS, CHECKS, CHECK_RESULTS, VERDICTS4 } from '../../knowledge/criteria.js';
+import { DIFFERENTIATION, EFFECTIVENESS, CHECKS, SUCCESS_CHECK, CHECK_RESULTS, VERDICTS4 } from '../../knowledge/criteria.js';
 import { validFacts, acceptResearch } from '../../knowledge/facts.js';
 import { LAYERS } from '../../knowledge/ism-depth.js';
 import { reframePrompt } from '../../knowledge/prompts-arena.js';
@@ -54,7 +54,7 @@ export async function proposeIssues(project, provider, { signal } = {}) {
   const p = issuesPrompt(project);
   const { json } = await provider.json({ role: 'director', ...p, signal, task: { kind: 'issues', project } });
   const tidy = (list, root) => (Array.isArray(list) ? list : [])
-    .map((i) => ({ title: text(i.title), detail: text(i.detail), test: text(i.test), root }))
+    .map((i) => ({ title: text(i.title), detail: text(i.detail), test: text(i.test), root, ...(root ? { covers: text(i.covers), misses: text(i.misses) } : {}) }))
     .filter((i) => i.title);
   return [...tidy(json.roots, true), ...tidy(json.issues, false)];
 }
@@ -165,7 +165,8 @@ function shapeInsight(raw, check, cluster, n) {
  * 더프롬 판정 정리 — 점수가 없다. 확인 항목(통과 · 미달 · 확인 필요), 차별화와 실효성의 판정문과 수준, 보류한 것, 판정.
  * 인사이트의 순서는 바꾸지 않는다(경쟁에서 정해진 순서다).
  */
-export function shapeVerdict(raw, insights) {
+export function shapeVerdict(raw, insights, project = null) {
+  const noSuccess = project && !text(project.brief?.success);
   const ids = new Set(insights.map((i) => i.id));
   const answers = (c, v) => Object.fromEntries(c.questions.map((q) => [q.id, text(v?.[q.id])]));
   const items = [];
@@ -177,13 +178,16 @@ export function shapeVerdict(raw, insights) {
     const effectiveness = { level: EFFECTIVENESS.levels.includes(el) ? el : '', confidence: EFFECTIVENESS.confidence.includes(text(v.effectiveness?.confidence)) ? text(v.effectiveness.confidence) : '추정', ...answers(EFFECTIVENESS, v.effectiveness) };
     const held = (Array.isArray(v.held) ? v.held : []).map(text).filter(Boolean);
     // 답하지 못한 물음은 보류로 센다 — 빈칸을 수준으로 덮지 않는다
-    const blank = [...DIFFERENTIATION.questions.filter((q) => !differentiation[q.id]).map((q) => `차별화 · ${q.id}`), ...EFFECTIVENESS.questions.filter((q) => !effectiveness[q.id]).map((q) => `실효성 · ${q.id}`)];
-    items.push({
-      insight: id,
-      checks: (Array.isArray(v.checks) ? v.checks : []).map((c) => ({ item: text(c.item), result: CHECK_RESULTS.includes(text(c.result)) ? text(c.result) : '확인 필요', why: text(c.why) })).filter((c) => CHECKS.includes(c.item)),
-      differentiation, effectiveness, held, blank,
-      verdict: VERDICTS4.includes(text(v.verdict)) ? text(v.verdict) : '보류', safe: text(v.safe), push: text(v.push), precedent: text(v.precedent),
-    });
+    const blank = [...DIFFERENTIATION.questions.filter((q) => !differentiation[q.id]).map((q) => `차별화 · ${q.id}`), ...EFFECTIVENESS.questions.filter((q) => !effectiveness[q.id] && !(q.id === 'success' && noSuccess)).map((q) => `실효성 · ${q.id}`)];
+    const checks = (Array.isArray(v.checks) ? v.checks : []).map((c) => ({ item: text(c.item), result: CHECK_RESULTS.includes(text(c.result)) ? text(c.result) : '확인 필요', why: text(c.why) })).filter((c) => CHECKS.includes(c.item));
+    let verdict = VERDICTS4.includes(text(v.verdict)) ? text(v.verdict) : '보류';
+    // 성공 기준에 닿지 못한 안은 실효성이 "목적 미달"을 넘지 못하고 채택하지 않는다 — 판정문이 달리 써도 코드가 지킨다
+    let capped = false;
+    if (checks.some((c) => c.item === SUCCESS_CHECK && c.result === '미달')) {
+      if (effectiveness.level && effectiveness.level !== EFFECTIVENESS.levels[0]) { effectiveness.level = EFFECTIVENESS.levels[0]; capped = true; }
+      if (verdict === '채택') { verdict = '보완'; capped = true; }
+    }
+    items.push({ insight: id, checks, differentiation, effectiveness, held, blank, capped, verdict, safe: text(v.safe), push: text(v.push), precedent: text(v.precedent) });
   }
   return { items, missing: insights.filter((i) => !items.some((x) => x.insight === i.id)).map((i) => i.id) };
 }
@@ -313,8 +317,19 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
     // 문제 다시 정의 — 브리프가 묻는 대로만 답하면 기본안이 나온다
     if (useArena && run.baseline) {
       emit('stage', { stage: 'reframe' });
-      const rp = reframePrompt(project, run.baseline);
-      run.frames = shapeFrames(await call({ role: 'brain', ...rp, task: { kind: 'reframe', project, baseline: run.baseline } }), project.facts);
+      // 근본 이슈가 목적 전체와 성공 기준을 덮는지 함께 확인한다. 성공 기준을 겨눈 정의가 없으면 한 번 다시 받는다.
+      const hasSuccess = !!text(project.brief?.success);
+      let rnote = '';
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const rp = reframePrompt(project, run.baseline, 3, rnote);
+        const rraw = await call({ role: 'brain', ...rp, task: { kind: 'reframe', project, baseline: run.baseline, attempt } });
+        run.frames = shapeFrames(rraw, project.facts);
+        run.scope = { gap: text(rraw?.gap), success: run.frames.some((f) => f.success), needed: hasSuccess };
+        if (!hasSuccess || run.scope.success) break;
+        rnote = '앞서 낸 문제 정의에는 성공 기준이 재는 행동을 직접 겨눈 것이 없었다. 적어도 하나는 성공 기준을 직접 겨누고 success를 true로 둔다.';
+      }
+      if (run.scope.gap) run.notes.push(`근본 이슈가 덮지 못하는 것: ${run.scope.gap}`);
+      if (hasSuccess && !run.scope.success) run.notes.push('성공 기준을 직접 겨눈 문제 정의를 받지 못했다');
     }
   }
 
@@ -328,7 +343,7 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
       if (need > 0) {
         const pool0 = AIRPLANE.filter((a) => !fixed.has(a.id) && !(s.muted || []).includes(a.id));
         const p = routePrompt(project, pool0, OPPOSITIONS, need);
-        const json = await call({ role: 'brain', ...p, task: { kind: 'route', project, isms: pool0, count: need } });
+        const json = await call({ role: 'judge', ...p, task: { kind: 'route', project, isms: pool0, count: need } });
         const valid = new Set(pool0.map((a) => a.id));
         // 훑은 결과로 고른다 — 사람이 고르지 않는다. (예전 형식의 picks도 받는다)
         run.probes = (Array.isArray(json.probes) ? json.probes : []).filter((x) => valid.has(x.id)).map((x) => ({ id: x.id, hit: text(x.hit), pressure: clamp(x.pressure, 0) }));
@@ -425,8 +440,8 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
   emit('stage', { stage: 'verdict' });
   {
     const p = verdictPrompt(project, run.insights, IDENTITY, run.baseline);
-    const raw = await call({ role: 'director', ...p, task: { kind: 'verdict', project, insights: run.insights } });
-    run.verdict = shapeVerdict(raw, run.insights);
+    const raw = await call({ role: 'judge', ...p, task: { kind: 'verdict', project, insights: run.insights } });
+    run.verdict = shapeVerdict(raw, run.insights, project);
     for (const ins of run.insights) ins.from = run.verdict.items.find((v) => v.insight === ins.id) || null;
     if (run.verdict.missing.length) run.notes.push(`더프롬 판정을 받지 못한 인사이트: ${run.verdict.missing.join(', ')}`);
     emit('verdict');

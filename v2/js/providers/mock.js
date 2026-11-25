@@ -14,7 +14,7 @@ function issues(project) {
   if (project.id === SAMPLE_ID) return { roots: SAMPLE.issues.filter((i) => i.root), issues: SAMPLE.issues.filter((i) => !i.root) };
   const b = project.brief;
   return {
-    roots: [{ title: `[목업] ${short(b.target || '타겟', 14)}의 무엇이 바뀌어야 하는가`, detail: `과업 "${short(b.what, 24)}" → 목적 "${short(b.purpose, 24)}" 아래의 근본 이슈. 실제 모델이 채운다.`, test: '[목업] 이 안이 있으면 타겟의 행동이 달라지는가?' }],
+    roots: [{ title: `[목업] ${short(b.target || '타겟', 14)}의 무엇이 바뀌어야 하는가`, detail: `과업 "${short(b.what, 24)}" → 목적 "${short(b.purpose, 24)}" 아래의 근본 이슈. 실제 모델이 채운다.`, test: '[목업] 이 안이 있으면 타겟의 행동이 달라지는가?', covers: '[목업] 목적', misses: '' }],
     issues: [{ title: '[목업] 타겟이 지금 망설이는 지점', detail: '실제 모델이 채운다.' }],
   };
 }
@@ -56,9 +56,9 @@ function activate({ project, lens }) {
 
 // ---------- 경쟁 ----------
 const mockScore = (title) => (String(title).startsWith('[목업]') ? 0.1 + hash(title) * 0.3 : 0.6 + hash(title) * 0.4);
-const reframe = ({ project }) => ({ frames: [1, 2, 3].map((n) => ({ frame: `[목업] 문제 정의 ${n} — 실제 모델이 쓴다.`, why: '[목업] 브리프의 정의와 다른 점', risk: '', facts: project.facts?.[0] && n === 1 ? [project.facts[0].id] : [] })) });
+const reframe = ({ project }) => ({ gap: '', frames: [1, 2, 3].map((n) => ({ frame: `[목업] 문제 정의 ${n} — 실제 모델이 쓴다.`, why: '[목업] 브리프의 정의와 다른 점', success: n === 2, risk: '', facts: project.facts?.[0] && n === 1 ? [project.facts[0].id] : [] })) });
 const cross = ({ a, b }) => ({ keeps: { a: '[목업]', b: '[목업]' }, title: `[목업] ${short(a.title.replace('[목업] ', ''), 10)} × ${short(b.title.replace('[목업] ', ''), 10)}`, concept: '[목업] 두 안을 모두 살린 세 번째 안 — 실제 모델이 쓴다.', visual: '[목업] 보이는 모습', gain: '[목업] 사용자가 얻는 것', how: '[목업] 충돌을 푸는 장치' });
-const screen = ({ candidates, baseline }) => ({ screens: candidates.map((c) => { const h = hash(`screen${c.id}${c.title}`); return { id: c.id, nearest: baseline.concepts[Math.floor(h * baseline.concepts.length) % baseline.concepts.length].id, verdict: String(c.title).startsWith('[목업]') ? (h < 0.2 ? '같음' : h < 0.6 ? '일부' : '다름') : (h < 0.5 ? '일부' : '다름'), why: '[목업] 기본안과의 비교는 실제 모델이 쓴다.', family: String(c.title).startsWith('[목업]') ? `[목업] 해법 ${Math.floor(hash(`fam${c.title}`) * 5) + 1}` : c.title, empty: false, breaks: '' }; }) });
+const screen = ({ project, candidates, baseline }) => ({ screens: candidates.map((c) => { const h = hash(`screen${c.id}${c.title}`); return { id: c.id, nearest: baseline.concepts[Math.floor(h * baseline.concepts.length) % baseline.concepts.length].id, verdict: String(c.title).startsWith('[목업]') ? (h < 0.2 ? '같음' : h < 0.6 ? '일부' : '다름') : (h < 0.5 ? '일부' : '다름'), why: '[목업] 기본안과의 비교는 실제 모델이 쓴다.', family: String(c.title).startsWith('[목업]') ? `[목업] 해법 ${Math.floor(hash(`fam${c.title}`) * 5) + 1}` : c.title, empty: false, success: project?.brief?.success ? (h < 0.35 ? '직접' : h < 0.75 ? '간접' : '없음') : '', breaks: '' }; }) });
 // 고친 안(id가 r로 끝난다)과 고치기 전 안이 겨루면 목업에서는 고치기 전 안이 이긴다 — 예시 문장을 그대로 보여 주기 위해서다
 const duel = ({ pairs }) => ({ duels: pairs.map((p) => ({ pair: p.id, winner: p.a.id.endsWith('r') ? p.b.id : p.b.id.endsWith('r') ? p.a.id : (mockScore(p.a.title) >= mockScore(p.b.title) ? p.a.id : p.b.id), why: '[목업] 이긴 이유는 실제 모델이 쓴다.', notable: hash(`not${p.a.id}${p.b.id}`) < 0.25 ? p.b.id : '', notable_why: '[목업] 뚜렷한 점', unsure: false })) });
 const attack = () => ({ attacks: [{ from: '제약', hit: '[목업] 약점은 실제 모델이 찾는다.', severity: 2 }], keep: '[목업] 지켜야 할 대담한 부분' });
@@ -123,9 +123,9 @@ function verdict({ project, insights }) {
   const M = '[목업] 실제 모델이 쓴다.';
   return { verdicts: insights.map((i) => fixed(i) ? { ...fixed(i), insight: i.id } : {
     insight: i.id,
-    checks: ['브리프의 제약', '접근성', '팩트 근거', '사람이 얻는 것', '자사 색 배제(N7)'].map((item) => ({ item, result: '확인 필요', why: M })),
+    checks: ['브리프의 제약', '성공 기준', '접근성', '팩트 근거', '사람이 얻는 것', '자사 색 배제(N7)'].map((item) => ({ item, result: '확인 필요', why: M })),
     differentiation: { level: '구분됨', against: M, matters: M, only: '', place: M, lasting: '', meaning: '' },
-    effectiveness: { level: '목적 달성', confidence: '추정', purpose: M, society: '', behavior: M, cost: '', feasibility: M, issues: '', beyond: '' },
+    effectiveness: { level: '목적 달성', confidence: '추정', purpose: M, success: project.brief?.success ? M : '', society: '', behavior: M, cost: '', feasibility: M, issues: '', beyond: '' },
     held: ['[목업] 새로 읽히는 느낌 — 시안을 봐야 안다'], verdict: '보류', safe: '', push: '[목업] 더 밀 곳', precedent: '',
   }) };
 }
@@ -159,7 +159,9 @@ const creative = ({ run, chapters }) => { const n = run.insights[0].id; const b 
   return { for: { frame: '[목업] 어느 범주로 읽히게 할 것인가', from: [n] }, pop: [{ point: M_, from: [b] }], pod: [{ point: '[목업] 기본안에 없는 것', core: true, matters: M_, rtb: ['[목업]'], from: [n] }], direction: '[목업] Creative 방향', look: { keep: M_, change: M_, not: M_ },
     isms: ism ? [{ signal: ism.id, strand: M_, layer: '원리', changed: M_ }] : [], knowhow: [...chapters.map((k) => ({ chapter: k.id, solves: M_, operation: '[목업] 항목과 조작', from: '[목업] 무엇을', to: '[목업] 어떻게', without: M_ })), { chapter: chapters[0]?.id, solves: M_, operation: '', from: '', to: '', without: '' }], held: ['[목업] 굵기와 크기 값 — 시안에서 정한다'] }; };
 
-const HANDLERS = { plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
+// 같은 해법 묶기 — 목업 후보는 제목으로 만든 묶음 이름이 같으면 한 묶음, 그 밖에는 하나씩
+const distinct = ({ candidates }) => { const m = new Map(); for (const c of candidates) { const k = String(c.title).startsWith('[목업]') ? `[목업] 해법 ${Math.floor(hash(`fam${c.title}`) * 5) + 1}` : c.id; m.set(k, [...(m.get(k) || []), c.id]); } return { groups: [...m].map(([name, ids]) => ({ name: name.startsWith('[목업]') ? name : candidates.find((c) => c.id === ids[0]).title, ids, why: ids.length > 1 ? '[목업] 같은 해법' : '' })) }; };
+const HANDLERS = { plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, distinct, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
 
 export function createMock({ delay = 0 } = {}) {
   return {

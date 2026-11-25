@@ -15,7 +15,7 @@ export function newProject(seed = {}) {
     id: seed.id || uid('P'),
     title: seed.title || '새 프로젝트',
     category: seed.category || null,                       // 여섯 분류 중 하나 (knowledge/tags.js)
-    brief: { what: '', purpose: '', target: '', product: '', channel: '', note: '', ...(seed.brief || {}) },   // 공통 인풋
+    brief: { what: '', purpose: '', success: '', target: '', product: '', channel: '', note: '', ...(seed.brief || {}) },   // 공통 인풋
     seed: { ...(seed.seed || {}) },                        // 분류별 인풋 — { [분류]: { [칸]: 값 } }
     facts: (seed.facts || []).map((f) => ({ ...f })),      // 팩트북 — 출처가 있는 실제 자료 (knowledge/facts.js)
     issues: (seed.issues || []).map((i, n) => ({ id: i.id || `I${n + 1}`, title: '', detail: '', test: '', root: false, tags: [], ...i })),

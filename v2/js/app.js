@@ -43,8 +43,87 @@ function h(tag, attrs, ...kids) {
   return el;
 }
 
+// ---------- 패널 컴포넌트 ----------
+const TIPS = {
+  충돌: '두 판단이 같은 자리에서 서로 반대를 요구하는 관계다. 한쪽을 따르면 다른 쪽을 지킬 수 없다. 브레인은 충돌하는 두 안을 둘 다 살리는 안을 따로 만들어 후보에 넣는다.',
+  차별화: '다르기만 한 것은 차별화가 아니다. 타겟에게 의미가 있고 경쟁이 대신할 수 없어야 한다. 4단계로 본다.',
+  실효성: '성공 기준과 목적에 실제로 닿는 정도다. 성공 기준에 닿지 못하면 "목적 미달"이다. 3단계로 본다.',
+  강점: '이 안의 근거가 된 판단을 낸 노드, 안에서 풀어낸 충돌, 이긴 대결, 공격을 받고 고친 곳이다.',
+  약점: '이 안이 따르지 않은 판단(충돌), 진 대결과 그 이유, 고치지 못한 공격, 미달인 점검, 판단을 미룬 것이다.',
+};
+/** 낱말 옆 물음표 — 올리면 설명이 뜬다 */
+const tip = (label, text = TIPS[label], cls = '') => h('span', { class: `help ${cls}`, tabindex: '0', 'data-tip': text }, label, h('i', { 'aria-hidden': 'true' }, '?'));
+/** 숫자 타일 */
+const tile = (num, label, sub = '', cls = '') => h('div', { class: `tile ${cls}` }, h('b', null, num), h('span', null, label), sub ? h('small', null, sub) : null);
+/** 단계 막대 — 수준을 글 대신 칸으로 보여 준다 */
+const meter = (name, levels, cur, note = '') => { const at = levels.indexOf(cur); return h('div', { class: `meter${at < 0 ? ' none' : at === 0 ? ' low' : ''}` },
+  h('div', { class: 'meter-h' }, tip(name), h('strong', null, cur || '판단 보류'), note ? h('small', null, note) : null),
+  h('div', { class: 'meter-b', role: 'img', 'aria-label': `${name} ${levels.length}단계 중 ${at + 1}단계` }, levels.map((l, i) => h('i', { class: i <= at ? 'on' : '', title: l })))); };
+/** 접는 구역 — 다시 그려도 열림 상태를 지킨다 */
+const fold = (key, title, note, kids, cls = '') => h('details', { class: `fold ${cls}`, open: S.folds.has(key), ontoggle: (e) => { if (e.target.open) S.folds.add(key); else S.folds.delete(key); } }, h('summary', null, h('strong', null, title), note ? h('small', null, note) : null), kids);
+/** 노드 칩 — 누르면 브레인 맵에서 그 노드를 고른다 */
+const nodeChip = (lens, family, title = '', extra = '') => h('button', { class: `chip nodechip ${family}`, type: 'button', title, onclick: () => { document.querySelector('.modal-back')?.remove(); selectNode(lens, true); } }, lensName(lens), extra ? h('em', null, extra) : null);
+
+/**
+ * 인사이트의 강점과 약점 — 노드 연결에서 읽는다.
+ *   강점  근거 판단을 낸 노드 · 안에서 푼 충돌 · 고친 공격
+ *   약점  이 안이 따르지 않은 판단(충돌 연결의 반대편) · 고치지 못한 공격 · 미달 점검 · 미룬 판단
+ */
+/** 받은 공격과 고친 것을 짝짓는다 — 고친 것마다 낱말이 가장 많이 겹치는 공격 하나에 붙인다. 고친 안이 채택됐을 때만. */
+function fixMap(n) {
+  const out = new Map(); if (!n.revised) return out;
+  const words = (t) => new Set(String(t || '').split(/[\s,.·()'"]+/).filter((w) => w.length > 1));
+  const attacks = n.attacks || [];
+  for (const f of n.fixed || []) {
+    const fw = words(f.hit); let best = null; let top = 0;
+    for (const x of attacks) { if (out.has(x)) continue; let k = 0; for (const w of words(x.hit)) if (fw.has(w)) k++; if (k > top) { top = k; best = x; } }
+    if (best && top >= 2) out.set(best, f);
+  }
+  return out;
+}
+function insightLinks(n, run) {
+  const sig = new Map(run.signals.map((x) => [x.id, x]));
+  const used = new Set(n.check.used);
+  const byLens = new Map();
+  for (const id of n.check.used) { const x = sig.get(id); if (x) byLens.set(x.lens, [...(byLens.get(x.lens) || []), x]); }
+  const tens = run.edges.filter((e) => e.type === 'tension' && sig.has(e.from) && sig.has(e.to));
+  const solved = tens.filter((e) => used.has(e.from) && used.has(e.to));
+  const against = tens.filter((e) => used.has(e.from) !== used.has(e.to)).map((e) => ({ e, mine: sig.get(used.has(e.from) ? e.from : e.to), other: sig.get(used.has(e.from) ? e.to : e.from) }));
+  const attacks = n.attacks || [];
+  const fx = fixMap(n);
+  const fixed = attacks.filter((x) => fx.has(x));
+  const open = attacks.filter((x) => !fx.has(x));
+  const v = n.from;
+  // 대결 기록 — 이 안이 진 대결의 상대와 이유는 약점이고, 이긴 대결은 강점이다
+  const cands = new Map((run.arena?.candidates || []).map((c) => [c.id, c]));
+  const mine = (run.arena?.duels || []).filter((d) => n.candidate && (d.a === n.candidate || d.b === n.candidate) && d.stage !== '재대결' && !d.split && d.winner);
+  const won = mine.filter((d) => d.winner === n.candidate);
+  const lost = mine.filter((d) => d.winner !== n.candidate).map((d) => ({ d, by: cands.get(d.winner) }));
+  return { byLens, solved, against, fixed, open, won, lost, failed: v ? v.checks.filter((c) => c.result === '미달') : [], held: v ? v.held.length + v.blank.length : 0, sig };
+}
+function prosCons(n, run) {
+  const L = insightLinks(n, run);
+  const empty = h('p', { class: 'small' }, '없음');
+  const pros = [
+    L.byLens.size ? h('div', null, h('p', { class: 'pc-h' }, `받치는 노드 ${L.byLens.size}개`), h('div', { class: 'row' }, [...L.byLens].map(([lens, list]) => nodeChip(lens, list[0].family, list.map((x) => x.claim).join('\n'), list.length > 1 ? ` ${list.length}` : '')))) : null,
+    L.solved.length ? h('div', null, h('p', { class: 'pc-h' }, tip(`푼 충돌 ${L.solved.length}건`, TIPS.충돌)), L.solved.map((e) => h('p', { class: 'pc-row', title: e.why }, nodeChip(L.sig.get(e.from).lens, L.sig.get(e.from).family), ' ↔ ', nodeChip(L.sig.get(e.to).lens, L.sig.get(e.to).family)))) : null,
+    L.won.length ? h('p', { class: 'pc-h', title: L.won.map((d) => d.why).join('\n') }, `이긴 대결 ${L.won.length}건`) : null,
+    L.fixed.length ? h('div', null, h('p', { class: 'pc-h' }, `고친 공격 ${L.fixed.length}건`), h('div', { class: 'row tight' }, [...new Set(L.fixed.map((x) => x.from))].map((from) => { const list = L.fixed.filter((x) => x.from === from); return h('span', { class: 'chip ghost', title: list.map((x) => x.hit).join('\n') }, from, list.length > 1 ? ` ${list.length}` : ''); }))) : null,
+  ].filter(Boolean);
+  const cons = [
+    L.against.length ? h('div', null, h('p', { class: 'pc-h' }, tip(`부딪히는 노드 ${new Set(L.against.map((a) => a.other.lens)).size}개`, '이 안이 따르지 않은 판단이다. 그 판단을 낸 노드의 기준에서는 이 안이 약하다.')), L.against.map((a) => h('p', { class: 'pc-row', title: a.e.why }, nodeChip(a.other.lens, a.other.family), h('span', null, clip(a.other.claim, 46))))) : null,
+    L.lost.length ? h('div', null, h('p', { class: 'pc-h' }, `진 대결 ${L.lost.length}건`), L.lost.map((x) => h('p', { class: 'pc-row', title: `${x.by?.title || ''}\n${x.d.why}` }, h('span', { class: 'chip ghost' }, clip(x.by?.from || x.d.winner, 18)), h('span', null, clip(x.d.why, 46))))) : null,
+    L.open.length ? h('div', null, h('p', { class: 'pc-h' }, `남은 공격 ${L.open.length}건`), h('ul', { class: 'bullets small' }, L.open.map((x) => h('li', { title: x.hit }, `${x.from} — ${clip(x.hit, 44)}`)))) : null,
+    L.failed.length ? h('div', null, h('p', { class: 'pc-h' }, `미달 점검 ${L.failed.length}건`), h('div', { class: 'row' }, L.failed.map((c) => h('span', { class: 'chip warn', title: c.why }, c.item)))) : null,
+    L.held ? h('p', { class: 'pc-h' }, `판단을 미룬 것 ${L.held}건`) : null,
+  ].filter(Boolean);
+  return h('div', { class: 'pc' },
+    h('div', { class: 'pro' }, h('h4', null, tip('강점')), pros.length ? pros : empty),
+    h('div', { class: 'con' }, h('h4', null, tip('약점')), cons.length ? cons : empty));
+}
+
 // ---------- 상태 ----------
-const S = { projects: {}, project: null, config: null, tab: 'insight', selected: null, open: null, running: null, dirty: false, claude: null, proposals: null, confirmDelete: false };
+const S = { projects: {}, project: null, config: null, tab: 'insight', selected: null, open: null, running: null, dirty: false, claude: null, proposals: null, confirmDelete: false, folds: new Set() };
 let view;
 
 function load() {
@@ -157,8 +236,9 @@ function insightModal(id) {
       h('div', { class: 'lineage' }, h('span', { class: 'small' }, '계보'), ...fams.flatMap((f, i) => [i ? h('span', { class: 'small' }, '+') : null, h('span', { class: `chip ${f}` }, FAMILIES[f].short), h('span', { class: 'arrow' }, '→'), ...[...new Set(used.filter((x) => x.family === f).map((x) => x.lens))].map((l) => h('span', { class: 'chip pink' }, lensName(l)))]), h('span', { class: 'arrow' }, '→'), h('span', { class: 'chip y fill' }, n.id)),
       h('div', { class: 'grid2' },
         h('dl', { class: 'kv' }, h('dt', null, '보이는 표현'), h('dd', null, n.visual), h('dt', null, '사용자가 얻는 것'), h('dd', null, `${n.substitute.who} ${n.substitute.changes}`.trim()), h('dt', null, '기본안과 다른 점'), h('dd', null, n.without?.difference || '—')),
-        v ? h('dl', { class: 'kv' }, h('dt', null, `차별화 — ${v.differentiation.level || '판단 보류'}`), h('dd', null, [v.differentiation.against, v.differentiation.matters, v.differentiation.only].filter(Boolean).join(' ')), h('dt', null, `실효성 — ${v.effectiveness.level || '판단 보류'} (${v.effectiveness.confidence})`), h('dd', null, [v.effectiveness.purpose, v.effectiveness.beyond].filter(Boolean).join(' ')), v.held.length ? [h('dt', null, '판단을 미룬 것'), h('dd', null, v.held.join(' / '))] : null) : null),
-      h('p', { class: 'small' }, `근거 판단 ${used.length}건 · 근거 팩트 ${(n.facts || []).length}건 · 받은 공격 ${(n.attacks || []).length}건. 세부 내용은 오른쪽 인사이트 탭에 있다.`)));
+        v ? h('div', { class: 'meters' }, meter('차별화', DIFFERENTIATION.levels, v.differentiation.level), v.differentiation.place ? h('p', { class: 'small' }, `기억되는 자리: ${v.differentiation.place}`) : null, meter('실효성', EFFECTIVENESS.levels, v.effectiveness.level, v.effectiveness.confidence), v.effectiveness.success ? h('p', { class: 'small' }, `성공 기준: ${v.effectiveness.success}`) : null, v.push ? h('p', { class: 'push' }, h('b', null, '더 밀 곳'), v.push) : null) : null),
+      prosCons(n, run),
+      h('p', { class: 'small' }, `근거 판단 ${used.length}건 · 근거 팩트 ${(n.facts || []).length}건 · 받은 공격 ${(n.attacks || []).length}건. 노드 이름을 누르면 브레인 맵에서 그 노드로 간다.`)));
   document.body.append(back);
 }
 
@@ -334,6 +414,7 @@ function fromBoard(n) {
     h('dl', { class: 'kv' },
       h('dt', null, `차별화 — ${v.differentiation.level || '판단 보류'}`), h('dd', null, h('ul', { class: 'bullets' }, answers(DIFFERENTIATION, v.differentiation))),
       h('dt', null, `실효성 — ${v.effectiveness.level || '판단 보류'} (${v.effectiveness.confidence})`), h('dd', null, h('ul', { class: 'bullets' }, answers(EFFECTIVENESS, v.effectiveness)))),
+    v.capped ? h('p', { class: 'small' }, '성공 기준에 닿지 못해 실효성을 "목적 미달"로 두고 채택하지 않았다.') : null,
     v.held.length || v.blank.length ? h('div', { class: 'tension' }, h('b', null, `판단을 미룬 것 ${v.held.length + v.blank.length}건`), h('ul', { class: 'bullets' }, v.held.map((x) => h('li', null, x)), v.blank.length ? h('li', null, `답하지 못한 물음: ${v.blank.join(', ')}`) : null)) : null,
     v.safe ? h('p', { class: 'small' }, `무난해서 고르기 쉬운 부분: ${v.safe}`) : null,
     v.push ? h('p', null, h('strong', null, `더 밀 곳: ${v.push}`)) : null,
@@ -372,7 +453,7 @@ function missionTab() {
       h('button', { class: 'btn', type: 'button', onclick: () => { p.issues.push({ id: nextIssueId(p), title: '', detail: '', test: '', tags: [], root: !p.issues.some((x) => x.root) }); persist(); S.keepScroll = true; render(); } }, '이슈 더하기'),
       h('button', { class: 'btn', type: 'button', disabled: !!S.running, onclick: propose }, '브리프에서 이슈 뽑기')),
     S.proposals ? h('div', { class: 'card' }, h('div', { class: 'head' }, h('span', { class: 'chip y' }, '후보'), h('span', { class: 'small' }, '고르는 것은 사람이다'), h('button', { class: 'btn sm x', type: 'button', onclick: () => { S.proposals = null; rerender(); } }, '닫기')),
-      h('ul', { class: 'list' }, S.proposals.map((c) => h('li', null, h('div', { class: 'row' }, h('span', { class: `chip ${c.root ? 'red' : 'ghost'}` }, c.root ? '근본 이슈' : '이슈'), h('strong', { class: 'grow' }, c.title),
+      h('ul', { class: 'list' }, S.proposals.map((c) => h('li', null, h('div', { class: 'row' }, h('span', { class: `chip ${c.root ? 'red' : 'ghost'}` }, c.root ? '근본 이슈' : '이슈'), h('strong', { class: 'grow' }, c.title), c.misses ? h('span', { class: 'chip warn', title: c.misses }, '목적 일부만 덮음') : null,
         h('button', { class: 'btn sm', type: 'button', onclick: () => { p.issues.push({ id: nextIssueId(p), title: c.title, detail: c.detail, test: c.test, tags: [], root: c.root && !p.issues.some((x) => x.root) }); S.proposals = S.proposals.filter((x) => x !== c); persist(); S.keepScroll = true; render(); } }, '더하기')),
       c.detail ? h('p', { class: 'small' }, c.detail) : null, c.test ? h('p', { class: 'small' }, `판정 질문: ${c.test}`) : null)))) : null));
 
@@ -516,7 +597,7 @@ function arenaBoard(run) {
       k.seat ? h('span', { class: 'chip ghost' }, `결선 자리: ${k.seat}`) : null, k.swiss != null ? h('span', { class: 'chip ghost' }, `조별 ${k.swiss}승${k.wins != null ? ` · 결선 ${k.wins}승` : ''}`) : null, k.contested ? h('span', { class: 'chip warn' }, '판정 갈림') : null),
     h('strong', null, k.title), h('p', { class: 'small' }, k.concept), k.notable ? h('p', { class: 'small' }, `뚜렷한 점: ${k.notable}`) : null, k.screen?.breaks ? h('p', { class: 'small' }, `걸리는 제약: ${k.screen.breaks}`) : null);
   return h('section', { class: 'sec' }, h('h2', null, '경쟁 기록', h('small', null, `후보 ${c.candidates}개 → ${run.insights.length}개`)),
-    h('p', { class: 'lead sm' }, `후보 ${c.candidates}개(노드의 완성안 ${c.node} · 묶음 통합안 ${c.cluster} · 충돌 교배 ${c.cross}). 사유가 있어 탈락 `, h('em', null, `${c.screened}개`), `, 나머지는 점수 없이 ${c.duels}번 겨뤘다. 결선에서 판정이 갈린 대결 ${c.splits}건.`),
+    h('p', { class: 'lead sm' }, `후보 ${c.candidates}개(노드의 완성안 ${c.node} · 묶음 통합안 ${c.cluster} · 충돌 교배 ${c.cross}). 사유가 있어 탈락 `, h('em', null, `${c.screened}개`), `, 나머지는 점수 없이 ${c.duels}번 겨뤘다. 결선에서 판정이 갈린 대결 ${c.splits}건.`, c.groups != null ? ` 결선 ${c.finalists}개를 다시 견주니 서로 다른 해법은 ${c.groups}개였다. 같은 해법이라 빠진 안 ${c.merged}개, 예비에서 올린 안 ${c.reserve}개.` : ''),
     run.frames?.length ? h('div', null, h('p', { class: 'small' }, '다시 정의한 문제'), h('ul', { class: 'list' }, run.frames.map((f) => h('li', null, h('div', { class: 'row' }, h('span', { class: 'chip ghost' }, f.id), h('strong', null, f.frame)), f.why, f.risk ? h('p', { class: 'small' }, `부딪히는 요구: ${f.risk}`) : null)))) : null,
     lost.length ? h('div', null, h('p', { class: 'small' }, `기본안에 없는 해법인데 떨어진 후보 ${lost.length}개 — 살릴 안이 있으면 인사이트처럼 판정을 남긴다`), h('ul', { class: 'list' }, lost.map((k) => h('li', null, [...row(k).childNodes], rescue(k))))) : null,
     h('details', null, h('summary', { class: 'small' }, `후보 ${c.candidates}개 전체 보기`), h('ul', { class: 'list' }, rows.map(row))));
@@ -548,50 +629,76 @@ function insightTab() {
   const u = run.usage; const k = run.link;
   const flagged = run.insights.filter((i) => !i.check.ok).length;
   const out = [];
+  const vcount = (v) => (run.verdict?.items || []).filter((x) => x.verdict === v).length;
 
+  // 요약 — 숫자 타일 4개와 노드군별 사용 막대
   out.push(h('section', { class: 'sec' },
-    h('p', { class: 'lead' }, `통합 인사이트 ${run.insights.length}건. 판단 ${u.signals}건 중 `, h('em', null, `${u.used}건(${pct(u.used, u.signals)}%)`), '이 인사이트에 쓰였다.'),
+    h('div', { class: 'tiles' },
+      tile(run.insights.length, '인사이트', run.verdict?.items?.length ? `채택 ${vcount('채택')} · 보완 ${vcount('보완')}${vcount('기각') ? ` · 기각 ${vcount('기각')}` : ''}${vcount('보류') ? ` · 보류 ${vcount('보류')}` : ''}` : '', 'y'),
+      tile(`${u.used}/${u.signals}`, '쓰인 판단', `${pct(u.used, u.signals)}%`),
+      tile(k.byType.tension, tip('충돌'), `연결 ${k.edges}건 중`, 'red'),
+      u.tunnel ? tile(`${u.tunnel.backed}/${u.tunnel.signals}`, '팩트 근거', u.tunnel.assumed ? `추정 ${u.tunnel.assumed}건` : '터널 판단') : null),
     h('div', { class: 'bars' }, Object.keys(FAMILIES).flatMap((f) => { const b = u.byFamily[f]; return [h('span', null, FAMILIES[f].short), h('div', { class: 'track' }, h('i', { style: `width:${pct(b.used, b.signals)}%` })), h('span', null, `${b.used}/${b.signals}건`)]; })),
-    h('p', { class: 'small' }, `연결 ${k.edges}건 중 ${k.crossFamily}건(${pct(k.crossFamily, k.edges)}%)이 서로 다른 노드군 사이다. 충돌 ${k.byType.tension}건.${flagged ? ` 검증을 통과하지 못한 인사이트 ${flagged}건.` : ''}`),
-    u.tunnel ? h('p', { class: 'small' }, `터널 판단 ${u.tunnel.signals}건 중 팩트에 기댄 것 ${u.tunnel.backed}건, 추정 ${u.tunnel.assumed}건.${run.facts?.unchecked ? ` 사람이 확인하지 않은 팩트 ${run.facts.unchecked}건.` : ''}`) : null,
-    run.verdict?.items?.length ? h('p', { class: 'small' }, `더프롬 판정: ${['채택', '보완', '기각', '보류'].map((v) => `${v} ${run.verdict.items.filter((x) => x.verdict === v).length}건`).join(' · ')}`) : null,
-    p.example && run.provider === 'mock' ? h('p', { class: 'small' }, '예시 결과 — 미리 써 둔 답이다. 실제 모델의 품질을 보여 주지 않는다.') : null));
+    flagged ? h('p', { class: 'small' }, `검증을 통과하지 못한 인사이트 ${flagged}건.`) : null,
+    run.scope?.gap ? h('div', { class: 'banner warn' }, h('strong', null, '근본 이슈가 덮지 못한 것 — '), run.scope.gap) : null,
+    run.facts?.unchecked ? h('p', { class: 'small' }, `사람이 확인하지 않은 팩트 ${run.facts.unchecked}건.`) : null,
+    p.example && run.provider === 'mock' ? h('p', { class: 'small' }, '예시 결과다. 미리 써 둔 답이라 실제 모델의 품질과 다르다.') : null));
 
-  const fb = frameBoard(run); if (fb) out.push(...fb);
-  const board = directionBoard(run); if (board) out.push(board);
-  const base = baselineBoard(run); if (base) out.push(base);
-  const ar = arenaBoard(run); if (ar) out.push(ar);
-
+  // 인사이트 — 결과를 먼저 보여 준다
   out.push(h('section', { class: 'sec' }, h('h2', null, '통합 인사이트', h('small', null, '누르면 브레인 맵에 근거 경로가 켜진다')),
     ...run.insights.map((n, idx) => {
-      const open = S.open === n.id; const c = n.check;
+      const open = S.open === n.id; const c = n.check; const v = n.from; const ov = overlapOf(run, n.id);
+      const L = insightLinks(n, run);
+      const weak = new Set(L.against.map((a) => a.other.lens)).size + L.lost.length + L.open.length + L.failed.length;
+      const pass = v ? v.checks.filter((x) => x.result === '통과').length : 0;
       return h('article', { class: `insight${c.ok ? '' : ' flag'}${open ? ' on' : ''}` },
         h('button', { class: 'open', type: 'button', 'aria-expanded': String(open), onclick: () => { S.open = open ? null : n.id; S.selected = null; if (S.open) traceInsight(n.id); else { view.trace(null); view.select(null); } rerender(); } },
-          h('span', { class: 'no' }, idx + 1), h('div', null, h('h3', null, n.title), h('p', { class: 'one' }, n.insight), n.from ? h('span', { class: `chip ${n.from.verdict === '기각' ? 'warn' : n.from.verdict === '채택' ? 'y' : 'ghost'}` }, `더프롬 ${n.from.verdict} · ${n.from.differentiation.level || '차별화 보류'} · ${n.from.effectiveness.level || '실효성 보류'}`) : null, n.contested ? h('span', { class: 'chip warn' }, '판정 갈림') : null, ' ', overlapOf(run, n.id) ? h('span', { class: `chip ${overlapOf(run, n.id).verdict === '같음' ? 'warn' : 'ghost'}` }, OVERLAP_LABEL[overlapOf(run, n.id).verdict]) : null)),
+          h('span', { class: 'no' }, idx + 1), h('div', null, h('h3', null, n.title),
+            h('div', { class: 'row tight' },
+              v ? h('span', { class: `chip ${v.verdict === '기각' ? 'warn' : v.verdict === '채택' ? 'y fill' : 'y'}` }, v.verdict) : null,
+              v ? h('span', { class: 'chip ghost' }, v.differentiation.level || '차별화 보류') : null,
+              v ? h('span', { class: `chip ${v.effectiveness.level === '목적 미달' ? 'warn' : 'ghost'}` }, v.effectiveness.level || '실효성 보류') : null,
+              n.contested ? h('span', { class: 'chip warn' }, '판정 갈림') : null,
+              ov && ov.verdict === '같음' ? h('span', { class: 'chip warn' }, OVERLAP_LABEL[ov.verdict]) : null,
+              h('span', { class: 'chip ghost' }, `강점 ${L.byLens.size} · 약점 ${weak}`)))),
         open ? h('div', { class: 'more' },
           c.ok ? null : h('div', { class: 'banner warn' }, h('strong', null, '검증 미통과 — '), c.problems.join(' / ')),
-          n.origin ? h('p', { class: 'small' }, `${run.arena?.candidates.find((k) => k.id === n.candidate)?.from || ''} · 결선 자리: ${n.seat || '-'} · 결선 ${n.wins}승${n.revised ? ' · 공격을 받고 고친 안' : ''}`) : null,
+          h('p', { class: 'concept' }, n.concept),
+          v ? h('div', { class: 'meters' },
+            meter('차별화', DIFFERENTIATION.levels, v.differentiation.level),
+            meter('실효성', EFFECTIVENESS.levels, v.effectiveness.level, v.effectiveness.confidence),
+            h('div', { class: 'row tight' }, h('span', { class: 'chip ghost' }, `점검 ${v.checks.length}개 중 통과 ${pass}`), v.checks.filter((x) => x.result !== '통과').map((x) => h('span', { class: `chip ${x.result === '미달' ? 'warn' : 'ghost'}`, title: x.why }, `${x.item} · ${x.result}`)))) : null,
+          v?.capped ? h('p', { class: 'small' }, '성공 기준에 닿지 못해 실효성을 "목적 미달"로 두고 채택하지 않았다.') : null,
+          prosCons(n, run),
+          v?.push ? h('p', { class: 'push' }, h('b', null, '더 밀 곳'), v.push) : null,
           h('div', { class: 'row' }, h('button', { class: 'btn sm', type: 'button', onclick: () => insightModal(n.id) }, '크게 보기')),
-          fromBoard(n), humanVerdict(n),
-          n.attacks?.length ? h('div', null, h('p', { class: 'small' }, `받은 공격 ${n.attacks.length}건${n.kept ? ` — 지킨 것: ${n.kept}` : ''}`), h('ul', { class: 'bullets' }, n.attacks.map((x) => { const fx = (n.fixed || []).find((f) => f.hit && x.hit.includes(f.hit.slice(0, 12))); return h('li', null, `[${x.from} · ${x.severity}] ${x.hit}${fx ? ` → ${fx.fix}` : ''}`); })), n.fixed?.length ? h('ul', { class: 'bullets' }, n.fixed.map((f) => h('li', null, `고친 것: ${f.fix}`))) : null) : null,
-          h('div', null, h('div', { class: 'cover', role: 'img', 'aria-label': '근거 판단의 노드군 구성' }, Object.keys(FAMILIES).map((f) => h('i', { class: f, style: `width:${pct(c.byFamily[f], c.used.length)}%` }))),
-            h('div', { class: 'cover-key' }, h('strong', null, `근거 판단 ${c.used.length}건`), Object.keys(FAMILIES).map((f) => h('span', null, `${FAMILIES[f].short} ${c.byFamily[f]}건`)), h('span', null, `노드 ${c.lenses.length}개`))),
-          h('ol', { class: 'chain' }, n.chain.map((s, i) => h('li', null, h('span', { class: 'step' }, i + 1),
-            h('div', null, s.says, h('div', { class: 'meta' }, h('span', { class: 'chip ghost' }, s.role), h('span', { class: `chip ${sig.get(s.signal).family}` }, lensName(sig.get(s.signal).lens)),
-              h('button', { class: 'link id', type: 'button', onclick: () => selectNode(s.signal, true) }, s.signal)))))),
-          n.tension ? h('div', { class: 'tension' }, h('b', null, `충돌 ${n.tension.a} ↔ ${n.tension.b}`), n.tension.resolve) : null,
-          h('dl', { class: 'kv' },
-            h('dt', null, '컨셉 방향'), h('dd', null, h('strong', null, n.concept)),
+          h('div', { class: 'folds' }, fold(`${n.id}:look`, '보이는 표현 · 사용자가 얻는 것', '', h('dl', { class: 'kv' },
             h('dt', null, '보이는 표현'), h('dd', null, n.visual),
+            h('dt', null, '얻는 것'), h('dd', null, `${n.substitute.who} ${n.substitute.changes}`.trim()),
             h('dt', null, '지킬 관성'), h('dd', null, n.keep),
             h('dt', null, '바꿀 해석'), h('dd', null, n.change),
-            h('dt', null, '근본 이슈에 적용하면'), h('dd', null, `${n.substitute.who} — ${n.substitute.changes}`),
-            h('dt', null, '판정 질문의 답'), h('dd', null, n.verdict),
-            n.without?.baseline ? [h('dt', null, n.without.nearest ? `가까운 기본안 ${n.without.nearest}` : '노드 없이 냈을 안'), h('dd', null, n.without.baseline), h('dt', null, '이 안의 차이'), h('dd', null, h('strong', null, n.without.difference))] : null,
-            n.facts?.length ? [h('dt', null, '근거 팩트'), h('dd', null, n.facts.map((id) => { const f = (p.facts || []).find((x) => x.id === id); return h('div', null, `${id} ${f ? `${clip(f.text, 60)} (${f.source})` : ''}`); }))] : [h('dt', null, '근거 팩트'), h('dd', null, '없음 — 시장 · 타겟에 대한 말은 추정이다')],
-            h('dt', null, '자사 색 배제 점검'), h('dd', null, n.gate)),
-          n.open.length ? h('div', null, h('p', { class: 'small' }, '사람이 확인할 것'), h('ul', { class: 'bullets' }, n.open.map((x) => h('li', null, x)))) : null) : null);
+            n.without?.difference ? [h('dt', null, n.without.nearest ? `기본안 ${n.without.nearest}과 다른 점` : '기본안과 다른 점'), h('dd', null, n.without.difference)] : null)),
+          v ? fold(`${n.id}:verdict`, '판정문', `미룬 판단 ${v.held.length + v.blank.length}건`, fromBoard(n)) : null,
+          fold(`${n.id}:chain`, '근거', `판단 ${c.used.length}건 · 노드 ${c.lenses.length}개 · 팩트 ${(n.facts || []).length}건`, [
+            h('div', null, h('div', { class: 'cover', role: 'img', 'aria-label': '근거 판단의 노드군 구성' }, Object.keys(FAMILIES).map((f) => h('i', { class: f, style: `width:${pct(c.byFamily[f], c.used.length)}%` }))),
+              h('div', { class: 'cover-key' }, Object.keys(FAMILIES).map((f) => h('span', null, `${FAMILIES[f].short} ${c.byFamily[f]}건`)))),
+            h('ol', { class: 'chain' }, n.chain.map((x, i) => h('li', null, h('span', { class: 'step' }, i + 1),
+              h('div', null, x.says, h('div', { class: 'meta' }, h('span', { class: 'chip ghost' }, x.role), nodeChip(sig.get(x.signal).lens, sig.get(x.signal).family),
+                h('button', { class: 'link id', type: 'button', onclick: () => selectNode(x.signal, true) }, x.signal)))))),
+            n.tension ? h('div', { class: 'tension' }, h('b', null, tip(`충돌 ${n.tension.a} ↔ ${n.tension.b}`, TIPS.충돌)), n.tension.resolve) : null,
+            n.facts?.length ? h('ul', { class: 'bullets small' }, n.facts.map((id) => { const f = (p.facts || []).find((x) => x.id === id); return h('li', null, `${id} ${f ? `${clip(f.text, 60)} (${f.source})` : ''}`); })) : h('p', { class: 'small' }, '근거 팩트 없음. 시장과 타겟에 대한 말은 추정이다.')]),
+          n.attacks?.length ? fold(`${n.id}:attack`, '받은 공격', `${n.attacks.length}건 중 ${L.fixed.length}건 고침`, [
+            n.kept ? h('p', { class: 'small' }, `지킨 것: ${n.kept}`) : null,
+            h('ul', { class: 'bullets' }, n.attacks.map((x) => { const fx = fixMap(n).get(x); return h('li', null, h('span', { class: `chip ${x.severity >= 3 ? 'warn' : 'ghost'}` }, `${x.from} · ${x.severity}`), ` ${x.hit}`, fx ? h('div', { class: 'small' }, `→ ${fx.fix}`) : null); }))]) : null,
+          n.open.length ? fold(`${n.id}:open`, '사람이 확인할 것', `${n.open.length}건`, h('ul', { class: 'bullets' }, n.open.map((x) => h('li', null, x)))) : null,
+          fold(`${n.id}:human`, '내 판정 남기기', '다음 분석의 판정 사례가 된다', humanVerdict(n)))) : null);
     })));
+
+  // 나머지는 접어 둔다
+  const fb = frameBoard(run); if (fb) out.push(fold('frames', '기획 틀 · 디자인 틀', '이긴 안을 틀로 정리한 것', fb, 'big'));
+  const board = directionBoard(run); if (board) out.push(fold('direction', '관점별 디렉션', '기획 · 디자인 · 개발 · 서비스', board, 'big'));
+  const base = baselineBoard(run); if (base) out.push(fold('baseline', '기본안 대조', '방법론 없이 낸 안과 비교', base, 'big'));
+  const ar = arenaBoard(run); if (ar) out.push(fold('arena', '경쟁 기록', `후보 ${run.arena.counts.candidates}개 · 대결 ${run.arena.counts.duels}번`, ar, 'big'));
 
   if (u.unused.length) out.push(h('section', { class: 'sec' }, h('h2', null, `쓰이지 않은 판단 ${u.unused.length}건`, h('small', null, '다음 분석의 재료')),
     h('ul', { class: 'list' }, u.unused.map((id) => h('li', null, h('div', { class: 'row' }, h('span', { class: `chip ${sig.get(id).family}` }, lensName(sig.get(id).lens)), h('button', { class: 'link id', type: 'button', onclick: () => selectNode(id, true) }, id)), sig.get(id).claim)))));
@@ -635,17 +742,21 @@ function nodeTab() {
     const flip = (key) => { const a = p.settings[key]; p.settings[key] = a.includes(l.id) ? a.filter((x) => x !== l.id) : [...a, l.id]; persist(); refreshGraph(); rerender(); };
     return [h('section', { class: 'sec' }, h('div', { class: 'row' }, h('span', { class: `chip ${l.family}` }, FAMILIES[l.family].short), d.kind === 'gate' ? h('span', { class: 'chip red' }, '점검 항목') : null, h('span', { class: 'id' }, `${l.id} · ${l.source}`)),
       h('p', { class: 'lead' }, l.name), ism ? h('p', { class: 'note' }, ISM_PLAIN[l.id]?.summary || l.summary) : null,
-      h('dl', { class: 'kv' }, h('dt', null, '기준'), h('dd', null, l.criteria), l.ask ? [h('dt', null, '이슈에 던지는 질문'), h('dd', null, l.ask)] : null, d.pick ? [h('dt', null, '고른 이유'), h('dd', null, d.pick.why)] : null),
+      ism ? (d.pick ? h('div', { class: 'push' }, h('b', null, '이번 과제에 고른 이유'), d.pick.why) : null)
+        : h('dl', { class: 'kv' }, h('dt', null, '기준'), h('dd', null, l.criteria), l.ask ? [h('dt', null, '이슈에 던지는 질문'), h('dd', null, l.ask)] : null),
       d.kind === 'gate' ? h('p', { class: 'small' }, '점검 항목은 이슈를 분석하지 않고, 통합 인사이트마다 통과 여부만 확인한다.')
         : h('div', { class: 'row' }, h('button', { class: 'btn sm', type: 'button', onclick: () => flip('muted') }, muted ? '다음 분석부터 다시 켠다' : '다음 분석부터 끈다'),
           ism ? h('button', { class: 'btn sm', type: 'button', onclick: () => flip('pinned') }, pinned ? '고정 풀기' : '다음 분석에 반드시 분석') : null)),
     ism ? h('section', { class: 'sec' },
-      ISM_DEPTH[l.id] ? [h('h2', null, '시대 조건'), h('p', null, ISM_DEPTH[l.id].era), h('h2', null, '던진 질문'), h('p', null, ISM_DEPTH[l.id].question),
-        h('h2', null, '사조 안의 갈래'), h('ul', { class: 'bullets' }, ISM_DEPTH[l.id].strands.map((x) => h('li', null, `${x.name} — ${x.how}`))),
-        h('h2', null, '내부 모순'), h('p', null, ISM_DEPTH[l.id].paradox), h('h2', null, '후대의 변용'), h('p', null, ISM_DEPTH[l.id].after),
-        ISM_PLAIN[l.id] ? [h('h2', null, '원리'), h('ul', { class: 'bullets' }, ISM_PLAIN[l.id].principles.map((x) => h('li', null, x)))] : null,
-        h('p', { class: 'small' }, '시대 조건부터 원리까지 초안이다. 사내 검수 뒤 고정한다.')] : null,
-      h('details', null, h('summary', { class: 'small' }, '카탈로그 원문 보기 — 스킬 저장소의 문장 그대로다'), h('h2', null, '원리 (원문)'), h('ul', { class: 'bullets' }, l.principles.map((x) => h('li', null, x))), h('h2', null, '지난 적용 메모', h('small', null, '규칙이 아니다')), h('ul', { class: 'bullets' }, [...l.take, ...l.leave].map((x) => h('li', null, x))))) : null,
+      ISM_PLAIN[l.id] ? [h('h2', null, '원리', h('small', null, '초안 · 사내 검수 전')), h('ol', { class: 'plain' }, ISM_PLAIN[l.id].principles.map((x) => h('li', null, x)))] : null,
+      h('div', { class: 'folds' },
+        ISM_DEPTH[l.id] ? fold(`${l.id}:depth`, '배경', '시대 조건 · 갈래 · 모순', h('dl', { class: 'kv' },
+          h('dt', null, '시대 조건'), h('dd', null, ISM_DEPTH[l.id].era),
+          h('dt', null, '던진 질문'), h('dd', null, h('strong', null, ISM_DEPTH[l.id].question)),
+          h('dt', null, '갈래'), h('dd', null, ISM_DEPTH[l.id].strands.map((x) => h('div', null, h('strong', null, x.name), ` ${x.how}`))),
+          h('dt', null, '내부 모순'), h('dd', null, ISM_DEPTH[l.id].paradox),
+          h('dt', null, '후대의 변용'), h('dd', null, ISM_DEPTH[l.id].after))) : null,
+        fold(`${l.id}:orig`, '카탈로그 원문', '스킬 저장소의 문장 그대로', [h('ul', { class: 'bullets small' }, l.principles.map((x) => h('li', null, x))), h('p', { class: 'small' }, '지난 적용 메모 (규칙이 아니다)'), h('ul', { class: 'bullets small' }, [...l.take, ...l.leave].map((x) => h('li', null, x)))]))) : null,
     d.kind === 'lens' ? h('section', { class: 'sec' }, h('h2', null, `낸 판단 ${d.signals.length}건`), d.signals.length ? h('ul', { class: 'list' }, d.signals.map(sigRow)) : h('p', { class: 'note' }, run ? '이번 분석에서 분석하지 않았다.' : '아직 분석하지 않았다.')) : null];
   }
 

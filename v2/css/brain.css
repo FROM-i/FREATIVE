@@ -251,3 +251,78 @@ details[open] > summary { margin-bottom: var(--u); }
 .modal .lineage .arrow { color: var(--pink); }
 .modal .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 3); }
 @media (max-width: 760px) { .modal .grid2 { grid-template-columns: 1fr; } }
+
+/* ---------- 패널 컴포넌트 ---------- */
+/* 낱말 옆 물음표 — 올리거나 초점을 주면 설명이 뜬다 */
+.help { position: relative; display: inline-flex; align-items: center; gap: calc(var(--u) * .5); cursor: help; outline: none; }
+.help > i { display: inline-grid; place-items: center; width: 14px; height: 14px; border: 1px solid var(--line-2); border-radius: 50%; font-style: normal; font-family: var(--mono); font-size: 9px; line-height: 1; color: var(--mute); }
+.help:hover > i, .help:focus > i { border-color: var(--text); color: var(--text); }
+.help:hover::after, .help:focus::after { content: attr(data-tip); position: absolute; left: 0; top: calc(100% + var(--u) * .75); z-index: 30; width: calc(var(--u) * 34); padding: calc(var(--u) * 1.25); background: var(--ground); border: 1px solid var(--line-2); color: var(--text); font-family: var(--font); font-size: var(--t-cap); font-weight: 500; line-height: 18px; letter-spacing: 0; white-space: normal; text-align: left; }
+.help.r:hover::after, .help.r:focus::after { left: auto; right: 0; }
+
+/* 숫자 타일 */
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.tile { background: var(--surface); padding: calc(var(--u) * 1.5); display: flex; flex-direction: column; gap: calc(var(--u) * .25); min-width: 0; }
+.tile b { font-family: var(--mono); font-size: var(--t-head); line-height: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile span { font-size: var(--t-cap); font-weight: 600; color: var(--text-2); }
+.tile small { font-size: 11px; color: var(--mute); }
+.tile.y b { color: var(--yellow); }
+.tile.red b { color: var(--red-soft); }
+.tile { position: relative; } .tile .help { position: static; }
+.tile .help:hover::after, .tile .help:focus::after { align-self: flex-start; top: auto; margin-top: calc(var(--u) * 3); left: 0; width: calc(var(--u) * 28); }
+.tile:nth-child(n+3) .help:hover::after, .tile:nth-child(n+3) .help:focus::after { left: auto; right: 0; }
+
+/* 단계 막대 */
+.meters { display: flex; flex-direction: column; gap: calc(var(--u) * 1.5); }
+.meter-h { display: flex; align-items: baseline; gap: var(--u); font-size: var(--t-cap); color: var(--mute); }
+.meter-h strong { font-size: var(--t-sub); color: var(--text); margin-left: auto; }
+.meter-h small { color: var(--mute); }
+.meter-b { display: flex; gap: 2px; margin-top: calc(var(--u) * .75); }
+.meter-b i { flex: 1; height: calc(var(--u) * .75); background: var(--line); }
+.meter-b i.on { background: var(--holo); }
+.meter.low .meter-b i.on { background: var(--red); }
+.meter.low .meter-h strong { color: var(--red-soft); }
+
+/* 강점 · 약점 — 노드 연결에서 읽는다 */
+.pc { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 2); }
+.pc > div { border-top: 2px solid var(--holo); padding-top: var(--u); display: flex; flex-direction: column; gap: calc(var(--u) * 1.25); min-width: 0; }
+.pc > .con { border-top-color: var(--red); }
+.pc h4 { font-size: var(--t-sub); font-weight: 700; }
+.pc .con h4 { color: var(--red-soft); }
+.pc-h { font-size: 11px; font-weight: 600; color: var(--mute); margin-bottom: calc(var(--u) * .5); }
+.pc-row { display: flex; flex-wrap: wrap; align-items: center; gap: calc(var(--u) * .5); font-size: var(--t-cap); line-height: 18px; color: var(--text-2); margin-top: calc(var(--u) * .5); }
+/* 설명은 칸 너비에 맞춰 뜬다 — 패널 밖으로 나가지 않게 */
+.pc > div { position: relative; } .pc .help { position: static; }
+.pc .help:hover::after, .pc .help:focus::after { align-self: flex-start; top: auto; margin-top: calc(var(--u) * 3); left: 0; right: 0; width: auto; }
+.nodechip { background: none; cursor: pointer; }
+.nodechip:hover { border-color: var(--pink); color: var(--pink); }
+.nodechip em { font-style: normal; font-family: var(--mono); margin-left: 2px; opacity: .7; }
+@media (max-width: 520px) { .pc { grid-template-columns: 1fr; } .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* 인사이트 카드 본문 */
+.insight .concept { font-size: var(--t-body); line-height: 26px; font-weight: 600; color: var(--text); }
+.insight .row.tight, .row.tight { gap: calc(var(--u) * .5); margin-top: var(--u); }
+.push { border-left: 2px solid var(--yellow); padding: calc(var(--u) * .75) calc(var(--u) * 1.5); font-size: var(--t-sub); line-height: 22px; color: var(--text); }
+.push b { display: block; font-size: 11px; color: var(--yellow); margin-bottom: 2px; }
+
+/* 접는 구역 */
+.fold { border-top: 1px solid var(--line); }
+.fold > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: var(--u); padding: calc(var(--u) * 1.25) 0; font-size: var(--t-sub); }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before { content: '+'; font-family: var(--mono); color: var(--mute); width: calc(var(--u) * 1.5); }
+.fold[open] > summary::before { content: '−'; }
+.fold > summary small { margin-left: auto; font-size: 11px; color: var(--mute); text-align: right; }
+.fold > summary:hover strong { color: var(--yellow); }
+.fold[open] { padding-bottom: calc(var(--u) * 1.5); }
+.fold[open] > *:not(summary) { margin-top: var(--u); }
+.fold.big { border: 1px solid var(--line); padding: 0 calc(var(--u) * 2); background: var(--surface); }
+.fold.big > summary { padding: calc(var(--u) * 1.75) 0; }
+.fold.big[open] { padding-bottom: calc(var(--u) * 2); }
+.fold.big[open] > .sec + .sec { margin-top: calc(var(--u) * 3); }
+.modal .pc { margin-top: calc(var(--u) * 2.5); }
+.modal .meters { align-content: start; }
+.folds { display: flex; flex-direction: column; border-bottom: 1px solid var(--line); }
+.plain { counter-reset: n; display: flex; flex-direction: column; }
+.plain li { counter-increment: n; display: grid; grid-template-columns: calc(var(--u) * 3) minmax(0, 1fr); gap: var(--u); padding: calc(var(--u) * 1.25) 0; border-top: 1px solid var(--line); line-height: 24px; color: var(--text); }
+.plain li:first-child { border-top: 0; }
+.plain li::before { content: counter(n); font-family: var(--mono); font-size: 11px; color: var(--mute); padding-top: 3px; }

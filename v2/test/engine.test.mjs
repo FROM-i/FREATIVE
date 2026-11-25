@@ -335,7 +335,7 @@ test('더프롬 판정 — 관점이 모든 호출에 들어가고, 점수 없�
     assert.ok(i.from && ['채택', '보완', '기각', '보류'].includes(i.from.verdict));
     assert.equal(i.from.score, undefined);
     assert.ok(DIFFERENTIATION.levels.includes(i.from.differentiation.level) && EFFECTIVENESS.levels.includes(i.from.effectiveness.level));
-    assert.ok(i.from.checks.length === 5 && i.from.checks.every((c) => ['통과', '미달', '확인 필요'].includes(c.result)));
+    assert.ok(i.from.checks.length === 6 && i.from.checks.some((c) => c.item === '성공 기준') && i.from.checks.every((c) => ['통과', '미달', '확인 필요'].includes(c.result)));
   }
   // 답하지 못한 물음은 빈칸으로 남고 보류로 센다. 모르는 수준 · 판정은 보류가 된다
   const raw = { verdicts: [{ insight: run.insights[0].id, differentiation: { level: '아주 좋음', against: 'x' }, effectiveness: { level: '목적 달성', purpose: 'y' }, verdict: '훌륭함', held: ['시안이 필요하다'] }] };
@@ -488,4 +488,107 @@ test('프레임 — 이긴 안을 기획 틀과 디자인 틀로 정리한다. �
   assert.equal(needsCreative(q), false);
   const r2 = await think(q, createMock());
   assert.ok(r2.plan && r2.creative === null);
+});
+
+test('성공 기준 — 미달이면 실효성은 목적 미달을 넘지 못하고 채택하지 않는다', async () => {
+  const { shapeVerdict } = await import('../js/engine/think.js');
+  const { EFFECTIVENESS, CHECKS, criteriaBlock } = await import('../knowledge/criteria.js');
+  const { verdictPrompt, issuesPrompt } = await import('../knowledge/prompts.js');
+  const { duelPrompt, attackPrompt, reframePrompt } = await import('../knowledge/prompts-arena.js');
+  assert.ok(CHECKS.includes('성공 기준') && EFFECTIVENESS.questions.some((q) => q.id === 'success'));
+  assert.ok(criteriaBlock().includes('성공 기준을 먼저 본다'));
+  const p = sample(); p.brief.success = '한 달에 한 번 이상 방문하는 사람이 늘어난다';
+  const ins = [{ id: 'N1' }, { id: 'N2' }];
+  const mk = (id, result, level, verdict) => ({ insight: id, checks: [{ item: '성공 기준', result, why: 'x' }], differentiation: { level: '차별화됨' }, effectiveness: { level, confidence: '추정' }, verdict });
+  const out = shapeVerdict({ verdicts: [mk('N1', '미달', '목적 초과', '채택'), mk('N2', '통과', '목적 초과', '채택')] }, ins, p).items;
+  assert.equal(out[0].effectiveness.level, '목적 미달'); assert.equal(out[0].verdict, '보완'); assert.equal(out[0].capped, true);
+  assert.equal(out[1].effectiveness.level, '목적 초과'); assert.equal(out[1].verdict, '채택'); assert.equal(out[1].capped, false);
+  // 차별화 수준은 건드리지 않는다
+  assert.equal(out[0].differentiation.level, '차별화됨');
+  // 성공 기준이 브리프에 없으면 그 물음은 빈칸으로 세지 않는다
+  const q = sample(); const blankQ = shapeVerdict({ verdicts: [mk('N1', '확인 필요', '목적 달성', '보류')] }, ins, q).items[0].blank;
+  assert.ok(!blankQ.includes('실효성 · success'));
+  assert.ok(shapeVerdict({ verdicts: [mk('N1', '확인 필요', '목적 달성', '보류')] }, ins, p).items[0].blank.includes('실효성 · success'));
+  // 프롬프트 — 미션에 성공 기준이 들어가고, 판정 · 대결 · 공격 · 문제 정의 · 근본 이슈가 성공 기준을 묻는다
+  assert.ok(verdictPrompt(p, [], []).user.includes('한 달에 한 번 이상 방문하는 사람이 늘어난다'));
+  assert.ok(verdictPrompt(p, [], []).system.includes('"성공 기준" 점검'));
+  assert.ok(duelPrompt(p, []).system.includes('성공 기준을 먼저 본다'));
+  assert.ok(attackPrompt(p, { id: 'K1' }, null).system.includes('- 성공 기준:'));
+  assert.ok(reframePrompt(p, null).system.includes('`gap`') && reframePrompt(p, null).system.includes('`success`를 true'));
+  assert.ok(issuesPrompt(p).system.includes('`misses`'));
+});
+
+test('같은 해법 재확인 — 결선 통과안은 서로 다른 묶음에서 하나씩, 모자라면 예비에서 채우고 그래도 없으면 비워 둔다', async () => {
+  const p = sample(); p.brief.success = '한 달에 한 번 이상 방문하는 사람이 늘어난다';
+  const mock = createMock();
+  // 결선에 오른 안을 전부 한 묶음으로 답하게 한다 — 예비 안은 각자 다른 묶음
+  let seen = null;
+  const one = { ...mock, json: async (a) => {
+    if (a.task.kind !== 'distinct') return mock.json(a);
+    seen = a; const ids = a.task.candidates.map((c) => c.id); const fin = ids.slice(0, 6); const rest = ids.slice(6);
+    return { json: { groups: [{ name: '한 가지 해법', ids: fin, why: '같은 행동' }, ...rest.map((id) => ({ name: `다른 해법 ${id}`, ids: [id], why: '' }))] }, usage: null };
+  } };
+  const run = await think(p, one);
+  assert.equal(seen.role, 'judge');
+  assert.ok(seen.system.includes('같은 해법 묶기'));
+  const fams = run.insights.map((n) => n.family);
+  assert.equal(new Set(fams).size, fams.length, '최종안의 해법 묶음이 모두 다르다');
+  assert.equal(fams.filter((f) => f === '한 가지 해법').length, 1);
+  assert.equal(run.arena.counts.groups, 1);
+  assert.equal(run.arena.counts.merged, 5);
+  assert.equal(run.arena.counts.reserve, run.insights.length - 1);
+  assert.ok(run.insights.slice(1).every((n) => n.seat === '예비 — 다른 해법'));
+  // 예비도 없으면 같은 해법으로 채우지 않고 줄여서 낸다
+  const all = { ...mock, json: async (a) => (a.task.kind === 'distinct' ? { json: { groups: [{ name: '한 가지 해법', ids: a.task.candidates.map((c) => c.id), why: '같은 행동' }] }, usage: null } : mock.json(a)) };
+  const run2 = await think(sample(), all);
+  assert.equal(run2.insights.length, 1);
+  assert.ok(run2.notes.some((n) => n.includes('서로 다른 해법이 1개뿐')));
+  assert.ok(run2.direction && run2.plan, '인사이트가 줄어도 뒤 단계가 돈다');
+});
+
+test('범위 확인 — 성공 기준을 겨눈 문제 정의가 없으면 한 번 다시 받고, 판단하는 호출은 judge 역할로 나간다', async () => {
+  const { pickSeats } = await import('../js/engine/arena.js');
+  const p = sample(); p.brief.success = '한 달에 한 번 이상 방문하는 사람이 늘어난다';
+  const mock = createMock(); const roles = {}; let reframes = 0;
+  const spy = { ...mock, json: async (a) => {
+    (roles[a.task.kind] ||= new Set()).add(a.role);
+    if (a.task.kind === 'reframe') { reframes++; const r = await mock.json(a); if (reframes === 1) { r.json.gap = '재방문은 다루지 않는다'; for (const f of r.json.frames) f.success = false; } return r; }
+    return mock.json(a);
+  } };
+  const run = await think(p, spy);
+  assert.equal(reframes, 2, '성공 기준을 겨눈 정의가 없어 한 번 다시 받았다');
+  assert.ok(run.scope.success && run.frames.some((f) => f.success));
+  for (const k of ['route', 'screen', 'duel', 'distinct', 'attack', 'verdict']) assert.deepEqual([...roles[k]], ['judge'], `${k}는 판단 호출이다`);
+  for (const k of ['baseline', 'reframe', 'activate', 'cross', 'revise', 'direct', 'plan']) assert.ok(!roles[k].has('judge'), `${k}는 만드는 호출이다`);
+  // 성공 기준이 없는 브리프는 다시 받지 않는다
+  reframes = 0; await think(sample(), spy); assert.equal(reframes, 1);
+  // 결선 자리 — 상위에 성공 기준에 직접 닿는 안이 없으면 닿는 안을 하나 올린다
+  const mk = (id, success, family) => ({ id, origin: { frame: 'R0' }, screen: { verdict: '일부', family, success } });
+  const live = [mk('K1', '간접', 'a'), mk('K2', '없음', 'b'), mk('K3', '간접', 'c'), mk('K4', '없음', 'd'), mk('K5', '직접', 'e'), mk('K6', '없음', 'f'), mk('K7', '없음', 'g')];
+  const wins = { K1: 3, K2: 3, K3: 2, K4: 2, K5: 0, K6: 1, K7: 1 };
+  const seats = pickSeats(live, wins, {}, [], 4);
+  assert.ok(seats.some((x) => x.c.id === 'K5' && x.seat === '성공 기준에 닿는 안'));
+  const live2 = live.map((c) => (c.id === 'K1' ? mk('K1', '직접', 'a') : c));
+  assert.ok(!pickSeats(live2, wins, {}, [], 4).some((x) => x.seat === '성공 기준에 닿는 안'));
+});
+
+test('고친 뒤 재확인 — 보완은 다른 최종안을 보고 하나씩 하고, 고치다가 같아진 안은 고치기 전으로 되돌린다', async () => {
+  const { revisePrompt } = await import('../knowledge/prompts-arena.js');
+  assert.ok(revisePrompt(sample(), { id: 'K1' }, { attacks: [], keep: '' }, null, [{ title: '다른 안', concept: '달력에 넣는다' }]).user.includes('## 다른 최종안'));
+  assert.ok(!revisePrompt(sample(), { id: 'K1' }, { attacks: [], keep: '' }, null).user.includes('## 다른 최종안'));
+  const mock = createMock(); const seen = []; let stages = [];
+  const p = { ...mock, json: async (a) => {
+    if (a.task.kind === 'revise') { seen.push(a.task.others.length); const r = await mock.json(a); r.json.concept = `${r.json.concept} (고침)`; return r; }
+    // 고친 안이 고치기 전 안을 이기게 한다
+    if (a.task.kind === 'duel' && a.task.tag === 'rematch') return { json: { duels: a.task.pairs.map((x) => ({ pair: x.id, winner: x.a.id.endsWith('r') ? x.a.id : x.b.id, why: '고친 안이 낫다' })) }, usage: null };
+    if (a.task.kind === 'distinct') { stages.push(a.task.stage || 'final'); if (a.task.stage === 'revised') return { json: { groups: [{ name: '같아진 해법', ids: a.task.candidates.map((c) => c.id), why: '같은 장치' }] }, usage: null }; }
+    return mock.json(a);
+  } };
+  const run = await think(sample(), p);
+  assert.deepEqual(stages, ['final', 'revised']);
+  assert.deepEqual(seen, run.insights.map(() => run.insights.length - 1), '보완마다 다른 최종안을 함께 받는다');
+  assert.equal(run.insights[0].revised, true, '순위가 가장 높은 안은 고친 채로 둔다');
+  assert.ok(run.insights.slice(1).every((n) => n.revised === false && n.reverted === true && !n.concept.endsWith('(고침)')));
+  assert.equal(run.arena.counts.reverted, run.insights.length - 1);
+  assert.ok(run.notes.some((n) => n.includes('고치기 전으로 되돌렸다')));
 });

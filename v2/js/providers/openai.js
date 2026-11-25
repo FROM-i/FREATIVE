@@ -8,8 +8,9 @@ export const OPENAI_DEFAULTS = {
   mode: 'direct',
   baseUrl: 'https://api.openai.com/v1',
   proxyUrl: '/api/llm',
-  models: { director: 'gpt-6-astra', brain: 'gpt-6.1-sol', sub: 'gpt-6.1-sol' },
-  efforts: { director: 'high', brain: 'high', sub: 'low' },
+  // judge — 고르고 가르고 판정하는 호출(사조 훑기 · 기본안 대조 · 대결 · 같은 해법 묶기 · 공격 · 더프롬 판정). 만드는 호출과 모델을 따로 둘 수 있다.
+  models: { director: 'gpt-6-astra', brain: 'gpt-6.1-sol', sub: 'gpt-6.1-sol', judge: 'gpt-6-astra' },
+  efforts: { director: 'high', brain: 'high', sub: 'low', judge: 'high' },
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

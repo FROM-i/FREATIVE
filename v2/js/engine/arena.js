@@ -9,7 +9,7 @@
 //   재대결        고친 안과 고치기 전 안이 겨뤄 이긴 쪽을 남긴다
 //
 // 선별의 잣대는 모두 더프롬의 관점(knowledge/viewpoint.js)이다. 순위 계산은 코드가 한다.
-import { crossPrompt, screenPrompt, duelPrompt, attackPrompt, revisePrompt } from '../../knowledge/prompts-arena.js';
+import { crossPrompt, screenPrompt, duelPrompt, distinctPrompt, attackPrompt, revisePrompt } from '../../knowledge/prompts-arena.js';
 import { FAMILIES } from '../../knowledge/nodes.js';
 import { lensName } from '../graph/model.js';
 
@@ -17,6 +17,7 @@ const text = (v) => (typeof v === 'string' ? v.trim() : '');
 const chunk = (a, n) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 const hash = (s) => { let h = 2166136261; for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967295; };
 const SCREEN = ['같음', '일부', '다름'];
+const REACH = ['직접', '간접', '없음'];
 
 /** 노드가 낸 완성안을 정리한다 (발화 단계에서 부른다) */
 export function shapeProposal(raw, lens, frames) {
@@ -29,7 +30,7 @@ export function shapeProposal(raw, lens, frames) {
 /** 문제 정의 정리 */
 export function shapeFrames(raw, facts = []) {
   const ok = new Set(facts.map((f) => f.id));
-  return (Array.isArray(raw?.frames) ? raw.frames : []).map((f) => ({ frame: text(f.frame), why: text(f.why), risk: text(f.risk), facts: (Array.isArray(f.facts) ? f.facts : []).map(text).filter((id) => ok.has(id)) }))
+  return (Array.isArray(raw?.frames) ? raw.frames : []).map((f) => ({ frame: text(f.frame), why: text(f.why), success: f.success === true, risk: text(f.risk), facts: (Array.isArray(f.facts) ? f.facts : []).map(text).filter((id) => ok.has(id)) }))
     .filter((f) => f.frame).slice(0, 4).map((f, i) => ({ id: `R${i + 1}`, ...f }));
 }
 
@@ -82,6 +83,7 @@ export function swissPairs(ids, wins, met, round) {
  * 결선 자리 — 점수 합이 아니라 자리로 채운다. 무난한 안만 올라가지 않게 한다.
  *   상위      조별 대결 승수 상위 3
  *   다른 안   기본안과 "다름" 판정을 받았고, 아직 올라온 적 없는 문제 정의에 답한 안
+ *   성공 기준  위 자리에 성공 기준에 직접 닿는 안이 하나도 없으면, 닿는 안 가운데 승수가 가장 높은 안
  *   뚜렷한 안 대결 판정에서 "한 가지가 뚜렷하다"고 가장 많이 짚인 안
  *   상위를 이긴 안  상위 자리의 안을 이긴 적 있는 안
  * 같은 해법 묶음(family)은 결선에 2개까지만 올린다.
@@ -92,6 +94,7 @@ export function pickSeats(live, wins, notable, duels, size) {
   const famOf = (c) => c.screen?.family || c.id;
   const take = (c, seat) => { if (!c || seats.some((x) => x.c === c) || (fam[famOf(c)] || 0) >= 2 || seats.length >= size) return false; seats.push({ c, seat }); fam[famOf(c)] = (fam[famOf(c)] || 0) + 1; return true; };
   for (const c of order) { if (seats.length >= Math.min(3, size)) break; take(c, '상위'); }
+  if (!seats.some((x) => x.c.screen?.success === '직접')) take(order.find((c) => c.screen?.success === '직접'), '성공 기준에 닿는 안');
   const frames = () => new Set(seats.map((x) => x.c.origin.frame || 'R0'));
   const diff = order.filter((c) => c.screen?.verdict === '다름');
   take(diff.find((c) => !frames().has(c.origin.frame || 'R0')) || diff.find((c) => !seats.some((x) => x.c === c)), '다른 안');
@@ -132,11 +135,11 @@ export async function arena({ project, run, call, emit, pool }) {
   emit('stage', { stage: 'screen' });
   if (run.baseline?.concepts?.length) {
     const p = screenPrompt(project, cands, run.baseline);
-    const raw = await call({ role: 'brain', ...p, task: { kind: 'screen', project, candidates: cands, baseline: run.baseline } });
+    const raw = await call({ role: 'judge', ...p, task: { kind: 'screen', project, candidates: cands, baseline: run.baseline } });
     const bids = new Set(run.baseline.concepts.map((c) => c.id));
     for (const x of Array.isArray(raw?.screens) ? raw.screens : []) {
       const c = cands.find((k) => k.id === text(x.id));
-      if (c && SCREEN.includes(text(x.verdict))) c.screen = { nearest: bids.has(text(x.nearest)) ? text(x.nearest) : '', verdict: text(x.verdict), why: text(x.why), family: text(x.family), empty: x.empty === true, breaks: text(x.breaks) };
+      if (c && SCREEN.includes(text(x.verdict))) c.screen = { nearest: bids.has(text(x.nearest)) ? text(x.nearest) : '', verdict: text(x.verdict), why: text(x.why), family: text(x.family), empty: x.empty === true, success: REACH.includes(text(x.success)) ? text(x.success) : '', breaks: text(x.breaks) };
     }
     // 떨어뜨리는 것은 사유가 있을 때뿐이다 — 기본안과 같거나, 사람이 얻는 것이 없거나
     for (const c of cands) { if (c.screen?.verdict === '같음') c.status = '탈락 — 기본안과 같음'; else if (c.screen?.empty) c.status = '탈락 — 얻는 것 없음'; }
@@ -151,7 +154,7 @@ export async function arena({ project, run, call, emit, pool }) {
   const judge = async (group, tag) => {
     const pairs = group.map((m) => ({ id: m.id, a: byId.get(m.a), b: byId.get(m.b) }));
     const p = duelPrompt(project, pairs);
-    const raw = await call({ role: 'director', ...p, task: { kind: 'duel', project, pairs, tag } });
+    const raw = await call({ role: 'judge', ...p, task: { kind: 'duel', project, pairs, tag } });
     const got = new Map((Array.isArray(raw?.duels) ? raw.duels : []).map((d) => [text(d.pair), d]));
     return group.map((m) => { const d = got.get(m.id); const w = text(d?.winner); const n = text(d?.notable); return { ...m, winner: w === m.a || w === m.b ? w : '', why: text(d?.why), notable: n === m.a || n === m.b ? n : '', notableWhy: text(d?.notable_why), unsure: d?.unsure === true }; });
   };
@@ -174,37 +177,75 @@ export async function arena({ project, run, call, emit, pool }) {
   const finals = once.map((d) => { const e = twice.find((x) => x.id === d.id); const split = !!(e && e.winner && d.winner && e.winner !== d.winner); return { ...d, split, winner: split ? '' : d.winner || e?.winner || '', why: split ? `판정이 갈렸다 — ${d.why} / ${e.why}` : d.why, stage: '결선' }; });
   duels.push(...finals);
   const table = standings(finalists.map((c) => c.id), finals, swiss);
-  // 최종안은 서로 다른 해법이어야 한다 — 같은 해법 묶음에서는 순위가 가장 높은 하나만
+  // 최종안은 서로 다른 해법이어야 한다 — 결선에 오른 안과 예비 안을 다시 견주어 같은 해법을 묶는다.
+  // 기본안 대조 때 붙인 묶음 이름만으로는 같은 해법이 다른 이름으로 올라온다.
+  emit('stage', { stage: 'distinct' });
+  const reserves = live.filter((c) => !finalists.includes(c)).sort((x, y) => (swiss[y.id] || 0) - (swiss[x.id] || 0) || x.id.localeCompare(y.id, undefined, { numeric: true })).slice(0, 4);
+  const groupOf = new Map(); const groups = [];
+  {
+    const set = [...finalists, ...reserves];
+    const p = distinctPrompt(project, set);
+    const raw = await call({ role: 'judge', ...p, task: { kind: 'distinct', project, candidates: set } });
+    for (const g of Array.isArray(raw?.groups) ? raw.groups : []) {
+      const ids = (Array.isArray(g.ids) ? g.ids : []).map(text).filter((id) => set.some((c) => c.id === id) && !groupOf.has(id));
+      if (!ids.length) continue;
+      groups.push({ name: text(g.name) || byId.get(ids[0]).title, ids, why: text(g.why) });
+      for (const id of ids) groupOf.set(id, groups.length - 1);
+    }
+    // 답에서 빠진 안은 기본안 대조 때의 묶음 이름으로 가른다
+    for (const c of set) { if (groupOf.has(c.id)) continue; const f = c.screen?.family || c.id; let k = groups.findIndex((g) => g.fallback === f); if (k < 0) { groups.push({ name: f, ids: [], why: '', fallback: f }); k = groups.length - 1; } groups[k].ids.push(c.id); groupOf.set(c.id, k); }
+    for (const c of set) c.group = groups[groupOf.get(c.id)].name;
+  }
   const winners = []; const taken = new Set();
   for (const t of table) {
     const c = byId.get(t.id); c.wins = t.wins; c.rank = t.rank; c.contested = finals.filter((d) => d.split && (d.a === c.id || d.b === c.id)).length >= 2;
-    const f = c.screen?.family || c.id;
-    if (winners.length < s.insightCount && !taken.has(f)) { winners.push(c); taken.add(f); c.status = '결선 통과'; }
-    else c.status = winners.some((w) => (w.screen?.family || w.id) === f) ? '탈락 — 같은 해법이 이미 뽑힘' : '탈락 — 결선';
+    const g = groupOf.get(c.id);
+    if (winners.length < s.insightCount && !taken.has(g)) { winners.push(c); taken.add(g); c.status = '결선 통과'; }
+    else c.status = taken.has(g) ? '탈락 — 같은 해법이 이미 뽑힘' : '탈락 — 결선';
   }
-  // 해법 묶음이 모자라 자리가 비면 순위대로 채운다
-  for (const t of table) { const c = byId.get(t.id); if (winners.length < s.insightCount && !winners.includes(c)) { winners.push(c); c.status = '결선 통과'; } }
+  // 자리가 비면 같은 해법으로 채우지 않는다. 결선에 못 오른 안 가운데 다른 해법을 올리고, 그것도 없으면 비워 둔다.
+  for (const c of reserves) { const g = groupOf.get(c.id); if (winners.length < s.insightCount && !taken.has(g)) { winners.push(c); taken.add(g); c.seat = '예비 — 다른 해법'; c.status = '결선 통과 — 예비'; } }
+  if (winners.length < s.insightCount) run.notes.push(`서로 다른 해법이 ${winners.length}개뿐이라 인사이트를 ${winners.length}건만 낸다`);
 
   // 5) 공격 · 보완 — 이긴 안을 고친다
   emit('stage', { stage: 'forge' });
-  const forged = await pool(winners, s.concurrency, async (c) => {
+  // 공격은 한꺼번에 받고, 보완은 순위대로 하나씩 한다 — 뒤에 고치는 안이 앞 안의 장치를 가져다 쓰면 최종안이 다시 같아진다.
+  const attacked = await pool(winners, s.concurrency, async (c) => {
     const ap = attackPrompt(project, c, run.baseline);
-    const araw = await call({ role: 'brain', ...ap, task: { kind: 'attack', project, cand: c } });
-    const attack = { attacks: (Array.isArray(araw?.attacks) ? araw.attacks : []).map((a) => ({ from: text(a.from), hit: text(a.hit), severity: Math.min(3, Math.max(1, Math.round(+a.severity || 1))) })).filter((a) => a.hit), keep: text(araw?.keep) };
-    if (!attack.attacks.length) return { cand: c, attack, revised: null };
-    const rp = revisePrompt(project, c, attack, run.baseline);
-    const rraw = await call({ role: 'director', ...rp, task: { kind: 'revise', project, cand: c, attack } });
-    if (!text(rraw?.concept)) return { cand: c, attack, revised: null };
-    const revised = { id: `${c.id}r`, title: text(rraw.title) || c.title, concept: text(rraw.concept), visual: text(rraw.visual) || c.visual, gain: text(rraw.gain) || c.gain, keep: text(rraw.keep), change: text(rraw.change), verdict: text(rraw.verdict),
-      fixed: (Array.isArray(rraw.fixed) ? rraw.fixed : []).map((f) => ({ hit: text(f.hit), fix: text(f.fix) })).filter((f) => f.fix), open: (Array.isArray(rraw.open) ? rraw.open : []).map(text).filter(Boolean) };
-    return { cand: c, attack, revised };
+    const araw = await call({ role: 'judge', ...ap, task: { kind: 'attack', project, cand: c } });
+    return { cand: c, attack: { attacks: (Array.isArray(araw?.attacks) ? araw.attacks : []).map((a) => ({ from: text(a.from), hit: text(a.hit), severity: Math.min(3, Math.max(1, Math.round(+a.severity || 1))) })).filter((a) => a.hit), keep: text(araw?.keep) } };
   });
+  const forged = [];
+  for (const { cand: c, attack } of attacked) {
+    if (!attack.attacks.length) { forged.push({ cand: c, attack, revised: null }); continue; }
+    // 다른 최종안의 지금 모습 — 이미 고친 안은 고친 모습으로
+    const others = winners.filter((w) => w !== c).map((w) => { const f = forged.find((x) => x.cand === w); const v = f?.revised || w; return { title: v.title, concept: v.concept }; });
+    const rp = revisePrompt(project, c, attack, run.baseline, others);
+    const rraw = await call({ role: 'director', ...rp, task: { kind: 'revise', project, cand: c, attack, others } });
+    if (!text(rraw?.concept)) { forged.push({ cand: c, attack, revised: null }); continue; }
+    forged.push({ cand: c, attack, revised: { id: `${c.id}r`, title: text(rraw.title) || c.title, concept: text(rraw.concept), visual: text(rraw.visual) || c.visual, gain: text(rraw.gain) || c.gain, keep: text(rraw.keep), change: text(rraw.change), verdict: text(rraw.verdict),
+      fixed: (Array.isArray(rraw.fixed) ? rraw.fixed : []).map((f) => ({ hit: text(f.hit), fix: text(f.fix) })).filter((f) => f.fix), open: (Array.isArray(rraw.open) ? rraw.open : []).map(text).filter(Boolean) } });
+  }
 
   // 6) 재대결 — 고친 안과 고치기 전 안
   const rematch = forged.filter((f) => f.revised).map((f) => { byId.set(f.revised.id, f.revised); return hash(f.cand.id) < 0.5 ? { id: `X${f.cand.id}`, a: f.cand.id, b: f.revised.id } : { id: `X${f.cand.id}`, a: f.revised.id, b: f.cand.id }; });
   const rres = rematch.length ? await judge(rematch, 'rematch') : [];
   duels.push(...rres.map((d) => ({ ...d, stage: '재대결' })));
   for (const f of forged) { const r = rres.find((x) => x.id === `X${f.cand.id}`); f.adopted = !!(f.revised && r && r.winner === f.revised.id); f.rematch = r ? r.why : ''; }
+
+  // 고친 뒤 다시 견준다 — 고치다가 같은 해법이 된 안은 고치기 전으로 되돌린다(고치기 전에는 서로 달랐다).
+  let reverted = 0;
+  if (forged.filter((f) => f.adopted).length && forged.length > 1) {
+    const now = forged.map((f) => { const v = f.adopted ? f.revised : f.cand; return { id: f.cand.id, title: v.title, concept: v.concept, visual: v.visual, gain: v.gain }; });
+    const p = distinctPrompt(project, now);
+    const raw = await call({ role: 'judge', ...p, task: { kind: 'distinct', project, candidates: now, stage: 'revised' } });
+    for (const g of Array.isArray(raw?.groups) ? raw.groups : []) {
+      const same = forged.filter((f) => (Array.isArray(g.ids) ? g.ids : []).map(text).includes(f.cand.id));
+      // 순위가 가장 높은 안은 그대로 두고, 나머지 가운데 고친 안을 되돌린다
+      for (const f of same.slice(1)) { if (!f.adopted) continue; f.adopted = false; f.reverted = true; reverted++; f.rematch = `고친 안이 ${same[0].cand.id}와 같은 해법이 되어 고치기 전 안을 남겼다`; }
+    }
+    if (reverted) run.notes.push(`고친 뒤 같은 해법이 된 안 ${reverted}개를 고치기 전으로 되돌렸다. 그 안이 받은 공격은 고쳐지지 않은 채 남는다`);
+  }
 
   // 7) 이긴 안을 통합 인사이트의 모양으로 — 근거 판단은 후보가 나온 판단이다
   const fam = (ids) => { const o = Object.fromEntries(Object.keys(FAMILIES).map((f) => [f, 0])); for (const id of ids) { const x = sig.get(id); if (x) o[x.family]++; } return o; };
@@ -223,15 +264,16 @@ export async function arena({ project, run, call, emit, pool }) {
       without: { nearest: c.screen?.nearest || src?.without?.nearest || '', baseline: src?.without?.baseline || '', difference: c.screen?.why || src?.without?.difference || '' },
       open: [...(f.adopted ? f.revised.open : []), ...(src?.open || [])],
       check: { ok: true, problems: [], used, byFamily, families: Object.keys(byFamily).filter((k) => byFamily[k]), lenses: [...new Set(used.map((id) => sig.get(id).lens))], foreign: 0 },
-      origin: c.origin, wins: c.wins, seat: c.seat, family: c.screen?.family || '', contested: !!c.contested, attacks: f.attack.attacks, kept: f.attack.keep, fixed: f.adopted ? f.revised.fixed : [], revised: f.adopted, rematch: f.rematch,
+      origin: c.origin, wins: c.wins ?? null, seat: c.seat, family: c.group || c.screen?.family || '', reach: c.screen?.success || '', contested: !!c.contested, attacks: f.attack.attacks, kept: f.attack.keep, fixed: f.adopted ? f.revised.fixed : [], revised: f.adopted, reverted: !!f.reverted, rematch: f.rematch,
     };
   });
 
   const where = (c) => (c.origin.type === 'node' ? `${lensName(c.origin.lens)}의 완성안${c.origin.frame && c.origin.frame !== 'R0' ? ` · ${c.origin.frame}` : ''}` : c.origin.type === 'cross' ? `${c.origin.lenses.map(lensName).join(' × ')} 교배` : `묶음 통합안 ${c.origin.insight}`);
   run.arena = {
-    candidates: cands.map((c) => ({ id: c.id, title: c.title, concept: c.concept, from: where(c), type: c.origin.type, screen: c.screen || null, family: c.screen?.family || '', seat: c.seat || '', swiss: c.swiss ?? null, wins: c.wins ?? null, rank: c.rank ?? null, notable: c.notable || '', contested: !!c.contested, status: c.status })),
+    candidates: cands.map((c) => ({ id: c.id, title: c.title, concept: c.concept, from: where(c), type: c.origin.type, screen: c.screen || null, family: c.group || c.screen?.family || '', reach: c.screen?.success || '', seat: c.seat || '', swiss: c.swiss ?? null, wins: c.wins ?? null, rank: c.rank ?? null, notable: c.notable || '', contested: !!c.contested, status: c.status })),
     duels: duels.map((d) => ({ stage: d.stage, a: d.a, b: d.b, winner: d.winner, split: !!d.split, unsure: !!d.unsure, why: d.why })),
-    counts: { candidates: cands.length, node: cands.filter((c) => c.origin.type === 'node').length, cluster: cands.filter((c) => c.origin.type === 'cluster').length, cross: cands.filter((c) => c.origin.type === 'cross').length, screened: cands.filter((c) => c.status.startsWith('탈락 — 기본안') || c.status.startsWith('탈락 — 얻는')).length, finalists: finalists.length, duels: duels.length, splits: finals.filter((d) => d.split).length, different: cands.filter((c) => c.screen?.verdict === '다름' && c.status.startsWith('탈락')).length, revised: forged.filter((f) => f.adopted).length },
+    counts: { candidates: cands.length, node: cands.filter((c) => c.origin.type === 'node').length, cluster: cands.filter((c) => c.origin.type === 'cluster').length, cross: cands.filter((c) => c.origin.type === 'cross').length, screened: cands.filter((c) => c.status.startsWith('탈락 — 기본안') || c.status.startsWith('탈락 — 얻는')).length, finalists: finalists.length, duels: duels.length, splits: finals.filter((d) => d.split).length, groups: new Set(finalists.map((c) => groupOf.get(c.id))).size, merged: finalists.filter((c) => c.status === '탈락 — 같은 해법이 이미 뽑힘').length, reserve: winners.filter((c) => c.status === '결선 통과 — 예비').length, different: cands.filter((c) => c.screen?.verdict === '다름' && c.status.startsWith('탈락')).length, revised: forged.filter((f) => f.adopted).length, reverted },
+    groups: groups.map((g) => ({ name: g.name, ids: g.ids, why: g.why })),
     calls: run.calls - before,
   };
   return run.arena;
