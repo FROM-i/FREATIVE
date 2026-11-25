@@ -161,3 +161,9 @@ v2/
 ## 배포 · 로그인
 
 웹에는 `v2/`만 올린다(Vercel, Root Directory `v2`). 배포된 사이트는 회사 메일로 가입하고 관리자 승인을 받아야 쓴다. 프로젝트는 수파베이스에 저장한다. 내 컴퓨터에서 열면 로그인 없이 돈다. 자세한 것은 [docs/DEPLOY.md](docs/DEPLOY.md).
+
+## RFP · 팩트북으로 프로젝트 채우기
+
+- Claude: `skill/thefrom-brain-project/SKILL.md`를 스킬로 등록하고, RFP · 팩트북을 올린 뒤 "브레인 프로젝트로 만들어줘"라고 한다.
+- 다른 LLM: 같은 파일(또는 `docs/PROJECT-FILE.md`)을 자료와 함께 올리고 같은 요청을 한다.
+- 받은 JSON을 사이트 미션 탭의 "프로젝트 가져오기"로 올린다. 사이트에서 직접 입력해도 된다.

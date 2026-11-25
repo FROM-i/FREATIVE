@@ -5,7 +5,7 @@ import { CATEGORIES, TAGS, COMMON_INPUT, SEED_INPUT, PERSPECTIVES, tagById, cate
 import { createView } from './graph/view.js';
 import { shapeFor, PRESETS, LAYER_ROLES, LAYER_FORMS, FIGURES, figureParts } from './graph/shapes.js';
 import { think, proposeIssues, researchFacts } from './engine/think.js';
-import { FACT_KINDS, SOURCE_TYPES, factKind, sourceType, factProblem, validFacts, nextFactId, factsToMarkdown, parseFactbook } from '../knowledge/facts.js';
+import { FACT_KINDS, SOURCE_TYPES, factKind, sourceType, factProblem, validFacts, nextFactId, factsToMarkdown, parseFactbook, unverified } from '../knowledge/facts.js';
 import { WEIGHTS, SEED_PRECEDENTS, normalizeWeights } from '../knowledge/viewpoint.js';
 import { DIFFERENTIATION, EFFECTIVENESS } from '../knowledge/criteria.js';
 import { ISM_DEPTH } from '../knowledge/ism-depth.js';
@@ -337,11 +337,11 @@ function bind(obj, key, { area = false, graph = false, ...attrs } = {}) {
 }
 
 // ---------- 팩트북 ----------
-const FACT_STATE = (f) => (f.by === 'ai' ? (f.checked ? 'AI 조사 · 확인함' : 'AI 조사 · 확인 전') : '직접 입력');
+const FACT_STATE = (f) => (f.by === 'ai' ? (f.checked ? 'AI 조사 · 확인함' : 'AI 조사 · 확인 전') : f.by === 'doc' ? (f.checked ? '자료에서 옮김 · 확인함' : '자료에서 옮김 · 확인 전') : '직접 입력');
 function factbookBoard(p) {
   p.facts = p.facts || [];
   const { facts: ok } = validFacts(p);
-  const unchecked = ok.filter((f) => f.by === 'ai' && !f.checked).length;
+  const unchecked = ok.filter((f) => unverified(f)).length;
   const touch = () => { p.updated = new Date().toISOString(); S.dirty = true; persist(); rerender(); };
   const draft = S.factDraft || (S.factDraft = { kind: 'stat', sourceType: 'stat', text: '', source: '', date: '', url: '' });
   const set = (k) => (e) => { draft[k] = e.target.value; };
@@ -381,12 +381,12 @@ function factbookBoard(p) {
     p.facts.length ? h('ul', { class: 'list' }, p.facts.map((f) => {
       const why = factProblem(f);
       return h('li', { class: why ? 'off' : '' },
-        h('div', { class: 'row' }, h('span', { class: 'chip fill' }, f.id), h('span', { class: 'chip ghost' }, factKind(f.kind)?.name || '?'), h('span', { class: `chip ${f.by === 'ai' && !f.checked ? 'warn' : 'ghost'}` }, FACT_STATE(f)), why ? h('span', { class: 'chip warn' }, `제외 — ${why}`) : null),
+        h('div', { class: 'row' }, h('span', { class: 'chip fill' }, f.id), h('span', { class: 'chip ghost' }, factKind(f.kind)?.name || '?'), h('span', { class: `chip ${unverified(f) ? 'warn' : 'ghost'}` }, FACT_STATE(f)), why ? h('span', { class: 'chip warn' }, `제외 — ${why}`) : null),
         f.text,
         h('p', { class: 'small' }, `${sourceType(f.sourceType)?.name || '출처 유형 없음'} — ${f.source || '출처 없음'}${f.date ? ` · ${f.date}` : ''}`, f.quote ? ` · "${f.quote}"` : ''),
         h('div', { class: 'row' },
           /^https?:\/\//i.test(f.url || '') ? h('a', { class: 'link', href: f.url, target: '_blank', rel: 'noopener noreferrer' }, '원문 열기') : null,
-          f.by === 'ai' ? h('button', { class: 'btn sm', type: 'button', onclick: () => { f.checked = !f.checked; touch(); } }, f.checked ? '확인 취소' : '원문 확인함') : null,
+          f.by === 'ai' || f.by === 'doc' ? h('button', { class: 'btn sm', type: 'button', onclick: () => { f.checked = !f.checked; touch(); } }, f.checked ? '확인 취소' : '원문 확인함') : null,
           h('button', { class: 'btn sm', type: 'button', onclick: () => { p.facts = p.facts.filter((x) => x !== f); touch(); } }, '지우기')));
     })) : null,
     h('details', null, h('summary', { class: 'small' }, '직접 넣기'),
@@ -801,7 +801,7 @@ function nodeTab() {
 
   if (d.kind === 'fact') {
     const f = d.fact;
-    return [h('section', { class: 'sec' }, h('div', { class: 'row' }, h('span', { class: 'chip fill' }, f.id), h('span', { class: 'chip ghost' }, factKind(f.kind)?.name || '팩트'), h('span', { class: `chip ${f.by === 'ai' && !f.checked ? 'warn' : 'ghost'}` }, FACT_STATE(f))),
+    return [h('section', { class: 'sec' }, h('div', { class: 'row' }, h('span', { class: 'chip fill' }, f.id), h('span', { class: 'chip ghost' }, factKind(f.kind)?.name || '팩트'), h('span', { class: `chip ${unverified(f) ? 'warn' : 'ghost'}` }, FACT_STATE(f))),
       h('p', { class: 'lead' }, f.text),
       h('dl', { class: 'kv' }, h('dt', null, '출처'), h('dd', null, `${sourceType(f.sourceType)?.name || ''} — ${f.source}${f.date ? ` · ${f.date}` : ''}`), f.quote ? [h('dt', null, '근거 구절'), h('dd', null, f.quote)] : null,
         /^https?:\/\//i.test(f.url || '') ? [h('dt', null, '원문'), h('dd', null, h('a', { class: 'link', href: f.url, target: '_blank', rel: 'noopener noreferrer' }, f.url))] : null)),

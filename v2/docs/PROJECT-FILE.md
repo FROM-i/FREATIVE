@@ -9,7 +9,7 @@
 2. 분류를 고른다. 걸치면 여러 개 고른다(예: 마케팅 + 운영).
 3. 고른 분류마다 특화 인풋을 채운다.
 4. 팩트는 출처가 있는 것만 넣는다. 출처 주소와 날짜가 없으면 넣지 않는다.
-5. 이슈는 비워 둔다. 근본 이슈는 브레인이 후보를 내고 사람이 고른다. RFP가 문제를 분명히 적었으면 그 문장을 후보로 넣어도 된다.
+5. 이슈는 비워 둔다. 근본 이슈는 브레인이 후보를 내고 사람이 고른다. 사용자가 미션을 직접 말했거나 RFP가 문제를 분명히 적었으면 그 문장으로 근본 이슈 1개를 넣는다. 하위 이슈는 4개를 넘기지 않는다(이슈가 많을수록 실행이 길어진다).
 6. `node scripts/run-brain.mjs 파일.json --check` 로 빠진 칸을 확인한다.
 
 ## 2. 형식
@@ -32,7 +32,7 @@
     "ops": { "cycle": "", "standard": "", "team": "", "review": "" }
   },
   "facts": [
-    { "id": "F1", "kind": "stat", "text": "사실 한 문장", "sourceType": "stat", "source": "기관 · 자료 이름", "date": "2026-10", "url": "https://…", "by": "ai", "checked": false }
+    { "id": "F1", "kind": "stat", "text": "사실 한 문장", "sourceType": "internal", "source": "문서 이름 12쪽 (원출처가 적혀 있으면 함께)", "date": "2026-10", "url": "", "by": "doc", "checked": false }
   ],
   "issues": [],
   "settings": { "look": { "kind": "brain" } }
@@ -48,7 +48,7 @@
 | `seed.<분류>` | 분류마다 4칸. 칸 이름은 `knowledge/tags.js`의 `SEED_INPUT`. 필수 칸이 비면 검사에서 알려 준다 |
 | `facts[].kind` | `trend` 트렌드 · `habit` 타겟 습성 · `stat` 통계 · `disclosure` 공시 · `notice` 브랜드 공지 · `issue` 실제 이슈 |
 | `facts[].sourceType` | `stat` 공식 통계 · `disclosure` 공시 · `official` 브랜드 공식 자료 · `press` 보도자료 원문. 클라이언트가 준 내부 자료는 `internal`(사람이 넣은 것만) |
-| `facts[].by` · `checked` | LLM이 넣었으면 `"ai"` · `false`. 사람이 원문을 확인하면 화면에서 확인 표시를 한다 |
+| `facts[].by` · `checked` | 받은 RFP · 팩트북에서 옮겼으면 `"doc"` · `false`(출처 유형은 `internal`, 출처에 문서 이름과 쪽). 웹에서 조사했으면 `"ai"` · `false`(주소와 날짜 필수, `internal` 불가). 사람이 원문을 확인하면 화면에서 확인 표시를 한다 |
 | `issues` | 비워 두거나 `{ "id": "I1", "root": true, "title": "누구의 무엇이 바뀌는가", "detail": "", "test": "판정 질문", "tags": [] }` |
 | `settings.look` | 브레인 맵 모양. `{ "kind": "brain" }` 기본 · `{ "kind": "burger" }` 층 쌓기 예시 · `{ "kind": "bulb" }` 전구 · `"bolt"` 번개 · `"phone"` 폰을 쥔 손 · `"server"` 클라우드와 서버 · `{ "kind": "stack", "layers": [...] }` 직접 정한 층 |
 
