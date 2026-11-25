@@ -61,6 +61,15 @@ const cross = ({ a, b }) => ({ keeps: { a: '[목업]', b: '[목업]' }, title: `
 const screen = ({ project, candidates, baseline }) => ({ screens: candidates.map((c) => { const h = hash(`screen${c.id}${c.title}`); return { id: c.id, nearest: baseline.concepts[Math.floor(h * baseline.concepts.length) % baseline.concepts.length].id, verdict: String(c.title).startsWith('[목업]') ? (h < 0.2 ? '같음' : h < 0.6 ? '일부' : '다름') : (h < 0.5 ? '일부' : '다름'), why: '[목업] 기본안과의 비교는 실제 모델이 쓴다.', family: String(c.title).startsWith('[목업]') ? `[목업] 해법 ${Math.floor(hash(`fam${c.title}`) * 5) + 1}` : c.title, empty: false, success: project?.brief?.success ? (h < 0.35 ? '직접' : h < 0.75 ? '간접' : '없음') : '', breaks: '' }; }) });
 // 고친 안(id가 r로 끝난다)과 고치기 전 안이 겨루면 목업에서는 고치기 전 안이 이긴다 — 예시 문장을 그대로 보여 주기 위해서다
 const duel = ({ pairs }) => ({ duels: pairs.map((p) => ({ pair: p.id, winner: p.a.id.endsWith('r') ? p.b.id : p.b.id.endsWith('r') ? p.a.id : (mockScore(p.a.title) >= mockScore(p.b.title) ? p.a.id : p.b.id), why: '[목업] 이긴 이유는 실제 모델이 쓴다.', notable: hash(`not${p.a.id}${p.b.id}`) < 0.25 ? p.b.id : '', notable_why: '[목업] 뚜렷한 점', unsure: false })) });
+// 그래프 통합안 — 뼈대 충돌의 두 판단에서 시작해 다른 노드의 판단을 골고루 끌어온다
+function weave({ run, spine, need }) {
+  const live = run.signals.filter((x) => !x.muted);
+  const seen = new Set([spine.a.lens, spine.b.lens]); const spans = [{ signals: [spine.a.id], line: '[목업] 한쪽을 살린다' }, { signals: [spine.b.id], line: '[목업] 다른 쪽을 살린다' }];
+  const order = [...live].sort((a, b) => (a.family === 'tunnel' ? 0 : 1) - (b.family === 'tunnel' ? 0 : 1) || hash(`${spine.edge.id}${a.id}`) - hash(`${spine.edge.id}${b.id}`));
+  for (const x of order) { if (seen.has(x.lens)) continue; seen.add(x.lens); spans.push({ signals: [x.id], line: '[목업] 원리가 이 판단을 받는다' }); if (spans.length >= Math.max(need?.nodes || 5, 6)) break; }
+  return { title: `[목업] 통합안 ${spine.edge.id}`, principle: '[목업] 충돌을 푸는 원리 하나', concept: `[목업] ${spine.edge.id}의 충돌을 푸는 원리로 전체를 묶은 안 — 실제 모델이 쓴다.`, visual: '[목업] 보이는 모습', gain: '[목업] 사람이 얻는 것', how: '[목업] 두 쪽을 둘 다 살린다',
+    spans, facts: [...new Set(spans.flatMap((sp) => live.find((x) => x.id === sp.signals[0])?.facts || []))], resolves: [], leaves: '' };
+}
 const attack = () => ({ attacks: [{ from: '제약', hit: '[목업] 약점은 실제 모델이 찾는다.', severity: 2 }], keep: '[목업] 지켜야 할 대담한 부분' });
 const revise = ({ cand, attack }) => ({ title: cand.title, concept: cand.concept, visual: cand.visual, gain: cand.gain, keep: '[목업]', change: '[목업]', verdict: '[목업]', responses: (attack?.attacks || [{ hit: '[목업] 받은 공격' }]).map((a, i) => ({ hit: a.hit, how: ['고침', '대가', '받지 않음'][i % 3], note: ['[목업] 기조 안에서 고친 것', '[목업] 기조를 택해 감수하는 것', '[목업] 받으면 다른 안이 된다'][i % 3] })), open: [] });
 const stance = ({ candidates }) => ({ stances: candidates.map((c) => ({ id: c.id, bet: `[목업] ${c.title}에 건다`, device: '[목업] 핵심 장치', gives_up: '[목업] 포기한 것' })) });
@@ -182,7 +191,7 @@ function strategy({ project, run }) {
     gaps: ['[목업] 확인할 것'],
   };
 }
-const HANDLERS = { strategy, plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, distinct, stance, hold, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
+const HANDLERS = { weave, strategy, plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, distinct, stance, hold, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
 
 export function createMock({ delay = 0 } = {}) {
   return {

@@ -32,7 +32,7 @@ const clip = (s, n) => (String(s || '').length > n ? `${String(s).slice(0, n)}�
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const TYPE = { cause: '원인', condition: '조건', reinforce: '강화', tension: '충돌' };
 const STANCE = { keep: '지킬 관성', change: '바꿀 해석', limit: '넘지 않을 경계', open: '비어 있는 자리' };
-const STAGE = { strategy: '전략 한 장으로 올리는 중', plan: '기획 틀로 정리하는 중', creative: '디자인 틀로 정리하는 중', baseline: '기본안 받는 중', reframe: '문제 다시 정의하는 중', cross: '충돌하는 안 교배 중', screen: '기본안과 대조 중', duel: '점수 없이 1:1로 겨루는 중', forge: '이긴 안 공격 · 보완 중', verdict: '더프롬 판정 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
+const STAGE = { weave: '그래프 전체를 읽고 통합안 쓰는 중', strategy: '전략 한 장으로 올리는 중', plan: '기획 틀로 정리하는 중', creative: '디자인 틀로 정리하는 중', baseline: '기본안 받는 중', reframe: '문제 다시 정의하는 중', cross: '충돌하는 안 교배 중', screen: '기본안과 대조 중', duel: '점수 없이 1:1로 겨루는 중', forge: '이긴 안 공격 · 보완 중', verdict: '더프롬 판정 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
 
 /** DOM 만들기 — 글자는 언제나 텍스트 노드로 들어간다 */
 function h(tag, attrs, ...kids) {
@@ -778,7 +778,7 @@ function insightTab() {
         ['노드별 분석', '각 기준 노드가 같은 미션과 이슈를 받아 따로 판단을 낸다. 근거 단계를 쓰지 못한 판단은 제외한다.'],
         ['연결', '판단끼리 원인·조건·강화·충돌 관계를 찾는다. 이유가 없는 연결은 제외한다.'],
         ['묶기', '서로 강하게 연결된 판단을 계산으로 묶는다. 입력이 같으면 결과도 같다.'],
-        ['후보 모으기', '노드가 자기 기준을 끝까지 민 완성안, 묶음 통합안, 충돌하는 두 안의 교배안을 모은다.'],
+        ['후보 모으기', '큰 충돌 하나를 뼈대로 전체 노드의 판단을 읽고 쓴 통합안과 묶음 통합안을 모은다. 노드가 혼자 쓴 완성안은 후보가 아니라 재료다.'],
         ['경쟁', '기본안과 같은 안만 떨어뜨리고, 나머지는 점수 없이 1:1로 겨룬다. 최종안은 서로 다른 해법이어야 하고, 이긴 안은 공격을 받고 고친다.'],
         ['디렉션', '인사이트를 기획·디자인·개발·서비스 담당의 할 일로 정리하고, 인사이트가 기본안과 같은 해법인지 판정한다.'],
       ].map(([t, d], i) => h('li', null, h('b', null, i + 1), h('div', null, h('strong', null, t), h('p', { class: 'note' }, d))))))];
@@ -832,6 +832,8 @@ function insightTab() {
           c.ok ? null : h('div', { class: 'banner warn' }, h('strong', null, '검증 미통과 — '), c.problems.join(' / ')),
           shortOf(run, n) ? h('p', { class: 'small' }, n.title) : null,
           h('p', { class: 'concept' }, n.concept),
+          n.spans?.length ? fold(`spans-${n.id}`, '원리가 받는 판단', `노드 ${n.check.lenses.length}개 · 판단 ${n.check.used.length}건${n.pulled?.length ? ` · 보완하며 끌어온 것 ${n.pulled.length}건` : ''}`,
+            h('ul', { class: 'list' }, n.spans.map((sp) => h('li', null, h('strong', null, [...new Set(sp.signals.map((id) => sig.get(id)).filter(Boolean).map((x) => lensName(x.lens)))].join(' · ')), sp.line ? ` — ${sp.line}` : '')))) : null,
           n.stance?.bet ? h('div', { class: 'push stance' }, h('b', null, tip('기조')), n.stance.bet, n.stance.givesUp ? h('small', null, `포기한 것: ${n.stance.givesUp}`) : null, n.reverted ? h('small', null, n.rematch) : n.kept ? h('small', null, `고친 뒤 기조: ${n.kept}`) : null) : null,
           v ? h('div', { class: 'meters' },
             meter('차별화', DIFFERENTIATION.levels, v.differentiation.level),
