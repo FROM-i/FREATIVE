@@ -1,14 +1,15 @@
-// 운영 방향 — 전략 과제의 전략 한 장. 위에서 아래로 쓴다.
-//   컨셉 과제의 전략 한 장(strategy.js)은 이긴 인사이트를 재료로 올려 쓴다. 그래서 전술을 일반화한 문장이 맨 위에 선다.
-//   전략 과제는 순서를 뒤집고, 층을 업무 영역으로 가른다.
-//     ⓪ 업무 영역 — 과제가 맡는 일의 범위. 미션에 없으면 미션에서 뽑는다
-//     ① 방향 높이의 노드 판단 — 모든 노드가 "영역 전부를 어떻게 하나로 운영하는가"와 영역마다의 방침을 따로 본다
+// 방향 — 모든 과제가 같은 길을 간다. 과제의 종류에 따라 길이 달라지지 않는다.
+//   head()    이슈를 보기 전에 방향을 정한다
+//     ⓪ 영역 — 과제가 맡는 일의 범위. 미션에 없으면 브리프에서 뽑는다
+//     ① 방향 높이의 노드 판단 — 모든 노드가 과제 전체를 보고 통합 판단 1개와 영역마다 판단 1개를 낸다
 //     ② 연결 — 통합 판단끼리 이어 충돌을 찾는다
 //     ③ 기본 방향 — 노드 없이 낸 방향. 견주는 기준
 //     ④ 방향 후보 3개 — 충돌을 푸는 자리에서 쓴다. 아이덴티티 판단이 뼈대다
-//     ⑤ 방향 판정 — 영역 시험 · 고유 시험 · 약속 시험. 통과가 기본값이 아니다
-//     ⑥ 아래로 내린다 — 영역별 전략(영역 높이의 판단에서) → 전술 여러 개(이슈 높이의 판단과 인사이트에서)
-//   이슈 높이의 분석은 다시 돌리지 않는다. 처음에는 노드 수 + 6회 안팎, 노드 판단이 있으면 4~6회.
+//     ⑤ 방향 판정 — 영역 · 고유 · 약속 · 브리프 시험. 통과가 기본값이 아니다
+//   (그 뒤 think()가 이슈 높이의 노드 판단 · 연결 · 경쟁 · 판정을 돈다. 모든 호출이 정해진 방향을 받는다)
+//   descend() 방향 아래로 내려 쓴다
+//     ⑥ 영역별 전략(영역 높이의 판단에서) → 전술 여러 개(이슈 높이의 판단과 인사이트에서). 전술마다 나온 노드를 남긴다
+//   chart()   이미 있는 분석 위에서 head와 descend만 돈다. 이슈 높이의 분석은 다시 돌리지 않는다.
 import { courseScopePrompt, courseBasePrompt, courseLensPrompt, courseLinkPrompt, coursePrompt, courseJudgePrompt, layersPrompt, COURSE_CAPS, DEVICE_WORDS } from '../../knowledge/prompts-course.js';
 import { validFacts } from '../../knowledge/facts.js';
 import { categoriesOf, categoryById } from '../../knowledge/tags.js';
@@ -19,23 +20,12 @@ const cap = (v, n) => { const s = text(v); return s.length > n + 6 ? `${s.slice(
 const uniq = (a) => [...new Set(a)];
 const arr = (v) => (Array.isArray(v) ? v : []);
 
-export const LEVELS = [
-  { id: 'concept', name: '컨셉', note: '문제를 푸는 안 하나를 낸다 — 캠페인 · 화면 · 크리에이티브' },
-  { id: 'strategy', name: '전략', note: '노드가 방향 높이에서 한 번 더 판단하고, 그 충돌을 푸는 통합 운영 방향을 정한 뒤 영역별 전략과 전술로 내린다 — 운영 · 연간 플랜' },
-];
-/** 과제의 층위 — 고르지 않았으면 분류로 정한다. 통합 · 운영 분류는 전략이다. */
-export function levelOf(project) {
-  const set = project?.settings?.level;
-  if (set === 'concept' || set === 'strategy') return set;
-  const cats = categoriesOf(project);
-  return cats.includes('integrated') || cats.includes('ops') ? 'strategy' : 'concept';
-}
 const partCats = (project) => categoriesOf(project).filter((c) => c !== 'integrated');
 
-/** 업무 영역 — 사람이 미션에 적은 것. 이름이 있는 줄만 받고 id를 S1, S2…로 맞춘다. 2개보다 적으면 없는 것으로 본다. */
+/** 영역 — 사람이 미션에 적은 것. 이름이 있는 줄만 받고 id를 S1, S2…로 맞춘다. 하나여도 받는다(결과물이 하나인 과제). */
 export function areasOf(project) {
   const list = arr(project?.areas).map((a) => ({ name: cap(a?.name, COURSE_CAPS.area + 6), note: cap(a?.note, COURSE_CAPS.areaNote + 10) })).filter((a) => a.name).slice(0, 5);
-  return list.length >= 2 ? list.map((a, i) => ({ id: `S${i + 1}`, ...a })) : null;
+  return list.length ? list.map((a, i) => ({ id: `S${i + 1}`, ...a })) : null;
 }
 export function shapeAreas(raw) {
   const C = COURSE_CAPS;
@@ -67,6 +57,7 @@ export function courseNeed(project, run) {
     total: Math.min(15, Math.max(facts ? 4 : 0, Math.round(facts * 0.3))),
     fresh: Math.min(4, live.filter((s) => !usedByInsights.has(s.id)).length),
     tactics: 4,
+    lenses: Math.min(6, uniq(live.map((s) => s.lens)).length),
   };
 }
 
@@ -191,7 +182,7 @@ export function shapeRivals(raw, project, run, areas, spines = []) {
 }
 
 const LEVELS_OF = ['방향', '영역 전략', '전술'];
-/** 판정을 다듬는다 — 방향이고, 고유하고, 약속할 수 있는 후보가 먼저다. 기본 방향은 순서에만 남는다 */
+/** 판정을 다듬는다 — 방향이고, 고유하고, 브리프 전체에 닿고, 약속할 수 있는 후보가 먼저다. 기본 방향은 순서에만 남는다 */
 export function shapeJudge(raw, rivals, areas = []) {
   const C = COURSE_CAPS; const ok = new Set(rivals.map((r) => r.id)); const aid = new Set(areas.map((a) => a.id));
   const order = uniq(arr(raw?.order).map(text).filter((x) => ok.has(x) || x === 'BASE'));
@@ -204,12 +195,12 @@ export function shapeJudge(raw, rivals, areas = []) {
     const reaches = []; for (const v of arr(x.reaches)) { const area = areaId(typeof v === 'string' ? v : v?.area, areas); const kase = typeof v === 'string' ? '' : cap(v?.case, C.casee); if (aid.has(area) && !reaches.some((q) => q.area === area) && (typeof v === 'string' || kase)) reaches.push({ area, case: kase }); }
     let level = LEVELS_OF.includes(text(x.level)) ? text(x.level) : '방향';
     if (level === '방향' && areas.length > 1 && told && reaches.length <= 1) level = '영역 전략';
-    return { id: r.id, level, reaches, own: text(x.own) === '범용' ? '범용' : '고유', control: /불가/.test(text(x.control)) ? '일부 불가' : '가능', vsBase: text(x.vsBase) === '같음' ? '같음' : '다름', strong: cap(x.strong, C.note), weak: cap(x.weak, C.note) };
+    return { id: r.id, level, reaches, own: text(x.own) === '범용' ? '범용' : '고유', control: /불가/.test(text(x.control)) ? '일부 불가' : '가능', brief: text(x.brief) === '일부' ? '일부' : '전체', vsBase: text(x.vsBase) === '같음' ? '같음' : '다름', strong: cap(x.strong, C.note), weak: cap(x.weak, C.note) };
   });
   const it = (id) => items.find((x) => x.id === id);
   const cands = order.filter((id) => id !== 'BASE');
-  const winner = cands.find((id) => it(id).level === '방향' && it(id).own === '고유' && it(id).control === '가능')
-    || cands.find((id) => it(id).level === '방향' && it(id).own === '고유') || cands.find((id) => it(id).level === '방향') || cands[0];
+  const ok4 = (id, n) => { const x = it(id); return [x.level === '방향', x.own === '고유', x.brief === '전체', x.control === '가능'].slice(0, n).every(Boolean); };
+  const winner = cands.find((id) => ok4(id, 4)) || cands.find((id) => ok4(id, 3)) || cands.find((id) => ok4(id, 2)) || cands.find((id) => ok4(id, 1)) || cands[0];
   return {
     order, items, winner,
     beatsBase: order.indexOf(winner) < order.indexOf('BASE'),
@@ -229,7 +220,7 @@ export function shapeLayers(raw, project, run, direction, areas, extra = {}) {
   const placedAt = new Map();
   const pillars = areas.map((a) => {
     const x = arr(raw?.areas).find((r) => areaId(r.area, areas) === a.id) || {};
-    const tactics = arr(x.tactics).map((t) => ({ phase: phaseId(t.phase), move: cap(t.move, C.move), parts: uniq(arr(t.parts).map(text).filter((c) => catOk.has(c))), insight: ins.has(text(t.insight)) ? text(t.insight) : '' })).filter((t) => t.move && t.phase).slice(0, 10);
+    const tactics = arr(x.tactics).map((t) => ({ phase: phaseId(t.phase), move: cap(t.move, C.move), parts: uniq(arr(t.parts).map(text).filter((c) => catOk.has(c))), from: sid(t.from).slice(0, 3), insight: ins.has(text(t.insight)) ? text(t.insight) : '' })).filter((t) => t.move && t.phase).slice(0, 10);
     for (const t of tactics) { if (!t.insight) continue; if (placedAt.has(t.insight)) t.insight = ''; else placedAt.set(t.insight, { area: a.id, phase: t.phase }); }   // 인사이트 하나는 한 자리에만 놓인다
     const signals = sid(x.signals);
     return { part: a.id, label: a.name, note: a.note, name: cap(x.name, C.name), guide: cap(x.line, C.line), tactics, moves: tactics.map((t) => t.move), facts: fid(x.facts), signals, insights: tactics.map((t) => t.insight).filter(Boolean), thin: signals.length < 2 };
@@ -262,6 +253,12 @@ export function shapeLayers(raw, project, run, direction, areas, extra = {}) {
     nodes: { used: lensesUsed.length, total: lensesAll.length, fresh: lensesUsed.filter((l) => !lensesByInsights.includes(l)).length, byInsights: lensesByInsights.length },
     high: { used: cited.filter((id) => !base.has(id)).length, total: high.length, tensions: (run.course?.edges || []).filter((e) => e.type === 'tension').length },
   };
+  // 전술이 어느 노드의 판단에서 나왔는가 — 서브 노드가 제 몫을 했는지 본다. 인사이트로 놓인 전술은 그 인사이트가 쓴 판단을 출처로 친다
+  const insUsed = new Map((run.insights || []).map((i) => [i.id, (i.check?.used || []).filter((id) => sig.has(id))]));
+  const all = pillars.flatMap((p) => p.tactics);
+  for (const t of all) { if (!t.from.length && t.insight) t.from = (insUsed.get(t.insight) || []).slice(0, 3); t.lenses = uniq(t.from.map((id) => sig.get(id).lens)); }
+  const tacLenses = uniq(all.flatMap((t) => t.lenses));
+  st.coverage.tactics = { total: all.length, sourced: all.filter((t) => t.from.length).length, lenses: tacLenses.length, lensTotal: uniq([...base.values()].map((x) => x.lens)).length };
   const problems = [];
   if (phases.length < 3) problems.push(`단계가 ${phases.length}개다. 3~4개를 쓴다`);
   const bare = pillars.filter((p) => !p.name || !p.guide);
@@ -279,6 +276,9 @@ export function shapeLayers(raw, project, run, direction, areas, extra = {}) {
   if (poor.length) problems.push(`팩트가 2개보다 적은 영역: ${poor.map((p) => p.label).join(', ')}`);
   if (facts.size >= 6 && factUsed.length < need.total) problems.push(`팩트를 ${factUsed.length}건만 썼다. ${need.total}건 이상 쓴다`);
   if (st.coverage.signals.fresh < need.fresh) problems.push(`인사이트에 쓰이지 않은 판단을 ${st.coverage.signals.fresh}개만 끌어왔다. ${need.fresh}개 이상 쓴다`);
+  const tc = st.coverage.tactics;
+  if (tc.total && tc.sourced < Math.ceil(tc.total * 0.6)) problems.push(`어느 판단에서 나왔는지 적지 않은 전술이 ${tc.total - tc.sourced}/${tc.total}건이다. 전술마다 from에 판단 id를 적는다`);
+  else if (tc.total && tc.lenses < need.lenses) problems.push(`전술이 기댄 노드가 ${tc.lenses}개뿐이다. 서로 다른 노드 ${need.lenses}개 이상의 판단에서 전술을 낸다`);
   const lost = placed.filter((x) => x.fit === '맞지 않음' && x.said !== '맞지 않음');
   if (lost.length) problems.push(`전술로 놓지 않은 인사이트: ${lost.map((x) => x.id).join(', ')}. 맞는 영역의 전술로 놓거나 "맞지 않음"으로 적는다`);
   for (const x of placed) delete x.said;
@@ -288,24 +288,27 @@ export function shapeLayers(raw, project, run, direction, areas, extra = {}) {
 
 /** 한 칸에 놓이는 것 — 영역(줄) × 단계(칸). 예전 모양(v2: 파트 × 단계, 칸마다 할 일 하나)도 같은 꼴로 돌려준다 */
 export function cellItems(st, p, ph) {
-  if (st.v >= 3) return p.tactics.filter((t) => t.phase === ph.id).map((t) => ({ move: t.move, parts: t.parts, insight: t.insight }));
+  if (st.v >= 3) return p.tactics.filter((t) => t.phase === ph.id).map((t) => ({ move: t.move, parts: t.parts, insight: t.insight, lenses: t.lenses || [] }));
   const c = (p.cells || []).find((x) => x.phase === ph.id);
   return [...(c ? [{ move: c.move, axis: c.axis, parts: [], insight: '' }] : []), ...st.insights.filter((x) => x.fit === '맞음' && x.part === p.part && x.phase === ph.id).map((x) => ({ move: x.name || x.id, parts: [], insight: x.id }))];
 }
 
-/** 통합 운영 방향부터 아래로 내려 쓴다. 결과는 run.strategy(v4)에 담는다.
- *  fresh: 방향 높이의 노드 판단이 이미 있어도 다시 받는다. 없으면 영역이 같을 때 있는 것을 쓴다. */
-export async function chart({ project, run, call, emit = () => {}, fresh = false }) {
-  if (!run.signals?.some((s) => !s.muted)) return null;
+/** 이슈 높이의 단계가 받을 방향 — 프롬프트의 미션 글에 붙는다 */
+export const headingOf = (h) => (h?.direction ? { name: h.direction.name, line: h.direction.line, standard: h.direction.standard, drops: h.direction.drops, covers: h.direction.covers.map((c) => ({ ...c, name: h.areas.find((a) => a.id === c.area)?.name || c.area })) } : null);
 
-  // ⓪ 업무 영역 — 사람이 적었으면 그대로, 없으면 미션에서 뽑는다
+/** 방향을 정한다 — 이슈를 보기 전에. 결과는 run.heading에 담는다.
+ *  fresh: 방향 높이의 노드 판단이 이미 있어도 다시 받는다. 없으면 영역이 같을 때 있는 것을 쓴다. */
+export async function head({ project, run, call, emit = () => {}, fresh = false }) {
+  project = { ...project, heading: null };   // 방향을 정하는 단계는 앞서 정한 방향을 받지 않는다
+  const calls0 = run.calls || 0;
+  // ⓪ 영역 — 사람이 적었으면 그대로, 없으면 브리프에서 뽑는다
   let areas = areasOf(project); let auto = false;
-  if (!areas && !fresh && run.strategy?.areasAuto && run.strategy.areas?.length >= 2) { areas = run.strategy.areas; auto = true; }
+  if (!areas && !fresh && run.heading?.auto && run.heading.areas?.length) { areas = run.heading.areas; auto = true; }
   if (!areas) {
     emit('stage', { stage: 'courseScope' });
     areas = shapeAreas(await call({ role: 'sub', ...courseScopePrompt(project), task: { kind: 'courseScope', project } }));
     auto = true;
-    if (areas.length < 2) throw new Error('업무 영역을 2개 이상 뽑지 못했다. 미션 탭의 "업무 영역"에 직접 적는다');
+    if (!areas.length) areas = [{ id: 'S1', name: '과제 전체', note: '' }];   // 나눌 것이 없는 과제
   }
 
   // ① ② 방향 높이의 노드 판단과 연결 — 영역이 그대로면 있는 것을 쓴다
@@ -328,38 +331,55 @@ export async function chart({ project, run, call, emit = () => {}, fresh = false
     note = `앞서 쓴 후보는 조건을 채우지 못했다: ${shaped.problems.join(' / ')}. 글자 수 제한은 그대로다.`;
   }
   const rivals = best.rivals;
-  if (!rivals.length) throw new Error('운영 방향 후보를 쓰지 못했다');
+  if (!rivals.length) throw new Error('방향 후보를 쓰지 못했다');
 
   emit('stage', { stage: 'courseJudge' });
   const judge = shapeJudge(await call({ role: 'judge', ...courseJudgePrompt(project, rivals, base, areas, lensName), task: { kind: 'courseJudge', project, rivals, base, areas } }), rivals, areas);
   const won = rivals.find((r) => r.id === judge.winner) || rivals[0];
   const direction = { id: won.id, name: won.name, line: won.line, standard: won.standard, covers: won.covers, how: won.how, swap: won.swap, lenses: won.lenses, spine: won.spine, from: won.from, to: won.to, keeps: won.keeps, drops: won.drops, answer: won.answer, signals: won.signals, facts: won.facts };
+  // 방향 자체에 대한 경고 — 사람이 봐야 하는 것이다. 숨기지 않는다
+  const warn = [];
+  const item = judge.items.find((x) => x.id === won.id);
+  if (item && item.level !== '방향') warn.push(`판정이 이긴 방향을 ${item.level}${item.level === '전술' ? '로' : '으로'} 봤다 — 후보 가운데 영역 전부에 걸리는 방향이 없었다`);
+  if (item?.own === '범용') warn.push('판정이 이긴 방향을 범용 문장으로 봤다 — 다른 회사도 그대로 쓸 수 있다');
+  if (item?.brief === '일부') warn.push('판정이 이긴 방향을 브리프의 일부만 본 것으로 봤다 — 목적 · 성공 기준 전체에 닿지 않는다');
+  if (item?.control === '일부 불가') warn.push('기준의 판정 대상에 우리가 통제할 수 없는 구간이 들어 있다');
+  if (base && !judge.beatsBase) warn.push('판정이 기본 방향을 더 낫게 봤다');
+  if (item?.vsBase === '같음') warn.push('기본 방향과 기준이 같다고 판정받았다');
+  for (const f of won.flags.filter((x) => /^장치|^달라지는 것|^아이덴티티/.test(x))) warn.push(f);
+  if (!spines.length) warn.push('통합 판단 사이에서 충돌을 찾지 못했다 — 방향이 충돌을 푼 것이 아니다');
+  run.heading = { areas, auto, base, rivals, judge, direction, warn, reused, calls: (run.calls || 0) - calls0 };
+  emit('heading');
+  return run.heading;
+}
 
+/** 방향 아래로 내려 쓴다 — 영역별 전략과 전술. 결과는 run.strategy(v5)에 담는다. */
+export async function descend({ project, run, call, emit = () => {} }) {
+  const h = run.heading; if (!h?.direction) return null;
+  const { areas, direction, judge } = h;
+  const high = run.course?.signals || [];
+  const need = courseNeed(project, run);
   emit('stage', { stage: 'layers' });
-  let st = null; note = '';
+  let st = null; let note = '';
   for (let attempt = 0; attempt < 2; attempt++) {
     const raw = await call({ role: 'director', ...layersPrompt(project, run, direction, judge, lensName, need, areas, high, note), task: { kind: 'layers', project, run, direction, areas, need, high, attempt } });
-    const shaped = shapeLayers(raw, project, run, direction, areas, { areasAuto: auto, base, rivals, judge });
+    const shaped = shapeLayers(raw, project, run, direction, areas, { areasAuto: h.auto, base: h.base, rivals: h.rivals, judge });
     shaped.attempts = attempt + 1;
     if (!st || shaped.check.problems.length < st.check.problems.length) st = shaped;
     if (shaped.check.ok) break;
     note = `앞서 쓴 것은 조건을 채우지 못했다: ${shaped.check.problems.join(' / ')}. 모자란 것을 채워 다시 쓴다. 글자 수 제한은 그대로다.`;
   }
-  st.v = 4; st.reusedHigh = reused;
-  // 방향 자체에 대한 경고는 아래 층의 문제와 따로 남긴다 — 사람이 봐야 하는 것이다
-  const warn = [];
-  const item = judge.items.find((x) => x.id === won.id);
-  if (item && item.level !== '방향') warn.push(`판정이 이긴 방향을 ${item.level}${item.level === '전술' ? '로' : '으로'} 봤다 — 후보 가운데 영역 전부에 걸리는 방향이 없었다`);
-  if (item?.own === '범용') warn.push('판정이 이긴 방향을 범용 문장으로 봤다 — 경쟁 대행사도 그대로 쓸 수 있다');
-  if (item?.control === '일부 불가') warn.push('기준의 판정 대상에 우리가 통제할 수 없는 구간이 들어 있다');
-  if (base && !judge.beatsBase) warn.push('판정이 기본 방향을 더 낫게 봤다');
-  if (item?.vsBase === '같음') warn.push('기본 방향과 운영의 기준이 같다고 판정받았다');
-  for (const f of won.flags.filter((x) => /^장치|^달라지는 것|^아이덴티티/.test(x))) warn.push(f);
-  if (!spines.length) warn.push('통합 판단 사이에서 충돌을 찾지 못했다 — 방향이 충돌을 푼 것이 아니다');
+  st.v = 5; st.reusedHigh = h.reused;
   const thin = st.pillars.filter((p) => p.thin);
   if (thin.length) st.thin = thin.map((p) => p.label);
-  st.check = { ok: st.check.ok && !warn.length, problems: [...warn, ...st.check.problems] };
+  st.check = { ok: st.check.ok && !h.warn.length, problems: [...h.warn, ...st.check.problems] };
   run.strategy = st;
   emit('strategy');
   return st;
+}
+
+/** 이미 있는 분석 위에서 방향을 다시 정하고 내려 쓴다. 이슈 높이의 분석은 다시 돌리지 않는다. */
+export async function chart({ project, run, call, emit = () => {}, fresh = false }) {
+  await head({ project, run, call, emit, fresh });
+  return descend({ project, run, call, emit });
 }

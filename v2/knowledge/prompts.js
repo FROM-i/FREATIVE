@@ -43,8 +43,14 @@ const RULES = `너는 디자인 에이전시 THE FROM(더프롬)의 사고 엔�
 export const COMMON = RULES;
 const common = (project) => `${viewpointBlock(project?.view?.precedents, project?.settings?.weights)}\n\n${RULES}`;
 
+/** 과제의 방향 — 정해진 뒤의 모든 단계가 같은 방향을 받는다. 아래 단계는 방향을 다시 정하지 않고 그 아래의 전술을 낸다 */
+const headingBlock = (p) => { const d = p?.heading; if (!d?.line) return ''; return `## 과제의 방향 — 이미 정해졌다
+${j({ 방향: d.name, 한_줄: d.line, 기준: d.standard, ...(d.covers?.length ? { 영역마다: Object.fromEntries(d.covers.map((c) => [c.name || c.area, c.line])) } : {}), ...(d.drops?.length ? { 하지_않는_것: d.drops } : {}) })}
+지금 하는 일은 이 방향 **아래**의 일이다. 방향을 다시 정하거나 넓게 고쳐 쓰지 않는다. 이 방향을 실제로 서게 하는 판단 · 안 · 할 일을 낸다. 방향과 어긋나는 것은 내지 않고, 어긋날 수밖에 없으면 그 이유를 적는다.
+
+`; };
 const tagNames = (ids) => (ids || []).map((id) => tagById(id)?.name).filter(Boolean);
-function missionBlock(p, lensId = null) {
+function missionBlock(p, lensId = null, { high = false } = {}) {
   const { facts } = validFacts(p);
   const cats = categoriesOf(p).map(categoryById);
   const common = Object.fromEntries(COMMON_INPUT.map((f) => [f.label, p.brief[f.id]]).filter(([, v]) => v));
@@ -53,8 +59,9 @@ function missionBlock(p, lensId = null) {
   return `## 미션
 ${j({ 프로젝트: p.title, ...(cats.length ? { 분류: cats.map((c) => c.name).join(' · ') } : {}), ...common, ...seeds })}
 
-## 이슈 — 모든 판단을 대입할 자리
-${j(p.issues.map((i) => ({ id: i.id, 종류: i.root ? '근본 이슈' : '이슈', 이슈: i.title, 설명: i.detail, 판정_질문: i.test, ...(tagNames(i.tags).length ? { 태그: tagNames(i.tags) } : {}) })))}${facts.length ? `
+${high ? `## 이슈 — 과제 안의 문제들. 참고다. 방향은 이 가운데 하나에 붙지 않는다
+${j(p.issues.map((i) => ({ 종류: i.root ? '근본 이슈' : '이슈', 이슈: i.title, 판정_질문: i.test || undefined })))}` : `${headingBlock(p)}## 이슈 — 모든 판단을 대입할 자리
+${j(p.issues.map((i) => ({ id: i.id, 종류: i.root ? '근본 이슈' : '이슈', 이슈: i.title, 설명: i.detail, 판정_질문: i.test, ...(tagNames(i.tags).length ? { 태그: tagNames(i.tags) } : {}) })))}`}${facts.length ? `
 
 ## 팩트북 — 실제 자료 ${facts.length}건 (출처 있음)
 ${j(factsFor(facts, lensId))}` : ''}`;
@@ -380,61 +387,3 @@ ${FACT_KINDS.map((k) => `- ${k.id} (${k.name}): ${k.hint}`).join('\n')}
 
 // 경쟁 단계의 프롬프트(prompts-arena.js)가 같은 머리말과 미션 글을 쓴다
 export { common, missionBlock, j as toJson };
-
-// ---------- 전략 한 장 — 인사이트를 뽑은 뒤의 단계 ----------
-// 경쟁에서 이긴 인사이트는 장치 하나로 좁혀져 있다. 과제 전체를 관통하는 전략은 그 위 층이다.
-// 이 단계는 인사이트를 줄이는 요약이 아니다. 전체 판단과 팩트를 다시 훑어, 쓰이지 않은 것까지 묶어 한 장으로 올린다.
-// 글자 수를 좁게 묶는다 — 읽는 문서가 아니라 보는 판이다.
-export const STRATEGY_CAPS = { name: 14, line: 38, principle: 70, guide: 44, move: 28, phase: 38, pain: 30, answer: 32 };
-
-export function strategyPrompt(project, run, lensName, note = '') {
-  const C = STRATEGY_CAPS;
-  const { facts } = validFacts(project);
-  const cats = categoriesOf(project).map(categoryById);
-  const used = new Set((run.insights || []).flatMap((i) => i.check?.used || []));
-  const cut = (s, n) => (String(s || '').length > n ? `${String(s).slice(0, n)}…` : String(s || ''));
-  const byLens = new Map();
-  for (const s of run.signals.filter((x) => !x.muted)) { if (!byLens.has(s.lens)) byLens.set(s.lens, []); byLens.get(s.lens).push(s); }
-  const signals = [...byLens].map(([lens, list]) => `### ${lensName(lens)}${list.some((s) => used.has(s.id)) ? '' : ' — 인사이트에 하나도 쓰이지 않은 노드'}\n${list.map((s) => `- [${s.id}]${used.has(s.id) ? '' : ' (안 쓰임)'} ${cut(s.claim, 130)}${s.facts?.length ? ` · ${s.facts.join(' ')}` : ''}`).join('\n')}`).join('\n');
-  const parts = cats.length > 1
-    ? `축은 아래 파트마다 하나씩 낸다. \`part\`에 파트 id를 적는다.\n${cats.map((c) => `- ${c.id}: ${c.name} — ${c.role}`).join('\n')}`
-    : '축은 과제를 관통하는 3~4개로 스스로 정한다. `part`에는 a1, a2처럼 적는다.';
-  return {
-    system: `${common(project)}
-
-## 너의 역할 — 전략 한 장
-인사이트를 뽑은 뒤의 단계다. 경쟁에서 이긴 인사이트 ${run.insights.length}건은 서로 겨루고 공격받으며 **장치 하나**로 좁혀졌다. 그것만으로는 과제 전체를 덮지 못한다.
-너는 이긴 인사이트를 재료로 삼되, **전체 판단과 팩트를 다시 훑어** 과제 전체를 관통하는 전략 하나로 올린다.
-
-## 규칙
-- 인사이트를 요약하지 않는다. 인사이트는 전략 아래의 실행 장치로 자리를 잡는다.
-- 근본 이슈의 판정 질문에 전략 전체로 답한다.
-- **쓰이지 않은 판단을 쓴다.** "(안 쓰임)" 판단에서 최소 6개를 축의 근거로 끌어온다. 인사이트에 하나도 쓰이지 않은 노드는 최소 3개를 쓴다.
-- **팩트로 받친다.** 축마다 팩트 2개 이상, 전체로 서로 다른 팩트 ${Math.min(15, Math.max(4, Math.round(facts.length * 0.3)))}개 이상. 주어진 id만 쓴다. 지어내지 않는다.
-- ${parts}
-- \`fixes\`: 지금의 문제(팩트로 확인되는 것)와 이 전략이 그것을 어떻게 바꾸는가. 최대 4개.
-- \`boosts\`: 이미 잘하고 있는 것(팩트로 확인되는 것)과 그것을 더 키우는 방법. 최대 3개. 팩트에 없으면 비운다.
-- \`phases\`: 시간 순서 3~4단계. 미션에 기간이 있으면 그 기간으로 나눈다.
-- \`insights\`: 이긴 인사이트마다 짧은 이름과 한 줄, 들어가는 축.
-- \`gaps\`: 이 전략이 서려면 확인해야 하는 것. 최대 3개.
-
-## 글자 수 — 넘기지 않는다
-보는 판이다. 문장을 늘이지 않는다. 설명·이유·수식어를 붙이지 않는다. 수치는 팩트 id로 대신한다.
-- 이름(\`name\`): ${C.name}자 이내. 명사로 끝낸다.
-- 한 줄(\`line\`): ${C.line}자 이내. \`principle\`: ${C.principle}자 이내.
-- 축의 \`guide\`: ${C.guide}자 이내. \`moves\`: 최대 3개, 각 ${C.move}자 이내, "무엇을 한다" 꼴.
-- \`phases\`의 \`line\`: ${C.phase}자 이내. \`pain\`·\`strength\`: ${C.pain}자 이내. \`answer\`: ${C.answer}자 이내.
-
-## 출력 (JSON만)
-{"concept":{"name":"","line":""},"principle":"","pillars":[{"part":"","name":"","guide":"","moves":[""],"facts":["F1"],"signals":["ID"],"insights":["N1"]}],"phases":[{"when":"","line":"","pillars":["part"]}],"fixes":[{"pain":"","answer":"","facts":["F1"]}],"boosts":[{"strength":"","answer":"","facts":["F1"]}],"insights":[{"id":"N1","name":"","line":"","part":""}],"gaps":[""]}`,
-    user: `${missionBlock(project)}
-
-## 이긴 인사이트 ${run.insights.length}건 — 재료
-${j(run.insights.map((i) => ({ id: i.id, 제목: i.title, 컨셉: cut(i.concept, 220), 기조: cut(i.stance?.bet, 120), 쓴_판단: i.check?.used || [], 쓴_팩트: i.facts || [] })))}
-
-## 전체 판단 ${run.signals.length}건 — 노드별
-${signals}
-${note ? `\n## 다시 쓰는 이유\n${note}\n` : ''}
-전략 한 장을 JSON으로 낸다.`,
-  };
-}

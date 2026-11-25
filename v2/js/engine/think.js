@@ -19,15 +19,14 @@ import { frames } from './frames.js';
 import { PERSPECTIVES } from '../../knowledge/tags.js';
 import { AIRPLANE, OPPOSITIONS, GATES, FAMILIES, IDENTITY } from '../../knowledge/nodes.js';
 import { activeLenses, signalPrefix, hints, lensName, validateProject, needsDevelopment } from '../graph/model.js';
-import { strategize } from './strategy.js';
-import { chart, levelOf } from './course.js';
+import { head, descend, chart, headingOf } from './course.js';
 import { propagate } from '../graph/propagate.js';
 
 const STANCES = new Set(['keep', 'change', 'limit', 'open']);
 const TYPES = new Set(['cause', 'condition', 'reinforce', 'tension']);
 const SOURCES = ['팩트', '브리프', '일반 관찰', '추론', '확인 필요'];
 const ASSUMED = 0.6;   // 팩트 없이 쓴 터널 판단의 비중
-const STAGE_NAMES = { weave: '그래프 통합안', strategy: '전략 한 장', courseScope: '업무 영역', courseLens: '방향 높이의 노드 판단', courseLink: '통합 판단 연결', courseBase: '기본 방향', course: '운영 방향 후보', courseJudge: '방향 판정', layers: '영역별 전략 · 전술', baseline: '기본안', reframe: '프레임', route: '사조 고르기', activate: '노드 판단', link: '연결', integrate: '통합', cross: '교배', screen: '선별', duel: '대결', distinct: '같은 해법 확인', stance: '기조', attack: '공격', revise: '보완', hold: '기조 확인', verdict: '판정', direct: '방향', plan: '기획' };
+const STAGE_NAMES = { weave: '그래프 통합안', courseScope: '과제의 영역', courseLens: '과제 전체를 본 노드 판단', courseLink: '통합 판단 연결', courseBase: '기본 방향', course: '방향 후보', courseJudge: '방향 판정', layers: '영역별 전략 · 전술', baseline: '기본안', reframe: '프레임', route: '사조 고르기', activate: '노드 판단', link: '연결', integrate: '통합', cross: '교배', screen: '선별', duel: '대결', distinct: '같은 해법 확인', stance: '기조', attack: '공격', revise: '보완', hold: '기조 확인', verdict: '판정', direct: '방향', plan: '기획' };
 const LINK_AT_ONCE = 45;   // 한 번의 호출로 잇는 신호 수의 한도. 이보다 많으면 이슈별로 나눈다
 const clamp = (v, d = 0.5) => (Number.isFinite(+v) ? Math.min(1, Math.max(0, +v)) : d);
 const text = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -315,6 +314,7 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
     failed: [], notes: setup.problems.map((x) => `세팅: ${x.where} — ${x.what}`), calls: 0, tokens: { in: 0, out: 0 },
     setup: { ok: setup.ok, issues: setup.ready.map((i) => ({ id: i.id, tags: i.tags, auto: i.autoTags })), skipped: whole.issues.filter((i) => !setup.ready.some((r) => r.id === i.id)).map((i) => i.id) },
   };
+  if (prev) { run.course = prev.course || null; run.heading = prev.heading || null; if (run.heading) project = { ...project, heading: headingOf(run.heading) }; }   // 이어서 할 때는 앞서 정한 방향을 그대로 쓴다
   if (fb.rejected) run.notes.push(`팩트북: 출처 조건을 채우지 못한 ${fb.rejected}건을 제외했다`);
   if (!fb.facts.length) run.notes.push('팩트북이 비어 있다 — 터널 판단은 모두 추정으로 표시된다');
   const useArena = s.arena !== false;
@@ -381,6 +381,14 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
       }
       run.picks = picks;
       emit('picked');
+    }
+
+    // ①′ 방향 — 이슈를 보기 전에, 모든 노드가 과제 전체를 보고 그 충돌을 푸는 자리에서 방향을 정한다.
+    //   뒤의 모든 단계(이슈 높이의 판단 · 경쟁 · 판정 · 디렉션 · 틀)가 이 방향을 받는다. 과제의 종류와 무관하게 같은 길이다.
+    //   정하지 못해도 분석은 이어 간다 — 방향 없이 이슈만 본 결과가 남는다.
+    if (mode === 'full' && s.strategy !== false) {
+      try { await head({ project, run, call, emit }); project = { ...project, heading: headingOf(run.heading) }; }
+      catch (e) { if (signal?.aborted) throw e; run.notes.push(`방향을 정하지 못했다 — ${e.message}`); }
     }
 
     // ② 발화 — 모든 노드가 같은 원문을 받는다. 앞 노드의 요약을 받지 않는다.
@@ -502,9 +510,8 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
   run.direction = { ...dcheck.direction, check: { ok: dcheck.ok, problems: dcheck.problems }, needDev };
   emit('directed');
 
-  // 전략 한 장 — 좁혀진 인사이트 위에, 전체 판단과 팩트로 과제를 관통하는 전략을 올린다. 실패해도 앞의 결과는 남긴다.
-  //   전략 과제(운영 · 연간 플랜)는 순서를 뒤집는다 — 운영 방향을 먼저 겨뤄 정하고 그 아래로 내려 쓴다. 인사이트는 전술로 놓인다.
-  if (s.strategy !== false) { try { await (levelOf(project) === 'strategy' ? chart : strategize)({ project, run, call, emit }); } catch (e) { if (signal?.aborted) throw e; run.notes.push(`전략 한 장을 만들지 못했다 — ${e.message}`); } }
+  // 방향 아래로 내려 쓴다 — 영역별 전략과 전술. 이긴 인사이트는 전술 하나로 놓인다. 실패해도 앞의 결과는 남긴다.
+  if (s.strategy !== false && run.heading) { try { await descend({ project, run, call, emit }); } catch (e) { if (signal?.aborted) throw e; run.notes.push(`전략 한 장을 만들지 못했다 — ${e.message}`); } }
 
   // 프레임 — 이긴 안을 기획 틀과 디자인 틀로 정리한다. 틀은 안을 만드는 단계가 아니라 정리하고 검증하는 단계다.
   if (s.frames !== false) await frames({ project, run, call, emit });
@@ -513,8 +520,8 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
   return run;
 }
 
-/** 이미 있는 분석 결과 위에 전략 한 장만 만든다. 앞 단계는 다시 돌리지 않는다.
- *  컨셉 과제는 호출 1~2회, 전략 과제는 방향 후보 · 판정 · 3층 전개까지 4~6회. */
+/** 이미 있는 분석 결과 위에서 방향을 다시 정하고 전략 한 장을 만든다. 이슈 높이의 분석은 다시 돌리지 않는다.
+ *  처음에는 노드 수 + 6회 안팎, 방향 높이의 노드 판단이 있고 영역이 그대로면 4~6회. fresh면 노드 판단부터 다시 받는다. */
 export async function strategizeOnly(project, provider, { signal, onEvent = () => {}, precedents = SEED_PRECEDENTS, fresh = false } = {}) {
   const run = project.run;
   if (!run?.insights?.length) throw new Error('먼저 분석을 해야 한다');
@@ -527,8 +534,8 @@ export async function strategizeOnly(project, provider, { signal, onEvent = () =
     return r.json;
   };
   const scoped = { ...project, facts: validFacts(project).facts, view: { precedents } };
-  if (run.strategy && !(run.strategy.v >= 2) && levelOf(project) === 'strategy') run.strategyBefore = run.strategy;   // 인사이트에서 올려 쓴 예전 한 장은 지우지 않고 남긴다
+  if (run.strategy && !(run.strategy.v >= 2)) run.strategyBefore = run.strategy;   // 인사이트에서 올려 쓴 예전 한 장은 지우지 않고 남긴다
+  if (!run.heading && run.strategy?.areasAuto) run.heading = { auto: true, areas: run.strategy.areas };   // 앞서 뽑아 둔 영역을 이어 쓴다
   const emit = (type, extra = {}) => onEvent({ type, run, ...extra });
-  return (levelOf(project) === 'strategy' ? chart : strategize)({ project: scoped, run, call, emit, fresh });
+  return chart({ project: scoped, run, call, emit, fresh });
 }
-export { levelOf };

@@ -21,7 +21,7 @@ export function reportMarkdown(project) {
   if (st) {
     if (st.v >= 2) {
       const d = st.direction; const v3 = st.v >= 3; const area = (id) => (st.areas || []).find((a) => a.id === id)?.name || id;
-      L.push('## 전략 한 장', '', `### 1. ${v3 ? '통합 운영 방향' : '운영 방향'}`, '', `**${d.name}** — ${d.line}`, '', `기준: ${d.standard}`, '');
+      L.push('## 전략 한 장', '', '### 1. 방향', '', `**${d.name}** — ${d.line}`, '', `기준: ${d.standard}`, '');
       if (d.lenses?.length) L.push(`만든 노드: ${d.lenses.map(lensName).join(' · ')}`, d.spine ? `푼 충돌: ${lensName(d.spine.a)} ↔ ${lensName(d.spine.b)}${d.how ? ` — ${d.how}` : ''}` : '', d.swap ? `경쟁사가 못 쓰는 이유: ${d.swap}` : '', '');
       if (d.covers?.length) L.push(...d.covers.map((c) => `- ${area(c.area)}: ${c.line}`), '');
       L.push(d.from || d.to ? `지금 ${d.from} → 바뀌는 것 ${d.to}` : '', d.keeps ? `키우는 것: ${d.keeps}` : '', d.drops.length ? `하지 않는 것: ${d.drops.join(' / ')}` : '', '');
@@ -33,12 +33,12 @@ export function reportMarkdown(project) {
       }
       if (!st.check.ok) L.push(`> 확인할 문제: ${st.check.problems.join(' / ')}`, '');
       const hi = run.course;
-      if (hi?.signals?.length && st.v >= 4) { const hs = new Map(hi.signals.map((x) => [x.id, x])); L.push('방향 높이의 노드 판단(통합):', '', ...hi.signals.filter((x) => x.scope === 'ALL').map((x) => `- ${d.signals.includes(x.id) ? '**' : ''}${lensName(x.lens)}${d.signals.includes(x.id) ? '**' : ''} — ${x.claim}`), '', '통합 판단 사이의 충돌:', '', ...hi.edges.filter((e) => e.type === 'tension').map((e) => `- ${lensName(hs.get(e.from).lens)} ↔ ${lensName(hs.get(e.to).lens)}: ${e.why}`), ''); }
+      if (hi?.signals?.length && st.v >= 4) { const hs = new Map(hi.signals.map((x) => [x.id, x])); L.push('과제 전체를 본 노드 판단(통합):', '', ...hi.signals.filter((x) => x.scope === 'ALL').map((x) => `- ${d.signals.includes(x.id) ? '**' : ''}${lensName(x.lens)}${d.signals.includes(x.id) ? '**' : ''} — ${x.claim}`), '', '통합 판단 사이의 충돌:', '', ...hi.edges.filter((e) => e.type === 'tension').map((e) => `- ${lensName(hs.get(e.from).lens)} ↔ ${lensName(hs.get(e.to).lens)}: ${e.why}`), ''); }
       if (v3) L.push('### 2. 영역별 전략', '', ...st.pillars.map((p) => `- **${p.label} · ${p.name}** — ${p.guide}${p.facts.length ? ` [${p.facts.join(' ')}]` : ''}${p.thin ? ' (판단 근거 얇음)' : ''}`), '');
       else L.push('### 2. 축과 단계', '', ...st.axes.map((a) => `- **${a.id} ${a.name}** — ${a.rule}${a.facts.length ? ` [${a.facts.join(' ')}]` : ''}`), '');
       L.push(`### 3. ${v3 ? '전술 — 영역 × 단계' : '파트별 × 단계별 할 일'}`, '', ...st.phases.map((p) => `- **${p.when}** — ${p.line}`), '',
         `| ${v3 ? '영역' : '파트'} | ${st.phases.map((p) => p.when).join(' | ')} |`, `| --- | ${st.phases.map(() => '---').join(' | ')} |`,
-        ...st.pillars.map((p) => `| **${p.label || p.name}** | ${st.phases.map((ph) => cellItems(st, p, ph).map((x) => `${x.insight ? '◆' : ''}${x.move}${x.parts?.length ? ` (${x.parts.map((c) => categoryById(c)?.name).filter(Boolean).join('·')})` : ''}`).join('<br>')).join(' | ')} |`), '');
+        ...st.pillars.map((p) => `| **${p.label || p.name}** | ${st.phases.map((ph) => cellItems(st, p, ph).map((x) => `${x.insight ? '◆' : ''}${x.move}${x.parts?.length ? ` (${x.parts.map((c) => categoryById(c)?.name).filter(Boolean).join('·')})` : ''}${x.lenses?.length ? ` ← ${x.lenses.map(lensName).join('·')}` : ''}`).join('<br>')).join(' | ')} |`), '');
       const off = st.insights.filter((x) => x.fit !== '맞음');
       if (off.length) L.push(`방향에 맞지 않아 놓지 않은 인사이트: ${off.map((x) => `${x.id} ${x.name}`).join(', ')}`, '');
     } else {
@@ -201,7 +201,7 @@ ${st.gaps.length ? `<h2>확인할 것</h2><ul class="gaps">${st.gaps.map((g) => 
 </body></html>`;
 }
 
-// 전략 과제의 한 장 — 위에서 아래로: 통합 운영 방향 → 영역별 전략 → 전술(영역 × 단계)
+// 한 장 보고서 — 위에서 아래로: 방향 → 영역별 전략 → 전술(영역 × 단계)
 function courseHtml(project) {
   const run = project.run; const st = run.strategy; const d = st.direction; const cv = st.coverage; const v3 = st.v >= 3;
   const facts = new Map((project.facts || []).map((f) => [f.id, f]));
@@ -248,13 +248,13 @@ table { width: 100%; border-collapse: collapse; } td, th { padding: 4px 6px 4px 
 .note { font-size: 9px; color: #8A919B; margin-top: 6px; }
 </style></head><body>
 <div class="top"><span>${esc(project.title)}</span><span>THE FROM BRAIN · ${esc((run.at || '').slice(0, 10))} · AI의 판단은 예비 판정입니다</span></div>
-<section class="layer"><div class="no"><b>1</b>${v3 ? '통합 운영 방향' : '운영 방향'}</div><div class="l1">
+<section class="layer"><div class="no"><b>1</b>방향</div><div class="l1">
 <div><h1><mark>${esc(d.name)}</mark></h1><p class="line">${esc(d.line)}</p><p class="standard">${esc(d.standard)}</p>
 ${d.lenses?.length ? `<p class="kv"><b>만든 노드</b>${esc(d.lenses.map(lensName).join(' · '))}</p>` : ''}${d.spine ? `<p class="kv"><b>푼 충돌</b>${esc(`${lensName(d.spine.a)} ↔ ${lensName(d.spine.b)}${d.how ? ` — ${d.how}` : ''}`)}</p>` : ''}${d.swap ? `<p class="kv"><b>고유한 이유</b>${esc(d.swap)}</p>` : ''}
 ${d.covers?.length ? `<table class="covers">${d.covers.map((c) => `<tr><td>${esc(area(c.area))}</td><td>${esc(c.line)}</td></tr>`).join('')}</table>` : ''}
 ${d.from || d.to ? `<div class="shift"><span>${esc(d.from)}</span><i>→</i><b>${esc(d.to)}</b></div>` : ''}
 ${d.keeps ? `<p class="kv"><b>키우는 것</b>${esc(d.keeps)}</p>` : ''}${d.drops.length ? `<p class="kv"><b>하지 않는 것</b>${esc(d.drops.join(' · '))}</p>` : ''}
-<div class="cov"><span><b>${cv.facts.used}</b>/${cv.facts.total} 팩트</span><span><b>${cv.signals.used}</b>/${cv.signals.total} 판단</span><span><b>${cv.nodes.used}</b>/${cv.nodes.total} 노드</span>${cv.high ? `<span>방향 높이 판단 <b>${cv.high.used}</b>/${cv.high.total} · 충돌 ${cv.high.tensions}</span>` : ''}</div></div>
+<div class="cov"><span><b>${cv.facts.used}</b>/${cv.facts.total} 팩트</span><span><b>${cv.signals.used}</b>/${cv.signals.total} 판단</span><span><b>${cv.nodes.used}</b>/${cv.nodes.total} 노드</span>${cv.high ? `<span>과제 전체를 본 노드 판단 <b>${cv.high.used}</b>/${cv.high.total} · 충돌 ${cv.high.tensions}</span>` : ''}${cv.tactics ? `<span>전술에 쓰인 노드 <b>${cv.tactics.lenses}</b>/${cv.tactics.lensTotal}</span>` : ''}</div></div>
 <div>${st.rivals?.length ? `<h2>겨룬 방향 ${st.rivals.length}개와 기본 방향</h2><table class="rivals">${st.judge.order.map(rivalRow).join('')}</table>` : ''}
 ${st.check.ok ? '' : `<p class="warn">확인할 문제 — ${esc(st.check.problems.join(' / '))}</p>`}</div>
 </div></section>
