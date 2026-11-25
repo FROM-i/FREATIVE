@@ -11,6 +11,7 @@ const MESSAGES = [
   [/email_not_confirmed|Email not confirmed/i, '메일 확인이 끝나지 않았습니다. 받은 메일의 확인 링크를 눌러 주세요.'],
   [/user_already_exists|already registered/i, '이미 가입한 메일 주소입니다. 로그인해 주세요.'],
   [/weak_password|Password should be/i, '비밀번호가 너무 짧거나 단순합니다. 8자 이상으로 정해 주세요.'],
+  [/email_address_not_authorized|not authorized/i, '확인 메일을 보낼 수 없는 상태입니다. 관리자에게 알려 주세요(메일 발송 설정이 필요합니다).'],
   [/over_email_send_rate_limit|rate limit/i, '확인 메일을 너무 자주 보냈습니다. 잠시 뒤 다시 해 주세요.'],
   [/Database error saving new user|회사 메일/i, '회사 메일(@from.co.kr)만 가입할 수 있습니다.'],
   [/row-level security|permission denied|42501/i, '권한이 없습니다. 만든 사람이나 관리자만 고칠 수 있습니다.'],

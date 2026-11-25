@@ -10,10 +10,10 @@ const ALLOWED = new Set(['/responses', '/chat/completions']);
 export async function forward({ method, code, token, payload }) {
   const fail = (status, message) => ({ status, body: JSON.stringify({ error: { message } }) });
   if (method !== 'POST') return fail(405, 'POST만 받는다');
+  const g = await guard({ code, token });   // 누구인지부터 본다
+  if (!g.ok) return fail(g.status, g.message);
   const key = process.env.OPENAI_API_KEY;
   if (!key) return fail(503, '서버에 OPENAI_API_KEY가 없다');
-  const g = await guard({ code, token });
-  if (!g.ok) return fail(g.status, g.message);
   const { path, body } = payload || {};
   if (!ALLOWED.has(path) || !body || typeof body !== 'object') return fail(400, '허용하지 않는 요청');
   const base = (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');

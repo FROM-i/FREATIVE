@@ -51,6 +51,7 @@ THE FROM BRAIN(2.0)은 `v2/`만 웹에 올린다. FREATIVE 1.x는 저장소 루�
 
 ## 알아 둘 것
 
-- 수파베이스 기본 메일 발송은 시간당 보내는 수가 적다. 여러 명이 한꺼번에 가입하면 확인 메일이 막힌다. 전사 공개 전에 회사 SMTP를 연결한다(Authentication → Emails → SMTP).
+- **메일 발송(SMTP)을 연결해야 직원이 스스로 가입할 수 있다.** 수파베이스 기본 발송은 수파베이스 조직 멤버 주소로만, 시간당 2통까지 보낸다. 지금 조직 멤버는 1명이라 회사 메일로는 확인 메일이 가지 않는다. Authentication → Emails → SMTP Settings에 회사 메일이나 발송 서비스(Resend 등)를 넣는다.
+- SMTP를 넣기 전에는 수파베이스 대시보드의 Authentication → Users → Add user에서 **Auto Confirm User**를 켜고 계정을 직접 만든다. 이렇게 만들어도 역할 규칙은 같다(`jh.min@from.co.kr`은 수퍼관리자, 나머지는 승인 대기).
 - 수파베이스 주소와 공개 키(`js/cloud/config.js`)는 브라우저에 내려가도 되는 값이다. 비밀 키(`sb_secret_…`)는 어디에도 적지 않는다.
 - 스키마를 바꾸면 `supabase/migrations/`에 파일을 더하고 SQL Editor에서 실행한다.

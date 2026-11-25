@@ -11,10 +11,10 @@ const VERSION = '2026-10-21';
 export async function forward({ method, code, token, payload, fetchImpl }) {
   const fail = (status, message) => ({ status, body: JSON.stringify({ error: { message } }) });
   if (method !== 'POST') return fail(405, 'POST만 받는다');
+  const g = await guard({ code, token, fetchImpl });   // 누구인지부터 본다
+  if (!g.ok) return fail(g.status, g.message);
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return fail(503, '서버에 ANTHROPIC_API_KEY가 없다');
-  const g = await guard({ code, token, fetchImpl });
-  if (!g.ok) return fail(g.status, g.message);
   const body = payload?.body;
   if (!body || typeof body !== 'object' || !Array.isArray(body.messages)) return fail(400, '허용하지 않는 요청');
   const allowed = new Set((process.env.BRAIN_CLAUDE_MODELS || 'claude-opus-5-5,claude-sonnet-5-5').split(',').map((x) => x.trim()));
