@@ -982,7 +982,7 @@ function enter() {
       const m = draft.mode;
       const box = m === 'pending' ? [
         h('h1', null, '승인을 기다리는 중입니다'),
-        h('p', { class: 'note' }, `${S.me.email} 로 가입했습니다. 관리자가 승인하면 쓸 수 있습니다.`),
+        h('p', { class: 'note' }, `${S.me.email} 로 가입했습니다. 관리자가 승인하면 쓸 수 있습니다. 승인을 요청할 때 본인 메일 주소를 관리자에게 직접 알려 주세요.`),
         h('div', { class: 'row' }, h('button', { class: 'btn go', type: 'button', onclick: check }, '다시 확인'), h('button', { class: 'btn', type: 'button', onclick: async () => { await S.cloud.signOut(); S.me = null; draft.mode = 'login'; paint(); } }, '로그아웃')),
       ] : m === 'sent' ? [
         h('h1', null, '확인 메일을 보냈습니다'),
@@ -990,7 +990,7 @@ function enter() {
         h('div', { class: 'row' }, h('button', { class: 'btn go', type: 'button', onclick: () => { draft.mode = 'login'; draft.msg = ''; paint(); } }, '로그인으로')),
       ] : [
         h('h1', null, m === 'signup' ? '가입' : '로그인'),
-        h('p', { class: 'note' }, m === 'signup' ? `회사 메일(@${CLOUD.domain})로 가입합니다. 메일 확인과 관리자 승인을 거쳐야 쓸 수 있습니다.` : 'THE FROM BRAIN은 승인된 사용자만 씁니다.'),
+        h('p', { class: 'note' }, m === 'signup' ? `회사 메일(@${CLOUD.domain})로 가입합니다. 관리자가 승인하면 쓸 수 있습니다.` : 'THE FROM BRAIN은 승인된 사용자만 씁니다.'),
         h('form', { class: 'gate-form', onsubmit: submit },
           m === 'signup' ? field('이름', input('name', { type: 'text', id: 'gate-name', autocomplete: 'name', required: true })) : null,
           field('회사 메일', input('email', { type: 'email', id: 'gate-email', autocomplete: 'username', placeholder: `이름@${CLOUD.domain}`, required: true })),
