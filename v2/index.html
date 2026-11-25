@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>THE FROM BRAIN</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/brain.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 30 32" aria-hidden="true"><rect width="30" height="10"/><rect y="11" width="20" height="10"/><rect y="22" width="10" height="10"/></svg>
+      <strong>THE FROM BRAIN</strong>
+      <span class="ver">FREATIVE 2.0 alpha</span>
+    </div>
+    <div class="proj">
+      <label class="sr" for="project-select">프로젝트</label>
+      <select id="project-select"></select>
+      <button type="button" class="btn" id="btn-new">새 프로젝트</button>
+    </div>
+    <div class="run">
+      <span id="run-status" class="status" role="status" aria-live="polite"></span>
+      <button type="button" class="btn go" id="btn-think">분석 시작</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <section class="universe" aria-label="Brain 브레인 맵">
+      <canvas id="universe" tabindex="0" aria-label="뇌 형상 위에 노드와 연결을 그린 그래프. 방향키로 이동, +와 -로 확대·축소, 0으로 전체 보기."></canvas>
+      <div class="hud stats" id="stats"></div>
+      <div class="hud notice" id="notice" hidden></div>
+      <div class="hud tip" id="tip" hidden></div>
+      <div class="hud tools">
+        <ul class="legend" aria-label="범례">
+          <li><i class="k k-lens"></i>기준 노드</li>
+          <li><i class="k k-signal"></i>판단</li>
+          <li><i class="k k-issue"></i>이슈</li>
+          <li><i class="k k-insight"></i>통합 인사이트</li>
+          <li><i class="e"></i>연결</li>
+          <li title="충돌 — 두 판단이 같은 자리에서 서로 반대를 요구하는 관계. 한쪽을 따르면 다른 쪽을 지킬 수 없다."><i class="e e-tension"></i>충돌</li>
+        </ul>
+        <div class="toggles">
+          <label><input type="checkbox" id="show-signals" checked> 판단</label>
+          <label><input type="checkbox" id="show-dormant" checked> 쓰지 않은 사조</label>
+          <button type="button" class="sq" id="zoom-out" aria-label="축소">−</button>
+          <button type="button" class="sq" id="zoom-in" aria-label="확대">+</button>
+          <button type="button" class="sq wide" id="zoom-fit">전체</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" id="tab-mission" data-tab="mission">미션</button>
+        <button type="button" role="tab" id="tab-insight" data-tab="insight">인사이트</button>
+        <button type="button" role="tab" id="tab-node" data-tab="node">노드</button>
+      </div>
+      <div class="body" id="tab-body" role="tabpanel"></div>
+    </aside>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

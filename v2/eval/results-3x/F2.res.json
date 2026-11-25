@@ -1,0 +1,17 @@
+{
+  "scores": {
+    "K1": {"ID-FROM": 4, "ID-JAMAIS": 4, "ID-INERTIA": 4, "ID-ONEU": 4, "ID-YELLOW": 4, "ID-BENEFIT": 4, "verdict": "보완", "why": "응답 인용이 결과보다 먼저 오는 순서 뒤집기가 선명하고 토스 외피를 지킨다. 커뮤니티·댓글 연결과 문장 단위 근거는 비어 있다."},
+    "K2": {"ID-FROM": 3, "ID-JAMAIS": 3, "ID-INERTIA": 3, "ID-ONEU": 3, "ID-YELLOW": 4, "ID-BENEFIT": 4, "verdict": "보완", "why": "중간 이탈에도 근거가 남는 발상은 좋지만 문항 구조와 진행 방식을 건드려 결과 화면의 납득이라는 핵심 순간에서 멀어진다."},
+    "K3": {"ID-FROM": 5, "ID-JAMAIS": 5, "ID-INERTIA": 5, "ID-ONEU": 4, "ID-YELLOW": 4, "ID-BENEFIT": 5, "verdict": "채택", "why": "결과 문장의 절 하나하나가 내 답을 인용해 누르지 않고 읽기만 해도 납득되고, 의심 가는 절은 바로 고친다. 익숙한 문장을 새로 읽게 하며 굵기·크기·위치로만 구분해 접근성도 지키고 검증 기준까지 있다."},
+    "K4": {"ID-FROM": 2, "ID-JAMAIS": 2, "ID-INERTIA": 3, "ID-ONEU": 2, "ID-YELLOW": 2, "ID-BENEFIT": 2, "verdict": "기각", "why": "축 위의 점과 경로 지도는 흔한 데이터 시각화 문법이다. '왜 나야'에 답하지 못하고 읽기도 어려워 개살구에 가깝다."},
+    "K5": {"ID-FROM": 4, "ID-JAMAIS": 4, "ID-INERTIA": 3, "ID-ONEU": 4, "ID-YELLOW": 4, "ID-BENEFIT": 4, "verdict": "보완", "why": "공유 장의 첫 줄을 이름표 대신 응답과 결과의 짝으로 바꾼 점이 좋다. 결과 화면 본체보다 공유 한 장에 무게가 쏠려 있다."},
+    "K6": {"ID-FROM": 3, "ID-JAMAIS": 3, "ID-INERTIA": 4, "ID-ONEU": 3, "ID-YELLOW": 3, "ID-BENEFIT": 4, "verdict": "보완", "why": "방향은 맞지만 문항 번호와 선택을 작게 붙인 명세서라 누구나 낼 수 있는 안이다. 작은 글씨는 접근성에도 불리하다."},
+    "K7": {"ID-FROM": 4, "ID-JAMAIS": 4, "ID-INERTIA": 4, "ID-ONEU": 4, "ID-YELLOW": 4, "ID-BENEFIT": 4, "verdict": "보완", "why": "댓글이 응답 하나에 붙어 '맞아요' 대신 어느 답에 공감하는지 말하게 한 점은 3화면을 하나로 잇는다. 규칙과 공개 토글이 많아 무겁다."},
+    "K8": {"ID-FROM": 4, "ID-JAMAIS": 3, "ID-INERTIA": 4, "ID-ONEU": 3, "ID-YELLOW": 4, "ID-BENEFIT": 3, "verdict": "보완", "why": "친구에게 응답 한 줄을 보내는 공유 행동의 전환은 좋다. 결과 화면 안에서 납득시키지 못하고 확장은 앱인토스 확인에 달려 있다."},
+    "K9": {"ID-FROM": 5, "ID-JAMAIS": 5, "ID-INERTIA": 5, "ID-ONEU": 5, "ID-YELLOW": 4, "ID-BENEFIT": 5, "verdict": "채택", "why": "결과 한 문장의 밑줄 구절이 응답으로 이어지는 구조 하나가 결과, 공유, 공개, 댓글, 생년월일 가림까지 파생된다. 익숙한 문장과 시트를 그대로 두고 해석만 바꿨다."},
+    "K10": {"ID-FROM": 3, "ID-JAMAIS": 2, "ID-INERTIA": 4, "ID-ONEU": 3, "ID-YELLOW": 4, "ID-BENEFIT": 3, "verdict": "기각", "why": "'맞아요/좀 달라요' 반응은 흔한 장치다. 결과를 가설로 보는 관점은 있으나 '왜 이 결과가 나야'의 납득을 해결하지 못한다."},
+    "K11": {"ID-FROM": 4, "ID-JAMAIS": 5, "ID-INERTIA": 4, "ID-ONEU": 4, "ID-YELLOW": 3, "ID-BENEFIT": 4, "verdict": "보완", "why": "구절을 그 자리에서 내 답으로 바꾸는 해석이 신선하다. 자동 시연, 칩, 세로선, 모두 펼치기 등 외피가 겹쳐 하나의 출발점에서 멀어지고 화면이 복잡해진다."},
+    "K12": {"ID-FROM": 3, "ID-JAMAIS": 3, "ID-INERTIA": 4, "ID-ONEU": 3, "ID-YELLOW": 4, "ID-BENEFIT": 4, "verdict": "보완", "why": "응답 8줄 목록과 수정 후 재계산은 투명하지만 설정 화면처럼 보이고 이름표 결과지의 새 해석이 약하다. 반복 수정 우려를 잠금 규칙으로 받아 무겁다."}
+  },
+  "rank": ["K3", "K9", "K11", "K1", "K7", "K5", "K12", "K8", "K6", "K2", "K10", "K4"]
+}

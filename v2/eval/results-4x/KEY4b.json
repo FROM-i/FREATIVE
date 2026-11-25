@@ -1,0 +1,80 @@
+{
+ "I1": {
+  "K1": {
+   "arm": "base",
+   "src": "B1"
+  },
+  "K2": {
+   "arm": "brain",
+   "src": "N3"
+  },
+  "K3": {
+   "arm": "brain",
+   "src": "N1"
+  },
+  "K4": {
+   "arm": "base",
+   "src": "B3"
+  },
+  "K5": {
+   "arm": "brain",
+   "src": "N2"
+  },
+  "K6": {
+   "arm": "base",
+   "src": "B2"
+  }
+ },
+ "I2": {
+  "K1": {
+   "arm": "base",
+   "src": "B3"
+  },
+  "K2": {
+   "arm": "brain",
+   "src": "N2"
+  },
+  "K3": {
+   "arm": "base",
+   "src": "B1"
+  },
+  "K4": {
+   "arm": "brain",
+   "src": "N3"
+  },
+  "K5": {
+   "arm": "brain",
+   "src": "N1"
+  },
+  "K6": {
+   "arm": "base",
+   "src": "B2"
+  }
+ },
+ "I3": {
+  "K1": {
+   "arm": "brain",
+   "src": "N3"
+  },
+  "K2": {
+   "arm": "base",
+   "src": "B3"
+  },
+  "K3": {
+   "arm": "brain",
+   "src": "N1"
+  },
+  "K4": {
+   "arm": "brain",
+   "src": "N2"
+  },
+  "K5": {
+   "arm": "base",
+   "src": "B1"
+  },
+  "K6": {
+   "arm": "base",
+   "src": "B2"
+  }
+ }
+}
