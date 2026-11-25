@@ -18,6 +18,7 @@ export function newProject(seed = {}) {
     categories: categoriesOf(seed),                        // 고른 분류들 — 여러 개 고를 수 있다 (knowledge/tags.js)
     brief: { what: '', purpose: '', success: '', target: '', product: '', channel: '', note: '', ...(seed.brief || {}) },   // 공통 인풋
     seed: { ...(seed.seed || {}) },                        // 분류별 인풋 — { [분류]: { [칸]: 값 } }
+    areas: (Array.isArray(seed.areas) ? seed.areas : []).map((a) => ({ ...a })),   // 업무 영역 — 전략 과제에서 방향인지 가르는 시험대 (engine/course.js)
     facts: (seed.facts || []).map((f) => ({ ...f })),      // 팩트북 — 출처가 있는 실제 자료 (knowledge/facts.js)
     issues: (seed.issues || []).map((i, n) => ({ id: i.id || `I${n + 1}`, title: '', detail: '', test: '', root: false, tags: [], ...i })),
     settings: { ...DEFAULTS, muted: [], pinned: [], ...(seed.settings || {}) },

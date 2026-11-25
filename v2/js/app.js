@@ -5,7 +5,7 @@ import { CATEGORIES, TAGS, COMMON_INPUT, SEED_INPUT, PERSPECTIVES, tagById, cate
 import { createView } from './graph/view.js';
 import { shapeFor, PRESETS, LAYER_ROLES, LAYER_FORMS, FIGURES, figureParts } from './graph/shapes.js';
 import { think, proposeIssues, researchFacts, strategizeOnly, reach } from './engine/think.js';
-import { levelOf, LEVELS } from './engine/course.js';
+import { levelOf, LEVELS, areasOf, cellItems } from './engine/course.js';
 import { FACT_KINDS, SOURCE_TYPES, factKind, sourceType, factProblem, validFacts, nextFactId, factsToMarkdown, parseFactbook, unverified } from '../knowledge/facts.js';
 import { WEIGHTS, SEED_PRECEDENTS, normalizeWeights } from '../knowledge/viewpoint.js';
 import { DIFFERENTIATION, EFFECTIVENESS } from '../knowledge/criteria.js';
@@ -33,7 +33,7 @@ const clip = (s, n) => (String(s || '').length > n ? `${String(s).slice(0, n)}�
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const TYPE = { cause: '원인', condition: '조건', reinforce: '강화', tension: '충돌' };
 const STANCE = { keep: '지킬 관성', change: '바꿀 해석', limit: '넘지 않을 경계', open: '비어 있는 자리' };
-const STAGE = { weave: '그래프 전체를 읽고 통합안 쓰는 중', strategy: '전략 한 장으로 올리는 중', courseBase: '기본 방향 받는 중', course: '운영 방향 후보 쓰는 중', courseJudge: '방향끼리 겨루는 중', layers: '축 · 단계 · 할 일로 내리는 중', plan: '기획 틀로 정리하는 중', creative: '디자인 틀로 정리하는 중', baseline: '기본안 받는 중', reframe: '문제 다시 정의하는 중', cross: '충돌하는 안 교배 중', screen: '기본안과 대조 중', duel: '점수 없이 1:1로 겨루는 중', forge: '이긴 안 공격 · 보완 중', verdict: '더프롬 판정 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
+const STAGE = { weave: '그래프 전체를 읽고 통합안 쓰는 중', strategy: '전략 한 장으로 올리는 중', courseScope: '업무 영역 뽑는 중', courseBase: '기본 방향 받는 중', course: '운영 방향 후보 쓰는 중', courseJudge: '방향끼리 겨루는 중', layers: '영역별 전략 · 전술로 내리는 중', plan: '기획 틀로 정리하는 중', creative: '디자인 틀로 정리하는 중', baseline: '기본안 받는 중', reframe: '문제 다시 정의하는 중', cross: '충돌하는 안 교배 중', screen: '기본안과 대조 중', duel: '점수 없이 1:1로 겨루는 중', forge: '이긴 안 공격 · 보완 중', verdict: '더프롬 판정 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
 
 /** DOM 만들기 — 글자는 언제나 텍스트 노드로 들어간다 */
 function h(tag, attrs, ...kids) {
@@ -203,6 +203,7 @@ async function go(mode = 'full') {
       },
     });
     target.run = result; target.updated = new Date().toISOString();
+    adoptAreas(target);
     S.dirty = false; S.tab = 'insight'; S.open = result.strategy ? null : result.insights[0]?.id || null; S.deck = !!result.strategy; S.pillar = null;
     const flagged = result.insights.filter((i) => !i.check.ok).length;
     toast(`통합 인사이트 ${result.insights.length}건${flagged ? ` · 검증을 통과하지 못한 것 ${flagged}건` : ''} · 호출 ${result.calls}회`);
@@ -222,7 +223,7 @@ const pendingIssues = () => (S.project.run ? S.project.issues.filter((i) => i.ti
 const shortOf = (run, n) => (run.strategy?.insights || []).find((x) => x.id === n.id && x.name) || null;
 /** 전략이 기댄 것을 묶음으로 본다 — 컨셉 과제는 축, 전략 과제는 방향 · 겨룬 후보 · 축 · 파트 */
 function strategyGroups(st) {
-  if (st.v !== 2) return st.pillars.map((p) => ({ key: p.part, facts: p.facts, signals: p.signals, insights: p.insights }));
+  if (!(st.v >= 2)) return st.pillars.map((p) => ({ key: p.part, facts: p.facts, signals: p.signals, insights: p.insights }));
   const d = st.direction;
   return [{ key: d.id, facts: d.facts, signals: d.signals, insights: [] },
     ...(st.rivals || []).filter((r) => r.id !== d.id).map((r) => ({ key: r.id, facts: r.facts, signals: r.signals, insights: [], rival: true })),
@@ -248,6 +249,8 @@ function openDeck(on) {
   renderPanel(); renderDeck();
   if (S.deck) traceStrategy(); else { view.tint(null); view.trace(null); view.select(null); }
 }
+/** 모델이 뽑은 업무 영역을 미션에 옮겨 둔다 — 사람이 고쳐 쓸 수 있게. 사람이 적은 것이 있으면 건드리지 않는다 */
+function adoptAreas(p) { const st = p.run?.strategy; if (st?.areasAuto && !areasOf(p)) p.areas = st.areas.map((a) => ({ name: a.name, note: a.note, auto: true })); }
 async function makeStrategy() {
   if (S.running || S.strategizing) return;
   const target = S.project;
@@ -257,7 +260,8 @@ async function makeStrategy() {
     target.updated = new Date().toISOString();
     if (S.project === target) { S.deck = true; S.pillar = null; }
     const st = target.run.strategy; const c = st.coverage;
-    toast(st.v === 2 ? `운영 방향 · ${st.direction.name} · 후보 ${st.rivals.length}개 중 채택 · 팩트 ${c.facts.used}/${c.facts.total}건` : `전략 한 장 · 팩트 ${c.facts.used}/${c.facts.total}건 · 새로 끌어온 판단 ${c.signals.fresh}건`);
+    adoptAreas(target);
+    toast(st.v >= 2 ? `운영 방향 · ${st.direction.name} · 후보 ${st.rivals.length}개 중 채택 · 팩트 ${c.facts.used}/${c.facts.total}건` : `전략 한 장 · 팩트 ${c.facts.used}/${c.facts.total}건 · 새로 끌어온 판단 ${c.signals.fresh}건`);
   } catch (e) { toast(e.message, true); }
   finally { S.strategizing = false; persist(true); render(); if (S.deck) traceStrategy(); }
 }
@@ -267,7 +271,7 @@ function renderDeck() {
   el.replaceChildren(...(on ? strategyBoard(run, st) : []));
 }
 function strategyBoard(run, st) {
-  if (st.v === 2) return courseBoard(run, st);
+  if (st.v >= 2) return courseBoard(run, st);
   const facts = new Map((S.project.facts || []).map((f) => [f.id, f]));
   const cv = st.coverage;
   const fchip = (id) => h('button', { class: 'ev', type: 'button', title: facts.get(id) ? `${facts.get(id).text}\n— ${facts.get(id).source}` : '', onclick: (e) => { e.stopPropagation(); selectNode(id, true); } }, id);
@@ -308,10 +312,10 @@ function strategyBoard(run, st) {
   ];
 }
 
-/** 전략 과제의 판 — 위에서 아래로 3층: 운영 방향 → 축 · 단계 → 파트별 × 단계별 할 일 */
+/** 전략 과제의 판 — 위에서 아래로: 통합 운영 방향 → 영역별 전략 → 전술(영역 × 단계) */
 function courseBoard(run, st) {
   const facts = new Map((S.project.facts || []).map((f) => [f.id, f]));
-  const cv = st.coverage; const d = st.direction;
+  const cv = st.coverage; const d = st.direction; const v3 = st.v >= 3;
   const fchip = (id) => h('button', { class: 'ev', type: 'button', title: facts.get(id) ? `${facts.get(id).text}\n— ${facts.get(id).source}` : '', onclick: (e) => { e.stopPropagation(); selectNode(id, true); } }, id);
   const cover = (label, c, note) => h('div', { class: 'cov' }, h('div', { class: 'num' }, h('b', null, c.used), h('span', null, `/${c.total} ${label}`)),
     h('div', { class: 'track' }, h('i', { style: `width:${pct(c.used, c.total)}%` }), h('u', { style: `left:${pct(c.byInsights, c.total)}%`, title: `인사이트만 볼 때 ${c.byInsights}` })), h('small', null, note));
@@ -319,14 +323,19 @@ function courseBoard(run, st) {
   const pickable = (key, cls) => ({ class: `${cls}${S.pillar === key ? ' on' : ''}`, role: 'button', tabindex: '0', 'aria-pressed': String(S.pillar === key),
     onclick: () => pick(key), onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(key); } }, onmouseenter: () => traceStrategy(key), onmouseleave: () => traceStrategy() });
   const axisNo = (id) => st.axes.findIndex((a) => a.id === id) + 1;
+  const areaName = (id) => (st.areas || []).find((a) => a.id === id)?.name || id;
   const layer = (no, name, note) => h('h2', null, h('span', null, h('b', { class: 'lno' }, no), name), note ? h('small', null, note) : null);
   const rival = (id) => {
     if (id === 'BASE') return st.base ? h('li', { class: 'rival base' }, h('span', { class: 'tag' }, '기본'), h('div', null, h('p', null, st.base.line || st.base.name), h('small', null, '노드 없이 낸 방향'))) : null;
     const r = st.rivals.find((x) => x.id === id); const it = st.judge.items.find((x) => x.id === id) || {}; const won = id === d.id;
-    return h('li', pickable(id, `rival${won ? ' won' : ''}`), h('span', { class: 'tag' }, won ? '채택' : it.level === '전술' ? '전술' : '후보'),
-      h('div', null, h('p', null, h('strong', null, r.name), ` ${r.line}`), h('small', null, won ? st.judge.why : it.weak || ''), h('small', { class: 'meta' }, `노드 ${r.breadth.nodes}개 · 판단 ${r.signals.length}건 · 팩트 ${r.facts.length}건`)));
+    return h('li', pickable(id, `rival${won ? ' won' : ''}`), h('span', { class: 'tag' }, won ? '채택' : it.level && it.level !== '방향' ? it.level : '후보'),
+      h('div', null, h('p', null, h('strong', null, r.name), ` ${r.line}`), h('small', null, won ? st.judge.why : it.weak || ''),
+        h('small', { class: 'meta' }, `${v3 && it.reaches?.length ? `걸리는 영역 ${it.reaches.length}/${st.areas.length} · ` : ''}노드 ${r.breadth.nodes}개 · 판단 ${r.signals.length}건 · 팩트 ${r.facts.length}건`)));
   };
-  const tactic = (x) => { const n = run.insights.find((i) => i.id === x.id); return h('button', { class: 'ev n', type: 'button', title: `${x.line}\n${n?.title || ''}`, onclick: (e) => { e.stopPropagation(); insightModal(x.id); } }, x.name || x.id); };
+  const item = (x) => { const n = x.insight ? run.insights.find((i) => i.id === x.insight) : null; const short = n ? st.insights.find((i) => i.id === x.insight) : null;
+    return h('span', { class: `tactic${n ? ' won' : ''}` }, x.axis ? h('i', { class: 'ax' }, axisNo(x.axis)) : null,
+      n ? h('button', { class: 'ev n', type: 'button', title: `${short?.line || ''}\n${n.title}`, onclick: (e) => { e.stopPropagation(); insightModal(n.id); } }, x.move) : x.move,
+      x.parts?.length ? h('small', null, x.parts.map((c) => categoryById(c)?.name).filter(Boolean).join(' · ')) : null); };
   const off = st.insights.filter((x) => x.fit !== '맞음');
   return [
     h('header', { class: 'deck-head' }, h('span', { class: 'eyebrow' }, '전략 한 장'),
@@ -335,8 +344,10 @@ function courseBoard(run, st) {
         h('button', { class: 'btn sm', type: 'button', onclick: () => saveFile(`${fileName(S.project)}_한장.html`, strategyHtml(S.project)) }, '한 장 보고서'),
         h('button', { class: 'btn sm', type: 'button', 'aria-label': '전략 한 장 닫기', onclick: () => openDeck(false) }, '닫기'))),
     h('div', { class: 'deck-body' },
-      h('section', { class: 'concept' }, layer(1, '운영 방향'),
+      v3 ? null : h('div', { class: 'banner warn' }, h('strong', null, '업무 영역 없이 만든 한 장이다 — '), '방향인지 가르는 시험대가 파트와 기간뿐이어서 한 영역의 전략이 방향으로 올라올 수 있다. ', h('button', { class: 'link', type: 'button', disabled: !!S.strategizing || !!S.running, onclick: makeStrategy }, S.strategizing || '업무 영역으로 다시 만들기')),
+      h('section', { class: 'concept' }, layer(1, v3 ? '통합 운영 방향' : '운영 방향'),
         h('h1', null, d.name), h('p', { class: 'line' }, d.line), h('p', { class: 'principle' }, d.standard),
+        d.covers?.length ? h('ul', { class: 'covers' }, d.covers.map((c) => h('li', null, h('b', null, areaName(c.area)), h('span', null, c.line)))) : null,
         d.from || d.to ? h('div', { class: 'shift' }, h('span', null, d.from), h('i', null, '→'), h('strong', null, d.to)) : null,
         d.keeps ? h('p', { class: 'kv' }, h('b', null, '키우는 것'), d.keeps) : null,
         d.drops.length ? h('p', { class: 'kv' }, h('b', null, '하지 않는 것'), d.drops.join(' · ')) : null,
@@ -349,17 +360,20 @@ function courseBoard(run, st) {
         cover('팩트', cv.facts, `인사이트만 ${cv.facts.byInsights}건`),
         cover('판단', cv.signals, `새로 끌어온 것 ${cv.signals.fresh}건`),
         cover('노드', cv.nodes, `새로 쓴 노드 ${cv.nodes.fresh}개`)),
-      h('section', { class: 'axes' }, layer(2, '축', '방향을 운영에서 지키게 하는 원칙'),
-        st.axes.map((a, i) => h('article', pickable(a.id, 'axis'), h('i', { class: 'ax' }, i + 1),
-          h('div', null, h('h3', null, a.name), h('p', null, a.rule), h('div', { class: 'evs' }, a.facts.map(fchip), a.signals.length ? h('span', { class: 'cnt' }, `판단 ${a.signals.length}`) : null))))),
-      h('section', { class: 'matrix' }, layer(3, '파트 × 단계', '동그라미 숫자는 따르는 축 · ◆는 전술로 놓인 인사이트'),
+      v3 ? h('section', { class: 'axes' }, layer(2, '영역별 전략', st.areasAuto ? '영역은 미션에서 뽑았다 · 미션 탭에서 고친다' : '방향이 영역마다 되는 방침'),
+        st.pillars.map((p) => h('article', pickable(p.part, 'pillar'), h('span', { class: 'part' }, p.label),
+          h('div', null, h('h3', null, p.name || '전략 없음'), h('p', null, p.guide),
+            h('div', { class: 'evs' }, p.facts.map(fchip), h('span', { class: 'cnt' }, `판단 ${p.signals.length} · 전술 ${p.tactics.length}`), p.thin ? h('span', { class: 'cnt warn' }, '판단 근거 얇음') : null)))))
+        : h('section', { class: 'axes' }, layer(2, '축', '방향을 운영에서 지키게 하는 원칙'),
+          st.axes.map((a, i) => h('article', pickable(a.id, 'axis'), h('i', { class: 'ax' }, i + 1),
+            h('div', null, h('h3', null, a.name), h('p', null, a.rule), h('div', { class: 'evs' }, a.facts.map(fchip), a.signals.length ? h('span', { class: 'cnt' }, `판단 ${a.signals.length}`) : null))))),
+      h('section', { class: 'matrix' }, layer(3, v3 ? '전술 — 영역 × 단계' : '파트 × 단계', v3 ? '◆는 경쟁에서 이긴 인사이트 · 전술 여럿 중 하나다' : '동그라미 숫자는 따르는 축 · ◆는 전술로 놓인 인사이트'),
         h('ol', { class: 'phasebar', style: `grid-template-columns: repeat(${st.phases.length}, minmax(0, 1fr))` }, st.phases.map((ph) => h('li', null, h('b', null, ph.when), h('p', null, ph.line)))),
         st.pillars.map((p) => h('article', pickable(p.part, 'pillar'),
           h('span', { class: 'part' }, p.label || p.name),
-          h('div', null, h('p', { class: 'guide' }, p.guide),
-            h('ul', { class: 'cells' }, st.phases.map((ph) => { const c = p.cells.find((x) => x.phase === ph.id); const tac = st.insights.filter((x) => x.fit === '맞음' && x.part === p.part && x.phase === ph.id);
-              return c || tac.length ? h('li', null, h('span', { class: 'when' }, ph.when), h('span', { class: 'move' }, c?.axis ? h('i', { class: 'ax' }, axisNo(c.axis)) : null, c?.move || '', tac.map(tactic))) : null; })),
-            h('div', { class: 'evs' }, p.facts.map(fchip), p.signals.length ? h('span', { class: 'cnt' }, `판단 ${p.signals.length}`) : null)))),
+          h('div', null, h('p', { class: 'guide' }, v3 ? p.name : p.guide),
+            h('ul', { class: 'cells' }, st.phases.map((ph) => { const items = cellItems(st, p, ph); return items.length ? h('li', null, h('span', { class: 'when' }, ph.when), h('span', { class: 'move' }, items.map(item))) : null; })),
+            v3 ? null : h('div', { class: 'evs' }, p.facts.map(fchip), p.signals.length ? h('span', { class: 'cnt' }, `판단 ${p.signals.length}`) : null)))),
         off.length ? h('p', { class: 'small' }, `방향에 맞지 않아 놓지 않은 인사이트: ${off.map((x) => x.name || x.id).join(', ')}`) : null),
       (st.fixes.length || st.boosts.length) ? h('section', { class: 'pairs' },
         st.fixes.length ? h('div', null, h('h2', null, '푸는 것'), st.fixes.map((x) => h('div', { class: 'pair' }, h('span', null, x.pain), h('strong', null, x.answer), h('div', { class: 'evs' }, x.facts.map(fchip))))) : null,
@@ -656,6 +670,17 @@ function missionTab() {
   out.push(h('section', { class: 'sec' }, h('h2', null, '과제의 층위', h('small', null, p.settings.level ? '직접 고름' : '분류로 정함')),
     h('div', { class: 'row' }, LEVELS.map((l) => h('button', { type: 'button', class: `chip pick${lv === l.id ? ' y' : ''}`, 'aria-pressed': String(lv === l.id), id: `level-${l.id}`, title: l.note, onclick: () => { p.settings.level = l.id; persist(); rerender(); } }, l.name))),
     h('p', { class: 'small' }, LEVELS.find((l) => l.id === lv).note)));
+  if (lv === 'strategy') {
+    p.areas = Array.isArray(p.areas) ? p.areas : [];
+    const touch = (a) => { delete a.auto; persist(); };
+    out.push(h('section', { class: 'sec' }, h('h2', null, '업무 영역', h('small', null, p.areas.length ? `${p.areas.length}개${p.areas.some((a) => a.auto) ? ' · 미션에서 뽑음' : ''}` : '비워 두면 미션에서 뽑는다')),
+      h('p', { class: 'small' }, '이 과제가 맡는 일의 범위다. 운영 방향은 이 영역 전부에 걸려야 하고, 한 영역에만 걸리는 것은 그 영역의 전략으로 내려간다. 직무(기획 · 디자인 · 개발)나 시기로 나누지 않는다.'),
+      p.areas.map((a, i) => h('div', { class: 'arearow' }, h('span', { class: 'chip fill' }, `S${i + 1}`),
+        h('input', { type: 'text', id: `area-name-${i}`, value: a.name || '', placeholder: '영역 이름', oninput: (e) => { a.name = e.target.value; touch(a); } }),
+        h('input', { type: 'text', id: `area-note-${i}`, value: a.note || '', placeholder: '이 영역에 드는 일', oninput: (e) => { a.note = e.target.value; touch(a); } }),
+        h('button', { class: 'btn sm x', type: 'button', onclick: () => { p.areas.splice(i, 1); persist(); rerender(); } }, '빼기'))),
+      h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', id: 'btn-area-add', disabled: p.areas.length >= 5, onclick: () => { p.areas.push({ name: '', note: '' }); persist(); S.keepScroll = true; rerender(); } }, '영역 더하기'))));
+  }
   out.push(h('section', { class: 'sec' }, h('h2', null, '분석 설정'),
     h('div', { class: 'grid3' }, num('ismCount', '분석할 사조 수', 2, 6), num('insightCount', '통합 인사이트 수', 1, 5), num('signalsPerLens', '노드·이슈당 판단', 1, 3)),
     h('p', { class: 'small' }, `호출 수 = 기본안 1 + 사조 고르기 1 + 노드 ${10 + (p.settings.ismCount ?? DEFAULTS.ismCount)} + 연결 1 + 인사이트 ${p.settings.insightCount ?? DEFAULTS.insightCount} + 경쟁 약 25 + 더프롬 판정 1 + 디렉션 1 + 기획 틀 1 + 디자인 틀 2`),
@@ -883,7 +908,7 @@ function insightTab() {
   const st = run.strategy;
   out.push(h('section', { class: 'sec' }, st
     ? h('button', { class: `stratcard${S.deck ? ' on' : ''}`, type: 'button', 'aria-expanded': String(S.deck), onclick: () => openDeck(!S.deck) },
-        h('span', { class: 'eyebrow' }, st.v === 2 ? '전략 한 장 · 운영 방향' : '전략 한 장'), h('strong', null, st.concept.name), h('span', { class: 'line' }, st.concept.line),
+        h('span', { class: 'eyebrow' }, st.v >= 2 ? '전략 한 장 · 운영 방향' : '전략 한 장'), h('strong', null, st.concept.name), h('span', { class: 'line' }, st.concept.line),
         h('span', { class: 'meta' }, `팩트 ${st.coverage.facts.used}/${st.coverage.facts.total} · 판단 ${st.coverage.signals.used}/${st.coverage.signals.total} · ${S.deck ? '접기' : '펼치기'}`))
     : h('div', { class: 'row' }, h('p', { class: 'note grow' }, levelOf(p) === 'strategy' ? `전략 과제다. 운영 방향 후보 3개를 전체 판단 ${u.signals}건과 팩트에서 쓰고, 겨뤄 고른 뒤 축 · 단계 · 파트별 할 일로 내린다. 인사이트 ${run.insights.length}건은 그 아래 전술로 놓인다.` : `인사이트 ${run.insights.length}건은 판단 ${u.signals}건 중 ${u.used}건에서 나왔다. 전체 판단과 팩트를 다시 훑어 과제를 관통하는 전략 한 장으로 올린다.`),
         h('button', { class: 'btn go', type: 'button', id: 'btn-strategy', disabled: !!S.strategizing || !!S.running, onclick: makeStrategy }, S.strategizing || (levelOf(p) === 'strategy' ? '운영 방향부터 만들기' : '전략 한 장 만들기')))));

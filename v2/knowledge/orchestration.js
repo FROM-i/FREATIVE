@@ -24,10 +24,11 @@ export const KIND_TIER = {
   revise: 'lead',      // 기조를 지킨 보완
   verdict: 'lead',     // 더프롬 판정
   strategy: 'lead',    // 전략 한 장 — 인사이트 위의 층. 전체 판단과 팩트를 다시 훑어 과제를 관통하는 전략으로 올린다
+  courseScope: 'lead', // 업무 영역 — 방향인지 가르는 시험대. 틀리면 층이 전부 틀린다
   courseBase: 'lead', // 기본 방향 — 견주는 기준은 가장 좋은 모델로 낸다
   course: 'lead',     // 운영 방향 후보 — 전략 과제의 맨 위 층
   courseJudge: 'lead', // 방향 판정 — 여기서 고른 방향 아래로 전부 내려 쓴다
-  layers: 'lead',     // 축 · 단계 · 파트별 할 일
+  layers: 'lead',     // 영역별 전략과 그 아래 전술
   integrate: 'support', // 묶음 정리
   screen: 'support',   // 기본안 대조
   duel: 'support',     // 대결 판정 (두 번 판정해 갈림을 잡는다)
