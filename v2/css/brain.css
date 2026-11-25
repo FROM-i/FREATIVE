@@ -481,6 +481,16 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .arearow { display: grid; grid-template-columns: auto minmax(0, 2fr) minmax(0, 3fr) auto; gap: var(--u); align-items: center; margin-top: var(--u); }
 .arearow input { width: 100%; min-width: 0; }
 .deck .axes .pillar, .deck .matrix .pillar { grid-template-columns: calc(var(--u) * 11) minmax(0, 1fr); }
+.made { margin-top: calc(var(--u) * 2); display: flex; flex-wrap: wrap; gap: calc(var(--u) * .75); align-items: center; }
+.made b { font-size: 11px; font-weight: 700; color: var(--mute); margin-right: calc(var(--u) * .5); }
+.high { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: calc(var(--u) * 1.5) 0; }
+.high summary { cursor: pointer; display: flex; justify-content: space-between; gap: var(--u); font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--mute); }
+.high summary small { font-family: var(--font); font-weight: 500; letter-spacing: 0; }
+.highs, .tens { margin-top: calc(var(--u) * 1.5); }
+.highs li, .tens li { display: grid; grid-template-columns: calc(var(--u) * 13) minmax(0, 1fr); gap: var(--u); padding: calc(var(--u) * .75) 0 calc(var(--u) * .75) var(--u); border-left: 2px solid transparent; font-size: var(--t-cap); line-height: 18px; color: var(--text-2); }
+.highs li.used, .tens li.used { border-left-color: var(--yellow); color: var(--text); }
+.highs b, .tens b { font-weight: 700; color: var(--mute); } .highs li.used b, .tens li.used b { color: var(--yellow); }
+.tens { border-top: 1px dashed var(--line); padding-top: var(--u); }
 .covers { margin-top: calc(var(--u) * 2); border-top: 1px solid var(--line); }
 .covers li { display: grid; grid-template-columns: calc(var(--u) * 14) minmax(0, 1fr); gap: var(--u); padding: var(--u) 0; border-bottom: 1px solid var(--line); font-size: var(--t-sub); line-height: 20px; }
 .covers b { font-size: var(--t-cap); font-weight: 700; color: var(--mute); padding-top: 1px; } .covers span { color: var(--text); font-weight: 600; }

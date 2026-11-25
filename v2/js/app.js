@@ -33,7 +33,7 @@ const clip = (s, n) => (String(s || '').length > n ? `${String(s).slice(0, n)}�
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const TYPE = { cause: '원인', condition: '조건', reinforce: '강화', tension: '충돌' };
 const STANCE = { keep: '지킬 관성', change: '바꿀 해석', limit: '넘지 않을 경계', open: '비어 있는 자리' };
-const STAGE = { weave: '그래프 전체를 읽고 통합안 쓰는 중', strategy: '전략 한 장으로 올리는 중', courseScope: '업무 영역 뽑는 중', courseBase: '기본 방향 받는 중', course: '운영 방향 후보 쓰는 중', courseJudge: '방향끼리 겨루는 중', layers: '영역별 전략 · 전술로 내리는 중', plan: '기획 틀로 정리하는 중', creative: '디자인 틀로 정리하는 중', baseline: '기본안 받는 중', reframe: '문제 다시 정의하는 중', cross: '충돌하는 안 교배 중', screen: '기본안과 대조 중', duel: '점수 없이 1:1로 겨루는 중', forge: '이긴 안 공격 · 보완 중', verdict: '더프롬 판정 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
+const STAGE = { weave: '그래프 전체를 읽고 통합안 쓰는 중', strategy: '전략 한 장으로 올리는 중', courseScope: '업무 영역 뽑는 중', courseLens: '노드가 방향 높이에서 보는 중', courseLink: '통합 판단을 잇는 중', courseBase: '기본 방향 받는 중', course: '운영 방향 후보 쓰는 중', courseJudge: '방향끼리 겨루는 중', layers: '영역별 전략 · 전술로 내리는 중', plan: '기획 틀로 정리하는 중', creative: '디자인 틀로 정리하는 중', baseline: '기본안 받는 중', reframe: '문제 다시 정의하는 중', cross: '충돌하는 안 교배 중', screen: '기본안과 대조 중', duel: '점수 없이 1:1로 겨루는 중', forge: '이긴 안 공격 · 보완 중', verdict: '더프롬 판정 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
 
 /** DOM 만들기 — 글자는 언제나 텍스트 노드로 들어간다 */
 function h(tag, attrs, ...kids) {
@@ -230,10 +230,11 @@ function strategyGroups(st) {
     ...st.axes.map((a) => ({ key: a.id, facts: a.facts, signals: a.signals, insights: [] })),
     ...st.pillars.map((p) => ({ key: p.part, facts: p.facts, signals: p.signals, insights: p.insights }))];
 }
-/** 이 묶음이 기댄 노드 — 팩트, 판단, 그 판단을 낸 기준 노드, 인사이트 */
+/** 이 묶음이 기댄 노드 — 팩트, 판단, 그 판단을 낸 기준 노드, 인사이트. 방향 높이의 판단은 맵에 없으니 그 판단을 낸 기준 노드를 켠다 */
 function pillarNodes(run, p) {
-  const sig = new Map(run.signals.map((s) => [s.id, s]));
-  return [...new Set([...p.facts, ...p.signals, ...p.signals.map((id) => sig.get(id)?.lens).filter(Boolean), ...p.insights])];
+  const sig = new Map([...run.signals, ...(run.course?.signals || [])].map((s) => [s.id, s]));
+  const high = new Set((run.course?.signals || []).map((s) => s.id));
+  return [...new Set([...p.facts, ...p.signals.filter((id) => !high.has(id)), ...p.signals.map((id) => sig.get(id)?.lens).filter(Boolean), ...p.insights])];
 }
 /** 브레인 맵을 전략에 맞춘다 — 전략이 기댄 노드만 밝히고 고리를 두른다. 묶음을 고르면 그 묶음만 */
 function traceStrategy(part = S.pillar) {
@@ -251,12 +252,13 @@ function openDeck(on) {
 }
 /** 모델이 뽑은 업무 영역을 미션에 옮겨 둔다 — 사람이 고쳐 쓸 수 있게. 사람이 적은 것이 있으면 건드리지 않는다 */
 function adoptAreas(p) { const st = p.run?.strategy; if (st?.areasAuto && !areasOf(p)) p.areas = st.areas.map((a) => ({ name: a.name, note: a.note, auto: true })); }
-async function makeStrategy() {
+async function makeStrategy(fresh = false) {
+  fresh = fresh === true;   // 버튼의 클릭 이벤트가 인자로 들어오는 것을 막는다
   if (S.running || S.strategizing) return;
   const target = S.project;
   S.strategizing = '만드는 중'; rerender(); renderDeck();
   try {
-    await strategizeOnly(target, await getProvider(), { precedents: loadCases(), onEvent: (e) => { if (e.type === 'stage' && STAGE[e.stage]) { S.strategizing = STAGE[e.stage]; rerender(); renderDeck(); } } });
+    await strategizeOnly(target, await getProvider(), { precedents: loadCases(), fresh, onEvent: (e) => { if (e.type === 'stage' && STAGE[e.stage]) { S.strategizing = STAGE[e.stage]; rerender(); renderDeck(); } } });
     target.updated = new Date().toISOString();
     if (S.project === target) { S.deck = true; S.pillar = null; }
     const st = target.run.strategy; const c = st.coverage;
@@ -312,6 +314,21 @@ function strategyBoard(run, st) {
   ];
 }
 
+/** 방향 높이의 뉴럴링크 — 노드마다 낸 통합 판단과 그 사이의 충돌. 방향이 어디서 나왔는지 보인다 */
+function highBoard(run, st) {
+  const c = run.course; if (!c?.signals?.length || !(st.v >= 4)) return null;
+  const all = c.signals.filter((x) => x.scope === 'ALL'); const used = new Set(st.direction.signals);
+  const sig = new Map(c.signals.map((x) => [x.id, x]));
+  const tens = c.edges.filter((e) => e.type === 'tension');
+  const mine = st.direction.spine?.edge;
+  return h('details', { class: 'high', open: !!S.highOpen, ontoggle: (e) => { S.highOpen = e.target.open; } },
+    h('summary', null, h('span', null, `방향 높이의 노드 판단 ${all.length}건 · 충돌 ${tens.length}개`), h('small', null, st.reusedHigh ? '앞서 받은 판단을 썼다' : '이번에 받았다')),
+    h('ul', { class: 'highs' }, all.map((x) => h('li', { class: used.has(x.id) ? 'used' : '', onmouseenter: () => { view.tint(new Map([[x.lens, '#FFD200']])); view.trace([x.lens]); }, onmouseleave: () => traceStrategy() },
+      h('b', null, lensName(x.lens)), h('span', null, x.claim)))),
+    tens.length ? h('ul', { class: 'tens' }, tens.map((e) => h('li', { class: e.id === mine ? 'used' : '' }, h('b', null, `${lensName(sig.get(e.from).lens)} ↔ ${lensName(sig.get(e.to).lens)}`), h('span', null, e.why)))) : null,
+    h('p', { class: 'small' }, '노란 줄은 채택된 방향이 기댄 판단과 푼 충돌이다. ', h('button', { class: 'link', type: 'button', disabled: !!S.strategizing || !!S.running, onclick: () => makeStrategy(true) }, '노드 판단부터 다시 받기')));
+}
+
 /** 전략 과제의 판 — 위에서 아래로: 통합 운영 방향 → 영역별 전략 → 전술(영역 × 단계) */
 function courseBoard(run, st) {
   const facts = new Map((S.project.facts || []).map((f) => [f.id, f]));
@@ -330,7 +347,7 @@ function courseBoard(run, st) {
     const r = st.rivals.find((x) => x.id === id); const it = st.judge.items.find((x) => x.id === id) || {}; const won = id === d.id;
     return h('li', pickable(id, `rival${won ? ' won' : ''}`), h('span', { class: 'tag' }, won ? '채택' : it.level && it.level !== '방향' ? it.level : '후보'),
       h('div', null, h('p', null, h('strong', null, r.name), ` ${r.line}`), h('small', null, won ? st.judge.why : it.weak || ''),
-        h('small', { class: 'meta' }, `${v3 && it.reaches?.length ? `걸리는 영역 ${it.reaches.length}/${st.areas.length} · ` : ''}노드 ${r.breadth.nodes}개 · 판단 ${r.signals.length}건 · 팩트 ${r.facts.length}건`)));
+        h('small', { class: 'meta' }, `${v3 && it.reaches?.length ? `걸리는 영역 ${it.reaches.length}/${st.areas.length} · ` : ''}${it.own ? `${it.own} · ` : ''}${it.control === '일부 불가' ? '통제 일부 불가 · ' : ''}노드 ${r.breadth.nodes}개${r.breadth.identity != null ? `(아이덴티티 ${r.breadth.identity})` : ''} · 팩트 ${r.facts.length}건`)));
   };
   const item = (x) => { const n = x.insight ? run.insights.find((i) => i.id === x.insight) : null; const short = n ? st.insights.find((i) => i.id === x.insight) : null;
     return h('span', { class: `tactic${n ? ' won' : ''}` }, x.axis ? h('i', { class: 'ax' }, axisNo(x.axis)) : null,
@@ -344,9 +361,12 @@ function courseBoard(run, st) {
         h('button', { class: 'btn sm', type: 'button', onclick: () => saveFile(`${fileName(S.project)}_한장.html`, strategyHtml(S.project)) }, '한 장 보고서'),
         h('button', { class: 'btn sm', type: 'button', 'aria-label': '전략 한 장 닫기', onclick: () => openDeck(false) }, '닫기'))),
     h('div', { class: 'deck-body' },
-      v3 ? null : h('div', { class: 'banner warn' }, h('strong', null, '업무 영역 없이 만든 한 장이다 — '), '방향인지 가르는 시험대가 파트와 기간뿐이어서 한 영역의 전략이 방향으로 올라올 수 있다. ', h('button', { class: 'link', type: 'button', disabled: !!S.strategizing || !!S.running, onclick: makeStrategy }, S.strategizing || '업무 영역으로 다시 만들기')),
+      st.v >= 4 ? null : h('div', { class: 'banner warn' }, h('strong', null, '이슈 높이의 판단을 올려 쓴 방향이다 — '), '노드가 방향 높이에서 따로 판단하고, 그 충돌을 푸는 자리에서 방향을 다시 쓴다. 이슈 분석은 다시 돌지 않는다. ', h('button', { class: 'link', type: 'button', disabled: !!S.strategizing || !!S.running, onclick: makeStrategy }, S.strategizing || '노드 판단부터 다시 만들기')),
       h('section', { class: 'concept' }, layer(1, v3 ? '통합 운영 방향' : '운영 방향'),
         h('h1', null, d.name), h('p', { class: 'line' }, d.line), h('p', { class: 'principle' }, d.standard),
+        d.lenses?.length ? h('div', { class: 'made' }, h('b', null, '만든 노드'), d.lenses.map((l) => h('button', { class: 'chip ghost', type: 'button', onclick: (e) => { e.stopPropagation(); selectNode(l, true); } }, lensName(l)))) : null,
+        d.spine ? h('p', { class: 'kv' }, h('b', null, '푼 충돌'), `${lensName(d.spine.a)} ↔ ${lensName(d.spine.b)}${d.how ? ` — ${d.how}` : ''}`) : null,
+        d.swap ? h('p', { class: 'kv' }, h('b', null, '고유한 이유'), d.swap) : null,
         d.covers?.length ? h('ul', { class: 'covers' }, d.covers.map((c) => h('li', null, h('b', null, areaName(c.area)), h('span', null, c.line)))) : null,
         d.from || d.to ? h('div', { class: 'shift' }, h('span', null, d.from), h('i', null, '→'), h('strong', null, d.to)) : null,
         d.keeps ? h('p', { class: 'kv' }, h('b', null, '키우는 것'), d.keeps) : null,
@@ -356,6 +376,7 @@ function courseBoard(run, st) {
       st.rivals?.length ? h('section', { class: 'rivals' }, h('h2', null, `겨룬 방향 ${st.rivals.length}개와 기본 방향`, h('small', null, '판정 순서 · 누르면 그 후보의 근거가 켜진다')),
         h('ul', null, st.judge.order.map(rival)),
         st.judge.risk ? h('p', { class: 'kv' }, h('b', null, '무너질 수 있는 지점'), st.judge.risk) : null) : null,
+      highBoard(run, st),
       h('section', { class: 'covs' },
         cover('팩트', cv.facts, `인사이트만 ${cv.facts.byInsights}건`),
         cover('판단', cv.signals, `새로 끌어온 것 ${cv.signals.fresh}건`),
@@ -910,7 +931,7 @@ function insightTab() {
     ? h('button', { class: `stratcard${S.deck ? ' on' : ''}`, type: 'button', 'aria-expanded': String(S.deck), onclick: () => openDeck(!S.deck) },
         h('span', { class: 'eyebrow' }, st.v >= 2 ? '전략 한 장 · 운영 방향' : '전략 한 장'), h('strong', null, st.concept.name), h('span', { class: 'line' }, st.concept.line),
         h('span', { class: 'meta' }, `팩트 ${st.coverage.facts.used}/${st.coverage.facts.total} · 판단 ${st.coverage.signals.used}/${st.coverage.signals.total} · ${S.deck ? '접기' : '펼치기'}`))
-    : h('div', { class: 'row' }, h('p', { class: 'note grow' }, levelOf(p) === 'strategy' ? `전략 과제다. 운영 방향 후보 3개를 전체 판단 ${u.signals}건과 팩트에서 쓰고, 겨뤄 고른 뒤 축 · 단계 · 파트별 할 일로 내린다. 인사이트 ${run.insights.length}건은 그 아래 전술로 놓인다.` : `인사이트 ${run.insights.length}건은 판단 ${u.signals}건 중 ${u.used}건에서 나왔다. 전체 판단과 팩트를 다시 훑어 과제를 관통하는 전략 한 장으로 올린다.`),
+    : h('div', { class: 'row' }, h('p', { class: 'note grow' }, levelOf(p) === 'strategy' ? `전략 과제다. 노드 ${activeLenses(p, run.picks || []).length}개가 방향 높이에서 한 번 더 판단하고, 그 충돌을 푸는 통합 운영 방향을 겨뤄 정한 뒤 영역별 전략과 전술로 내린다. 인사이트 ${run.insights.length}건은 전술로 놓인다. 이슈 분석은 다시 돌지 않는다.` : `인사이트 ${run.insights.length}건은 판단 ${u.signals}건 중 ${u.used}건에서 나왔다. 전체 판단과 팩트를 다시 훑어 과제를 관통하는 전략 한 장으로 올린다.`),
         h('button', { class: 'btn go', type: 'button', id: 'btn-strategy', disabled: !!S.strategizing || !!S.running, onclick: makeStrategy }, S.strategizing || (levelOf(p) === 'strategy' ? '운영 방향부터 만들기' : '전략 한 장 만들기')))));
 
   // 인사이트 — 결과를 먼저 보여 준다

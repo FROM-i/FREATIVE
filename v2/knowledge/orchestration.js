@@ -25,6 +25,8 @@ export const KIND_TIER = {
   verdict: 'lead',     // 더프롬 판정
   strategy: 'lead',    // 전략 한 장 — 인사이트 위의 층. 전체 판단과 팩트를 다시 훑어 과제를 관통하는 전략으로 올린다
   courseScope: 'lead', // 업무 영역 — 방향인지 가르는 시험대. 틀리면 층이 전부 틀린다
+  courseLens: 'lead', // 방향 높이의 노드 판단 (터널 노드만 support — 아래 tierOf)
+  courseLink: 'lead', // 통합 판단끼리의 충돌 — 방향 후보의 출발점이 된다
   courseBase: 'lead', // 기본 방향 — 견주는 기준은 가장 좋은 모델로 낸다
   course: 'lead',     // 운영 방향 후보 — 전략 과제의 맨 위 층
   courseJudge: 'lead', // 방향 판정 — 여기서 고른 방향 아래로 전부 내려 쓴다
@@ -41,4 +43,4 @@ export const KIND_TIER = {
 };
 
 /** 터널 노드의 판단은 팩트에 묶는 일이라 support다. 아이덴티티 · 에어플레인 노드의 판단은 lead다. */
-export const tierOf = (task) => (task?.kind === 'activate' && task.lens?.family === 'tunnel' ? 'support' : KIND_TIER[task?.kind] || 'support');
+export const tierOf = (task) => ((task?.kind === 'activate' || task?.kind === 'courseLens') && task.lens?.family === 'tunnel' ? 'support' : KIND_TIER[task?.kind] || 'support');
