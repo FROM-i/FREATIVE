@@ -268,6 +268,23 @@ export function usage(run) {
   };
 }
 
+/** 인사이트까지 닿은 것 — 노드군별로 몇 개 노드가 쓰였는지, 팩트 몇 건이 닿았는지. 판단 건수만 보면 "노드 14개 중 4개"가 가려진다 */
+export function reach(run) {
+  const live = (run.signals || []).filter((s) => !s.muted);
+  const used = new Set((run.insights || []).flatMap((i) => i.check?.used || []));
+  const byFamily = {}; const all = new Set(); const hit = new Set();
+  for (const f of Object.keys(FAMILIES)) {
+    const mine = live.filter((s) => s.family === f);
+    const nodes = new Set(mine.map((s) => s.lens)); const usedNodes = new Set(mine.filter((s) => used.has(s.id)).map((s) => s.lens));
+    byFamily[f] = { nodes: nodes.size, usedNodes: usedNodes.size };
+    for (const n of nodes) all.add(n); for (const n of usedNodes) hit.add(n);
+  }
+  // 팩트 — 인사이트가 쓴 판단이 달고 있던 것. 판단에 인용만 되고 인사이트에 닿지 못한 것은 세지 않는다
+  const facts = [...new Set(live.filter((s) => used.has(s.id)).flatMap((s) => s.facts || []))];
+  const cited = [...new Set(live.flatMap((s) => s.facts || []))];
+  return { byFamily, nodes: all.size, usedNodes: hit.size, facts, cited };
+}
+
 /**
  * @param {object} project
  * @param {object} provider  { name, json({role, system, user, signal, task}) → {json, usage?} }

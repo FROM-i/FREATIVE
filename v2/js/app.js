@@ -4,7 +4,7 @@ import { newProject, buildGraph, describe, nextIssueId, lensName, activeLenses, 
 import { CATEGORIES, TAGS, COMMON_INPUT, SEED_INPUT, PERSPECTIVES, tagById, categoryById, categoriesOf, recommendTags, recommendCategory } from '../knowledge/tags.js';
 import { createView } from './graph/view.js';
 import { shapeFor, PRESETS, LAYER_ROLES, LAYER_FORMS, FIGURES, figureParts } from './graph/shapes.js';
-import { think, proposeIssues, researchFacts, strategizeOnly } from './engine/think.js';
+import { think, proposeIssues, researchFacts, strategizeOnly, reach } from './engine/think.js';
 import { FACT_KINDS, SOURCE_TYPES, factKind, sourceType, factProblem, validFacts, nextFactId, factsToMarkdown, parseFactbook, unverified } from '../knowledge/facts.js';
 import { WEIGHTS, SEED_PRECEDENTS, normalizeWeights } from '../knowledge/viewpoint.js';
 import { DIFFERENTIATION, EFFECTIVENESS } from '../knowledge/criteria.js';
@@ -789,14 +789,15 @@ function insightTab() {
   const out = [];
   const vcount = (v) => (run.verdict?.items || []).filter((x) => x.verdict === v).length;
 
-  // 요약 — 숫자 타일 4개와 노드군별 사용 막대
+  // 요약 — 숫자 타일 4개와 노드군별 사용 막대. 판단 건수와 함께 노드 수, 인사이트까지 닿은 팩트 수를 보인다
+  const rc = reach(run); const factTotal = validFacts(p).facts.length;
   out.push(h('section', { class: 'sec' },
     h('div', { class: 'tiles' },
       tile(run.insights.length, '인사이트', run.verdict?.items?.length ? `채택 ${vcount('채택')} · 보완 ${vcount('보완')}${vcount('기각') ? ` · 기각 ${vcount('기각')}` : ''}${vcount('보류') ? ` · 보류 ${vcount('보류')}` : ''}` : '', 'y'),
-      tile(`${u.used}/${u.signals}`, '쓰인 판단', `${pct(u.used, u.signals)}%`),
+      tile(`${u.used}/${u.signals}`, '쓰인 판단', `${pct(u.used, u.signals)}% · 노드 ${rc.usedNodes}/${rc.nodes}개`),
       tile(k.byType.tension, tip('충돌'), `연결 ${k.edges}건 중`, 'red'),
-      u.tunnel ? tile(`${u.tunnel.backed}/${u.tunnel.signals}`, '팩트 근거', u.tunnel.assumed ? `추정 ${u.tunnel.assumed}건` : '터널 판단') : null),
-    h('div', { class: 'bars' }, Object.keys(FAMILIES).flatMap((f) => { const b = u.byFamily[f]; return [h('span', null, FAMILIES[f].short), h('div', { class: 'track' }, h('i', { style: `width:${pct(b.used, b.signals)}%` })), h('span', null, `${b.used}/${b.signals}건`)]; })),
+      factTotal ? tile(`${rc.facts.length}/${factTotal}`, '인사이트에 닿은 팩트', `판단에 인용된 것 ${rc.cited.length}건${u.tunnel?.assumed ? ` · 추정 판단 ${u.tunnel.assumed}건` : ''}`, rc.facts.length ? '' : 'red') : null),
+    h('div', { class: 'bars' }, Object.keys(FAMILIES).flatMap((f) => { const b = u.byFamily[f]; const n = rc.byFamily[f]; return [h('span', null, FAMILIES[f].short), h('div', { class: 'track' }, h('i', { style: `width:${pct(b.used, b.signals)}%` })), h('span', null, `노드 ${n.usedNodes}/${n.nodes} · 판단 ${b.used}/${b.signals}`)]; })),
     flagged ? h('p', { class: 'small' }, `검증을 통과하지 못한 인사이트 ${flagged}건.`) : null,
     run.scope?.gap ? h('div', { class: 'banner warn' }, h('strong', null, '근본 이슈가 덮지 못한 것 — '), run.scope.gap) : null,
     run.facts?.unchecked ? h('p', { class: 'small' }, `사람이 확인하지 않은 팩트 ${run.facts.unchecked}건.`) : null,

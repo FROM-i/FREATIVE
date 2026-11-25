@@ -894,3 +894,14 @@ test('그래프 통합안 — 후보는 전체 노드의 판단을 읽고 쓴 �
   const pulled = run2.insights.filter((n) => n.revised && n.pulled.length);
   assert.ok(pulled.length > 0 && pulled.every((n) => n.pulled.every((id) => n.check.used.includes(id)) && !n.pulled.includes('NOPE-1')));
 });
+
+test('닿은 것 세기 — 노드군별로 쓰인 노드 수와, 인사이트까지 닿은 팩트 수를 낸다', async () => {
+  const { reach } = await import('../js/engine/think.js');
+  const sig = (id, lens, family, facts = []) => ({ id, lens, family, issue: 'I1', facts });
+  const run = { signals: [sig('A-1', 'A', 'identity', ['F1']), sig('A-2', 'A', 'identity', ['F2']), sig('B-1', 'B', 'identity', ['F3']), sig('S-1', 'S', 'airplane'), sig('T-1', 'T', 'tunnel', ['F4', 'F5']), { ...sig('M-1', 'M', 'tunnel', ['F9']), muted: true }],
+    insights: [{ check: { used: ['A-1', 'A-2'] } }, { check: { used: ['A-1', 'M-1'] } }] };
+  const r = reach(run);
+  assert.deepEqual(r.byFamily, { identity: { nodes: 2, usedNodes: 1 }, airplane: { nodes: 1, usedNodes: 0 }, tunnel: { nodes: 1, usedNodes: 0 } });
+  assert.deepEqual([r.nodes, r.usedNodes, r.facts.sort(), r.cited.sort()], [4, 1, ['F1', 'F2'], ['F1', 'F2', 'F3', 'F4', 'F5']], '판단에 인용만 된 팩트는 닿은 것으로 세지 않는다');
+  assert.deepEqual(reach({ signals: [], insights: [] }).facts, []);
+});
