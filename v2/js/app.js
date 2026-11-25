@@ -26,7 +26,7 @@ const clip = (s, n) => (String(s || '').length > n ? `${String(s).slice(0, n)}�
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const TYPE = { cause: '원인', condition: '조건', reinforce: '강화', tension: '충돌' };
 const STANCE = { keep: '지킬 관성', change: '바꿀 해석', limit: '넘지 않을 경계', open: '비어 있는 자리' };
-const STAGE = { baseline: '기본안 받는 중', reframe: '문제 다시 정의하는 중', cross: '충돌하는 안 교배 중', screen: '기본안과 대조 중', duel: '점수 없이 1:1로 겨루는 중', forge: '이긴 안 공격 · 보완 중', verdict: '더프롬 판정 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
+const STAGE = { plan: '기획 틀로 정리하는 중', creative: '디자인 틀로 정리하는 중', baseline: '기본안 받는 중', reframe: '문제 다시 정의하는 중', cross: '충돌하는 안 교배 중', screen: '기본안과 대조 중', duel: '점수 없이 1:1로 겨루는 중', forge: '이긴 안 공격 · 보완 중', verdict: '더프롬 판정 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
 
 /** DOM 만들기 — 글자는 언제나 텍스트 노드로 들어간다 */
 function h(tag, attrs, ...kids) {
@@ -365,7 +365,7 @@ function missionTab() {
     Array.from({ length: max - min + 1 }, (_, n) => h('option', { value: min + n, selected: (p.settings[key] ?? DEFAULTS[key]) === min + n }, min + n))));
   out.push(h('section', { class: 'sec' }, h('h2', null, '분석 설정'),
     h('div', { class: 'grid3' }, num('ismCount', '분석할 사조 수', 2, 6), num('insightCount', '통합 인사이트 수', 1, 5), num('signalsPerLens', '노드·이슈당 판단', 1, 3)),
-    h('p', { class: 'small' }, `호출 수 = 기본안 1 + 사조 고르기 1 + 노드 ${10 + (p.settings.ismCount ?? DEFAULTS.ismCount)} + 연결 1 + 인사이트 ${p.settings.insightCount ?? DEFAULTS.insightCount} + 경쟁 약 25 + 더프롬 판정 1 + 디렉션 1`),
+    h('p', { class: 'small' }, `호출 수 = 기본안 1 + 사조 고르기 1 + 노드 ${10 + (p.settings.ismCount ?? DEFAULTS.ismCount)} + 연결 1 + 인사이트 ${p.settings.insightCount ?? DEFAULTS.insightCount} + 경쟁 약 25 + 더프롬 판정 1 + 디렉션 1 + 기획 틀 1 + 디자인 틀 2`),
     ));
   out.push(casesBoard());
 
@@ -449,6 +449,39 @@ function baselineBoard(run) {
     b.common ? h('p', { class: 'small' }, `기본안의 공통 해법: ${b.common}`) : null);
 }
 
+/** 프레임 — 기획 틀(Concept Theme까지)과 디자인 틀(Creative 방향까지). 확정은 사람이 한다 */
+function frameBoard(run) {
+  const p = run.plan; if (!p) return null;
+  const src = (ids) => (ids?.length ? h('span', { class: 'small' }, ` (${ids.join(', ')})`) : null);
+  const confirm = (obj, label) => h('button', { class: `btn sm ${obj.confirmed ? 'solid' : ''}`, type: 'button', onclick: () => { obj.confirmed = !obj.confirmed; persist(); rerender(); } }, obj.confirmed ? `${label} 확정됨` : `${label} 확정`);
+  const out = [h('section', { class: 'sec' }, h('h2', null, '기획 틀', h('small', null, 'JTBD → 경쟁 구도 → 포지셔닝 → KSF → Key Claim → Concept Theme')),
+    p.check.ok ? null : h('div', { class: 'banner warn' }, h('strong', null, '채우지 못한 칸 — '), p.check.problems.join(' / ')),
+    h('p', { class: 'lead sm' }, `Concept Theme: ${p.theme.theme || '—'}`), p.theme.why ? h('p', { class: 'small' }, p.theme.why, src(p.theme.from)) : null,
+    h('dl', { class: 'kv' },
+      h('dt', null, 'JTBD'), h('dd', null, [p.jtbd.situation, p.jtbd.motivation, p.jtbd.outcome].filter(Boolean).join(' → ') || '—', src(p.jtbd.from)),
+      h('dt', null, '경쟁 구도'), h('dd', null, p.competition.length ? p.competition.map((c) => h('div', null, `${c.who}: ${c.does} / 못 하는 것: ${c.gap}`, src(c.from))) : '—'),
+      h('dt', null, '포지셔닝'), h('dd', null, p.positioning.place ? `${p.positioning.axis} — 모두가 선 자리: ${p.positioning.crowd} / 빈자리: ${p.positioning.place}` : '—', src(p.positioning.from)),
+      h('dt', null, 'KSF'), h('dd', null, p.ksf.length ? h('ul', { class: 'bullets' }, p.ksf.map((k) => h('li', null, k.factor, src(k.from)))) : '—'),
+      h('dt', null, 'Key Claim'), h('dd', null, h('strong', null, p.claim.claim || '—'), p.claim.rtb.length ? h('div', { class: 'small' }, `믿게 하는 근거: ${p.claim.rtb.join(' / ')}`) : null, src(p.claim.from))),
+    p.need.length ? h('p', { class: 'small' }, `확인할 것: ${p.need.join(' / ')}`) : null,
+    h('div', { class: 'row' }, confirm(p, 'Concept Theme')))];
+  const c = run.creative;
+  if (c) out.push(h('section', { class: 'sec' }, h('h2', null, '디자인 틀', h('small', null, 'FoR → PoP → PoD → Creative 방향')),
+    c.check.problems.length ? h('div', { class: `banner ${c.check.ok ? '' : 'warn'}` }, c.check.problems.join(' / ')) : null,
+    h('p', { class: 'lead sm' }, `Creative 방향: ${c.direction || '—'}`),
+    h('dl', { class: 'kv' },
+      h('dt', null, 'FoR'), h('dd', null, c.for.frame || '—', src(c.for.from)),
+      h('dt', null, 'PoP'), h('dd', null, h('ul', { class: 'bullets' }, c.pop.map((x) => h('li', null, x.point, src(x.from))))),
+      h('dt', null, 'PoD'), h('dd', null, h('ul', { class: 'bullets' }, c.pod.map((x) => h('li', null, x.core ? h('strong', null, `[코어] ${x.point}`) : x.point, ` — ${x.matters}`, x.rtb.length ? ` · 근거: ${x.rtb.join(' / ')}` : '', src(x.from))))),
+      h('dt', null, '보이는 방향'), h('dd', null, h('div', null, `지킬 것: ${c.look.keep}`), h('div', null, `바꿀 것: ${c.look.change}`), h('div', null, `하지 않을 것: ${c.look.not}`)),
+      c.isms.length ? [h('dt', null, '쓰인 사조의 읽기'), h('dd', null, h('ul', { class: 'bullets' }, c.isms.map((x) => h('li', null, `${x.signal} · ${x.strand} · ${x.layer} — ${x.changed}`))))] : null,
+      h('dt', null, `노하우북 ${c.knowhow.length}건`), h('dd', null, c.knowhow.length ? h('ul', { class: 'bullets' }, c.knowhow.map((k) => h('li', null, h('strong', null, `${c.chapters.find((x) => x.id === k.chapter)?.name || k.chapter} · ${k.operation}`), ` — ${k.from} → ${k.to}`, h('div', { class: 'small' }, `푸는 문제: ${k.solves} · 빼면: ${k.without}`)))) : '—')),
+    h('p', { class: 'small' }, `불려 온 장: ${c.chapters.map((x) => x.name).join(' · ') || '없음'} — 조형 문제 ${c.problems.length}건에서 불렀다`),
+    c.held.length ? h('p', { class: 'small' }, `시안에서 정할 것: ${c.held.join(' / ')}`) : null,
+    h('div', { class: 'row' }, confirm(c, 'Creative 방향'))));
+  return out;
+}
+
 /** 경쟁 기록 — 후보가 어디서 나와 어디서 떨어졌는지 */
 function arenaBoard(run) {
   const a = run.arena; if (!a) return null;
@@ -501,6 +534,7 @@ function insightTab() {
     run.verdict?.items?.length ? h('p', { class: 'small' }, `더프롬 판정: ${['채택', '보완', '기각', '보류'].map((v) => `${v} ${run.verdict.items.filter((x) => x.verdict === v).length}건`).join(' · ')}`) : null,
     p.example && run.provider === 'mock' ? h('p', { class: 'small' }, '예시 결과 — 미리 써 둔 답이다. 실제 모델의 품질을 보여 주지 않는다.') : null));
 
+  const fb = frameBoard(run); if (fb) out.push(...fb);
   const board = directionBoard(run); if (board) out.push(board);
   const base = baselineBoard(run); if (base) out.push(base);
   const ar = arenaBoard(run); if (ar) out.push(ar);

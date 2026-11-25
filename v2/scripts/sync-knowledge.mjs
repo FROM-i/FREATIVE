@@ -98,3 +98,22 @@ await writeFile(path.resolve(here, '../knowledge/core.js'), `// 자동 생성 �
 export const CORE = ${JSON.stringify(CORE, null, 2)};
 `);
 console.log(`core 원문 ${Object.keys(CORE).length}절 · ${Object.values(CORE).reduce((n, t) => n + t.length, 0)}자`);
+
+// ---------- 노하우북 (catalog-form.md PART B) → knowledge/knowhow.js ----------
+// 장 단위로 원문을 그대로 옮긴다. 사조가 "왜"라면 노하우북은 "무엇으로, 어떻게"다.
+{
+  const { text, from } = await load(`${BASE}/catalog-form.md`);
+  const start = text.indexOf('\n# PART B'); const end = text.indexOf('\n# PART C');
+  const body = text.slice(start, end > 0 ? end : undefined);
+  const parts = body.split(/\n(?=## B-\d+\. )/).filter((p) => /^## B-\d+\. /.test(p));
+  const chapters = parts.map((p) => {
+    const head = p.split('\n')[0];
+    const m = head.match(/^## B-(\d+)\. (.+?)(?:\s+—\s+(.+))?$/);
+    const prefixes = [...new Set([...p.matchAll(/`([A-Z]{2,6})-(?:\*|[A-Z0-9]+)/g)].map((x) => x[1]))];
+    const ids = [...new Set([...p.matchAll(/`([A-Z]{2,6}-[A-Z0-9][A-Z0-9-]*)`/g)].map((x) => x[1]))];
+    return { id: `KH-B${m[1]}`, no: +m[1], name: m[2].trim(), note: (m[3] || '').replace(/`/g, '').trim(), prefixes, items: ids.length, text: p.trim() };
+  });
+  const out = `// 자동 생성 — scripts/sync-knowledge.mjs. 직접 고치지 않는다. 원본: 스킬 저장소 catalog-form.md PART B (Knowhow Book 3권)\n// 노하우북의 장 ${chapters.length}개. 원문 표현을 그대로 둔다.\nexport const KNOWHOW = ${JSON.stringify(chapters, null, 1)};\nexport const knowhowById = (id) => KNOWHOW.find((k) => k.id === id) || null;\n`;
+  await writeFile(path.join(here, '../knowledge/knowhow.js'), out);
+  console.log(`노하우북 ${chapters.length}장 · 항목 ${chapters.reduce((n, c) => n + c.items, 0)}개 ← ${from}`);
+}

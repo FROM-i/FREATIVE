@@ -22,13 +22,8 @@ function issues(project) {
 function route({ project, isms, count }) {
   const offered = new Set(isms.map((i) => i.id));
   if (project.id === SAMPLE_ID) return { picks: FIXTURE.picks.filter((p) => offered.has(p.id)).slice(0, count) };
-  const ranked = [...isms].sort((a, b) => hash(project.title + a.id) - hash(project.title + b.id));
-  const picks = ranked.slice(0, Math.max(0, count - 1));
-  const ids = new Set(picks.map((p) => p.id));
-  const opp = OPPOSITIONS.find((o) => (ids.has(o.a) && offered.has(o.b)) || (ids.has(o.b) && offered.has(o.a)));
-  const extra = opp ? isms.find((i) => i.id === (ids.has(opp.a) ? opp.b : opp.a)) : ranked[count - 1];
-  if (extra && !ids.has(extra.id)) picks.push(extra);
-  return { picks: picks.slice(0, count).map((p) => ({ id: p.id, why: `[목업] ${p.summary}` })) };
+  // 모든 사조를 대 본 결과 — 목업은 제목으로 정한 값으로 흉내 낸다. 셋 중 하나는 걸리는 자리가 없다
+  return { probes: isms.map((x) => { const h = hash(project.title + x.id); return { id: x.id, hit: h < 0.3 ? '' : `[목업] ${x.summary}`, pressure: +h.toFixed(2) }; }) };
 }
 
 const isSampleIssue = (i) => SAMPLE.issues.some((s) => s.id === i.id && s.title === i.title);
@@ -154,7 +149,17 @@ function direct({ project, insights, needDev }) {
   };
 }
 
-const HANDLERS = { baseline, verdict, direct, reframe, cross, screen, duel, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
+// ---------- 프레임 ----------
+const M_ = '[목업] 실제 모델이 재료로 채운다.';
+const plan = ({ run }) => { const n = run.insights[0].id; const b = run.baseline?.concepts?.[0]?.id || n; const r = run.frames?.[0]?.id || n; const t = run.signals.find((x) => x.family === 'tunnel')?.id || n;
+  return { jtbd: { situation: M_, motivation: M_, outcome: M_, from: [r] }, competition: [{ who: '[목업] 지금 그 일을 대신 해 주는 것', does: M_, gap: M_, from: [t] }], positioning: { axis: M_, crowd: M_, place: '[목업] 빈자리 한 구절', from: [b, n] },
+    ksf: [{ factor: M_, from: [n] }, { factor: M_, from: [n] }], claim: { claim: '[목업] Key Claim 한 문장', rtb: ['[목업] 믿게 하는 근거'], from: [n] }, theme: { theme: `[목업] ${short(run.insights[0].title, 16)}`, why: M_, from: [n] }, covers: run.insights.slice(1).map((x) => ({ insight: x.id, role: M_ })), baseline_same: false, need: [] }; };
+const pull = ({ run }) => ({ problems: run.insights.slice(0, 2).map((n, i) => ({ insight: n.id, problem: '[목업] 화면에서 벌어질 조형 문제', chapters: [['KH-B4', 'KH-B3'][i]], why: M_ })) });
+const creative = ({ run, chapters }) => { const n = run.insights[0].id; const b = run.baseline?.concepts?.[0]?.id || n; const ism = run.signals.find((x) => x.family === 'airplane' && run.insights.some((i) => i.check.used.includes(x.id)));
+  return { for: { frame: '[목업] 어느 범주로 읽히게 할 것인가', from: [n] }, pop: [{ point: M_, from: [b] }], pod: [{ point: '[목업] 기본안에 없는 것', core: true, matters: M_, rtb: ['[목업]'], from: [n] }], direction: '[목업] Creative 방향', look: { keep: M_, change: M_, not: M_ },
+    isms: ism ? [{ signal: ism.id, strand: M_, layer: '원리', changed: M_ }] : [], knowhow: [...chapters.map((k) => ({ chapter: k.id, solves: M_, operation: '[목업] 항목과 조작', from: '[목업] 무엇을', to: '[목업] 어떻게', without: M_ })), { chapter: chapters[0]?.id, solves: M_, operation: '', from: '', to: '', without: '' }], held: ['[목업] 굵기와 크기 값 — 시안에서 정한다'] }; };
+
+const HANDLERS = { plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
 
 export function createMock({ delay = 0 } = {}) {
   return {

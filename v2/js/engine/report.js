@@ -37,6 +37,16 @@ export function reportMarkdown(project) {
     L.push('### 먼저 할 일', '', ...d.priority.map((x, i) => `${i + 1}. ${x.what} (${name(x.owner)}${x.from ? ` · ${x.from}` : ''})`), '');
   }
 
+  if (run.plan) {
+    const p = run.plan; const src = (ids) => (ids?.length ? ` (${ids.join(', ')})` : '');
+    L.push('## 기획 틀', '', `**Concept Theme: ${p.theme.theme || '—'}**${p.confirmed ? ' — 확정' : ' — 사람 확정 전'}`, '', p.theme.why + src(p.theme.from), '');
+    if (!p.check.ok) L.push(`> 채우지 못한 칸: ${p.check.problems.join(' / ')}`, '');
+    L.push(`- JTBD: ${[p.jtbd.situation, p.jtbd.motivation, p.jtbd.outcome].filter(Boolean).join(' → ')}${src(p.jtbd.from)}`, ...p.competition.map((c) => `- 경쟁: ${c.who} — ${c.does} / 못 하는 것: ${c.gap}${src(c.from)}`), `- 포지셔닝: ${p.positioning.axis} — 모두가 선 자리: ${p.positioning.crowd} / 빈자리: ${p.positioning.place}${src(p.positioning.from)}`, ...p.ksf.map((k) => `- KSF: ${k.factor}${src(k.from)}`), `- Key Claim: ${p.claim.claim} — 근거: ${p.claim.rtb.join(' / ')}${src(p.claim.from)}`, ...(p.need.length ? [`- 확인할 것: ${p.need.join(' / ')}`] : []), '');
+  }
+  if (run.creative) {
+    const c = run.creative; const src = (ids) => (ids?.length ? ` (${ids.join(', ')})` : '');
+    L.push('## 디자인 틀', '', `**Creative 방향: ${c.direction || '—'}**${c.confirmed ? ' — 확정' : ' — 사람 확정 전'}`, '', `- FoR: ${c.for.frame}${src(c.for.from)}`, ...c.pop.map((x) => `- PoP: ${x.point}${src(x.from)}`), ...c.pod.map((x) => `- PoD${x.core ? '(코어)' : ''}: ${x.point} — ${x.matters} · 근거: ${x.rtb.join(' / ')}${src(x.from)}`), `- 지킬 것: ${c.look.keep}`, `- 바꿀 것: ${c.look.change}`, `- 하지 않을 것: ${c.look.not}`, ...c.isms.map((x) => `- 사조: ${x.signal} · ${x.strand} · ${x.layer} — ${x.changed}`), ...c.knowhow.map((k) => `- 노하우: ${c.chapters.find((x) => x.id === k.chapter)?.name || k.chapter} · ${k.operation} — ${k.from} → ${k.to} (빼면: ${k.without})`), ...(c.held.length ? [`- 시안에서 정할 것: ${c.held.join(' / ')}`] : []), '');
+  }
   if (run.arena) {
     const c = run.arena.counts;
     L.push('## 경쟁 기록', '', `후보 ${c.candidates}개(노드의 완성안 ${c.node} · 묶음 통합안 ${c.cluster} · 충돌 교배 ${c.cross}). 사유가 있어 탈락 ${c.screened}개, 나머지는 점수 없이 ${c.duels}번 겨뤘다. 결선에서 판정이 갈린 대결 ${c.splits}건. 기본안에 없는 해법인데 떨어진 후보 ${c.different}개. 고친 안이 채택된 것 ${c.revised}건.`, '');

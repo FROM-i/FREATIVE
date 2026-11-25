@@ -30,7 +30,7 @@ test('사고 패스 — 발화 · 연결 · 수렴 · 통합이 한 번에 돈�
   const events = [];
   const run = await think(p, createMock(), { onEvent: (e) => events.push(e.type === 'stage' ? e.stage : e.type) });
   const lenses = IDENTITY.length + TUNNEL.length + p.settings.ismCount;
-  assert.equal(run.calls, 1 + 1 + 1 + lenses + 1 + p.settings.insightCount + run.arena.calls + 1 + 1, '호출 수 = 기본안 1 + 문제 다시 정의 1 + 사조 고르기 1 + 노드 수 + 연결 1 + 묶음 통합 + 경쟁 + 더프롬 판정 1 + 디렉션 1');
+  assert.equal(run.calls, 1 + 1 + 1 + lenses + 1 + p.settings.insightCount + run.arena.calls + 1 + 1 + 1 + (run.creative ? 2 : 0), '호출 수 = 기본안 1 + 문제 다시 정의 1 + 사조 고르기 1 + 노드 수 + 연결 1 + 묶음 통합 + 경쟁 + 더프롬 판정 1 + 디렉션 1');
   assert.equal(new Set(run.signals.map((s) => s.lens)).size, lenses, '모든 노드가 발화했다');
   assert.deepEqual(events.filter((e) => ['route', 'activate', 'link', 'propagate', 'integrate', 'direct', 'done'].includes(e)), ['route', 'activate', 'link', 'propagate', 'integrate', 'direct', 'done']);
   assert.ok(OPPOSITIONS.some((o) => run.picks.some((x) => x.id === o.a) && run.picks.some((x) => x.id === o.b)), '대립하는 사조 쌍이 들어 있다');
@@ -107,7 +107,7 @@ test('사람의 개입 — 엣지를 고치면 발화 없이 전파·통합만 �
   const kinds = [];
   const mock = createMock();
   const again = await think(p, { name: 'spy', json: (a) => { kinds.push(a.task.kind); return mock.json(a); } }, { mode: 'relink' });
-  assert.ok(kinds.length > again.clusters.length && kinds.every((k) => ['integrate', 'direct', 'verdict', 'cross', 'screen', 'duel', 'attack', 'revise'].includes(k)), '통합·판정·디렉션 호출만 있다');
+  assert.ok(kinds.length > again.clusters.length && kinds.every((k) => ['integrate', 'direct', 'verdict', 'cross', 'screen', 'duel', 'attack', 'revise', 'plan', 'pull', 'creative'].includes(k)), '통합·판정·디렉션 호출만 있다');
   assert.equal(again.signals.length, 26);
   assert.ok(!again.clusters.some((c) => c.members.includes('BRUTAL-1')));
   assert.notDeepEqual(again.clusters.map((c) => c.members.join()), before);
@@ -434,4 +434,58 @@ test('경쟁 — 후보를 모아 기본안과 같은 안을 떨어뜨리고, 1:
   const q = sample(); q.settings.arena = false;
   const plain = await think(q, createMock());
   assert.ok(!plain.arena && plain.insights.length === 3 && plain.frames.length === 0);
+});
+
+test('사조 선정 — 사람이 고르지 않는다. 모두 대 보고, 걸리는 것 중에서 뚜렷한 것과 일부러 넣는 하나를 고른다', async () => {
+  const { selectByProbe } = await import('../js/engine/think.js');
+  const { routePrompt } = await import('../knowledge/prompts.js');
+  const { AIRPLANE, OPPOSITIONS } = await import('../knowledge/nodes.js');
+  const probes = [{ id: 'A', hit: 'a', pressure: 0.9 }, { id: 'B', hit: '', pressure: 0.95 }, { id: 'C', hit: 'c', pressure: 0.7 }, { id: 'D', hit: 'd', pressure: 0.5 }, { id: 'E', hit: 'e', pressure: 0.2 }];
+  const got = selectByProbe(probes, 3);
+  assert.deepEqual(got.map((x) => x.id), ['A', 'C', 'E'], '걸리는 자리가 없는 B는 압력이 높아도 빠지고, 가장 약한 E가 일부러 들어간다');
+  assert.ok(got[2].wild && !got[0].wild);
+  assert.deepEqual(selectByProbe(probes.slice(0, 3), 4).map((x) => x.id), ['A', 'C'], '걸리는 것이 모자라면 억지로 채우지 않는다');
+  const pr = routePrompt(sample(), AIRPLANE, OPPOSITIONS, 4);
+  assert.ok(pr.system.includes('미리 고르지 않는다') && pr.system.includes('"probes"') && !pr.system.includes('"picks"'));
+  // 예시가 아닌 프로젝트 — 목업이 모든 사조를 대 본 결과를 낸다
+  const p = newProject({ title: '다른 과제', category: 'design', brief: { what: 'w', purpose: 'p', target: 't' }, seed: { design: { scope: 's', moment: 'm' } }, issues: [{ id: 'I1', root: true, title: '무엇이 바뀌나', test: '바뀌는가?', tags: ['ds-ui'] }] });
+  const run = await think(p, createMock());
+  assert.equal(run.probes.length, 16);
+  assert.ok(run.picks.length >= 2 && run.picks.every((x) => x.why));
+  assert.ok(run.picks.filter((x) => x.wild).length <= 1);
+});
+
+test('프레임 — 이긴 안을 기획 틀과 디자인 틀로 정리한다. 근거 없는 칸은 비우고, 노하우북은 조형 문제가 부른 장만 쓴다', async () => {
+  const { shapePlan, shapeCreative, needsCreative } = await import('../js/engine/frames.js');
+  const { KNOWHOW, knowhowById } = await import('../knowledge/knowhow.js');
+  const { planPrompt, creativePrompt } = await import('../knowledge/prompts-frames.js');
+  assert.equal(KNOWHOW.length, 16);
+  assert.ok(KNOWHOW.every((k) => k.text.startsWith('## B-') && k.name) && knowhowById('KH-B4').name === '대비');
+  const p = sample();
+  const kinds = [];
+  const mock = createMock();
+  const run = await think(p, { ...mock, json: (a) => { kinds.push(a.task.kind); return mock.json(a); } });
+  // 순서 — 경쟁과 판정이 끝난 뒤에 틀로 정리한다
+  assert.ok(kinds.indexOf('plan') > kinds.lastIndexOf('duel') && kinds.indexOf('plan') > kinds.indexOf('verdict'));
+  assert.ok(kinds.indexOf('pull') < kinds.indexOf('creative'));
+  assert.ok(run.plan.check.ok && run.plan.theme.theme && run.plan.confirmed === false);
+  for (const slot of [run.plan.jtbd, run.plan.positioning, run.plan.claim, run.plan.theme]) assert.ok(slot.from.length, '칸마다 근거 id가 있다');
+  assert.ok(run.creative.pod.filter((x) => x.core).length === 1 && run.creative.chapters.length <= 5);
+  assert.ok(run.creative.knowhow.every((k) => k.operation && k.from && k.to), '무엇을 어떻게 바꾸는지 쓰지 못한 노하우는 뺀다');
+  assert.ok(run.creative.check.problems.some((x) => x.includes('노하우')));
+  // 프롬프트 — 틀은 새로 추론하지 않고, 노하우북은 원문으로 들어간다
+  assert.ok(planPrompt(p, run).system.includes('새로 추론하지 않는다'));
+  assert.ok(creativePrompt(p, run, run.plan, [], [knowhowById('KH-B4')]).user.includes(knowhowById('KH-B4').text));
+  // 근거 없는 칸은 비운다
+  const ok = new Set(['N1', 'B1']);
+  const bad = shapePlan({ jtbd: { situation: 's', motivation: 'm', outcome: 'o', from: ['없는 id'] }, positioning: { place: 'p', from: ['B1'] }, ksf: [{ factor: 'k', from: ['N1'] }], claim: { claim: 'c', rtb: [], from: ['N1'] }, theme: { theme: 't', from: ['N1'] }, baseline_same: true }, ok);
+  assert.ok(!bad.ok && bad.plan.jtbd.from.length === 0);
+  for (const word of ['JTBD 칸에 근거가 없다', '경쟁 구도', 'KSF', 'RTB', '기본안과 같다']) assert.ok(bad.problems.some((x) => x.includes(word)), word);
+  const cr = shapeCreative({ for: { frame: 'f', from: ['N1'] }, pod: [{ point: 'a', from: ['N1'] }, { point: 'b', from: ['N1'] }], direction: 'd', knowhow: [{ chapter: 'KH-B4', operation: 'CON-TYPE', from: 'x', to: 'y' }, { chapter: 'KH-B9', operation: 'o', from: 'x', to: 'y' }] }, ok, [knowhowById('KH-B4')]);
+  assert.equal(cr.creative.pod.filter((x) => x.core).length, 1); assert.equal(cr.creative.knowhow.length, 1, '부르지 않은 장의 노하우는 받지 않는다');
+  // 기획 과제는 Concept Theme에서 멈춘다
+  const q = sample(); q.category = 'planning'; q.seed = { planning: {} }; q.issues.forEach((i) => { i.tags = ['pl-journey']; });
+  assert.equal(needsCreative(q), false);
+  const r2 = await think(q, createMock());
+  assert.ok(r2.plan && r2.creative === null);
 });

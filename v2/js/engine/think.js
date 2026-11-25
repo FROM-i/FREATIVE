@@ -14,6 +14,7 @@ import { validFacts, acceptResearch } from '../../knowledge/facts.js';
 import { LAYERS } from '../../knowledge/ism-depth.js';
 import { reframePrompt } from '../../knowledge/prompts-arena.js';
 import { arena, shapeProposal, shapeFrames } from './arena.js';
+import { frames } from './frames.js';
 import { PERSPECTIVES } from '../../knowledge/tags.js';
 import { AIRPLANE, OPPOSITIONS, GATES, FAMILIES, IDENTITY } from '../../knowledge/nodes.js';
 import { activeLenses, signalPrefix, hints, lensName, validateProject, needsDevelopment } from '../graph/model.js';
@@ -32,6 +33,20 @@ async function pool(items, limit, worker) {
   const run = async () => { while (next < items.length) { const i = next++; out[i] = await worker(items[i], i); } };
   await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, run));
   return out;
+}
+
+/**
+ * 훑은 결과로 사조를 고른다.
+ *   걸리는 자리가 있는 것 중 압력이 뚜렷한 순으로 (필요한 수 − 1)개,
+ *   그리고 걸리기는 했지만 압력이 가장 약한 것 1개를 일부러 넣는다 — 뻔하지 않은 안은 여기서 나올 수 있다.
+ * 대립 쌍은 뒤에서 따로 맞춘다.
+ */
+export function selectByProbe(probes, need) {
+  const hit = probes.filter((x) => x.hit).sort((a, b) => b.pressure - a.pressure || a.id.localeCompare(b.id));
+  if (hit.length <= need) return hit.map((x) => ({ id: x.id, why: x.hit }));
+  const main = hit.slice(0, Math.max(1, need - 1)).map((x) => ({ id: x.id, why: x.hit }));
+  const wild = hit[hit.length - 1];
+  return need > 1 ? [...main, { id: wild.id, why: `일부러 넣은 사조 — ${wild.hit}`, wild: true }] : main;
 }
 
 /** 브리프 → 근본 이슈 후보. 고르는 것은 사람이다. */
@@ -268,6 +283,7 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
     at: new Date().toISOString(), provider: provider.name, mode,
     picks: prev?.picks || [], signals: prev ? prev.signals.map((x) => ({ ...x })) : [],
     edges: prev ? prev.edges.map((x) => ({ ...x })) : [], energy: {}, clusters: [], insights: [],
+    probes: prev?.probes || [],
     baseline: prev?.baseline || null, frames: prev?.frames || [], proposals: prev ? (prev.proposals || []).map((x) => ({ ...x })) : [],
     facts: { total: fb.facts.length, rejected: fb.rejected, unchecked: fb.facts.filter((f) => f.by === 'ai' && !f.checked).length },
     failed: [], notes: setup.problems.map((x) => `세팅: ${x.where} — ${x.what}`), calls: 0, tokens: { in: 0, out: 0 },
@@ -314,7 +330,9 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
         const p = routePrompt(project, pool0, OPPOSITIONS, need);
         const json = await call({ role: 'brain', ...p, task: { kind: 'route', project, isms: pool0, count: need } });
         const valid = new Set(pool0.map((a) => a.id));
-        const got = (Array.isArray(json.picks) ? json.picks : []).filter((x) => valid.has(x.id)).slice(0, need).map((x) => ({ id: x.id, why: text(x.why) }));
+        // 훑은 결과로 고른다 — 사람이 고르지 않는다. (예전 형식의 picks도 받는다)
+        run.probes = (Array.isArray(json.probes) ? json.probes : []).filter((x) => valid.has(x.id)).map((x) => ({ id: x.id, hit: text(x.hit), pressure: clamp(x.pressure, 0) }));
+        const got = run.probes.length ? selectByProbe(run.probes, need) : (Array.isArray(json.picks) ? json.picks : []).filter((x) => valid.has(x.id)).slice(0, need).map((x) => ({ id: x.id, why: text(x.why) }));
         picks = [...picks, ...got.filter((g) => !picks.some((q) => q.id === g.id))];
       }
       // 같은 편 사조만 고르지 않는다 — 대립 쌍이 없으면 반대편 하나를 더한다 (catalog A-99)
@@ -429,6 +447,9 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
   }
   run.direction = { ...dcheck.direction, check: { ok: dcheck.ok, problems: dcheck.problems }, needDev };
   emit('directed');
+
+  // 프레임 — 이긴 안을 기획 틀과 디자인 틀로 정리한다. 틀은 안을 만드는 단계가 아니라 정리하고 검증하는 단계다.
+  if (s.frames !== false) await frames({ project, run, call, emit });
   run.ms = Date.now() - started;
   emit('stage', { stage: 'done' });
   return run;
