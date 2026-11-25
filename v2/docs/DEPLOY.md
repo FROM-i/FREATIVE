@@ -7,11 +7,11 @@ THE FROM BRAIN(2.0)은 `v2/`만 웹에 올린다. FREATIVE 1.x는 저장소 루�
 | 무엇 | 어디 | 값 |
 | --- | --- | --- |
 | 코드 | GitHub `FROM-i/FREATIVE` | 2.0은 `v2/`, 1.x는 루트 |
-| 배포 | Vercel `from-is-projects/thefrom_brain` | Root Directory `v2`, 배포 브랜치 `brain-2.0`, 주소 `thefrombrain.vercel.app` |
+| 배포 | Vercel `from-is-projects/thefrom_brain` | Root Directory `v2`, 배포 브랜치 `main`, 주소 `thefrombrain.vercel.app` |
 | 로그인 · 저장 | Supabase `qifxzkzpixdmyajhbdsx` (서울) | 스키마 `supabase/migrations/0001_brain_auth.sql` |
 | 모델 키 | Vercel 환경 변수 `ANTHROPIC_API_KEY` | 서버에만 둔다. 브라우저로 내려가지 않는다 |
 
-`brain-2.0`에 푸시하면 사이트가 바뀐다. `main`(1.x)에 푸시해도 사이트는 바뀌지 않는다. `main`에는 `v2/`가 없어서 Vercel 미리보기 빌드가 실패로 찍히는데, 사이트에는 영향이 없다. 나중에 `brain-2.0`을 `main`에 합치면 배포 브랜치를 `main`으로 되돌린다.
+`main`에 푸시하면 사이트가 다시 배포된다. Vercel은 `v2/`만 보므로 1.x(`src/` · `knowledge/`)를 고쳐도 사이트 내용은 바뀌지 않는다. 1.x 설치 파일은 `electron-builder.yml`이 `src/` · `knowledge/`만 담아서 `v2/`가 들어가지 않는다.
 
 ## 로그인과 역할
 
