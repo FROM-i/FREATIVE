@@ -572,6 +572,7 @@ function missionTab() {
     h('div', { class: 'row' },
       h('button', { class: 'btn', type: 'button', onclick: () => saveFile(`${fileName(p)}.json`, JSON.stringify(p, null, 1)) }, '프로젝트 내보내기'),
       h('label', { class: 'btn', style: 'display:inline-flex;align-items:center' }, '프로젝트 가져오기', h('input', { type: 'file', id: 'import-file', accept: '.json,application/json', class: 'sr', onchange: importFile })),
+      h('button', { class: 'btn', type: 'button', id: 'btn-skill-guide', onclick: skillGuideModal }, 'RFP로 자동 채우기'),
       h('button', { class: 'btn', type: 'button', onclick: () => { const q = newProject(SAMPLE); S.projects[q.id] = q; switchProject(q.id); } }, '예시 다시 열기'),
       h('button', { class: `btn ${S.confirmDelete ? 'danger' : ''}`, type: 'button', onclick: removeProject }, S.confirmDelete ? '정말 지운다 — 되돌릴 수 없다' : '이 프로젝트 지우기')),
     h('p', { class: 'small' }, '프로젝트와 키는 이 브라우저에만 저장된다. 다른 PC로 옮길 때는 내보내기 파일을 쓴다.')));
@@ -1018,6 +1019,35 @@ function enter() {
       S.cloud.adoptHash(hash).catch((e) => { draft.msg = e.message; }).finally(check);
     } else check();
   });
+}
+
+/** RFP · 팩트북으로 프로젝트를 채우는 방법 — 스킬 받기와 쓰는 순서 */
+const SKILL_BASE = /^https?:/.test(location.protocol) ? 'skill/' : 'https://thefrombrain.vercel.app/skill/';
+function skillGuideModal() {
+  document.querySelector('.modal-back')?.remove();
+  const back = h('div', { class: 'modal-back', onclick: (e) => { if (e.target === back) back.remove(); } }, h('div', { class: 'modal', role: 'dialog', 'aria-label': 'RFP로 자동 채우기' }));
+  const copy = async (e) => { const b = e.currentTarget; try { const r = await fetch(`${SKILL_BASE}thefrom-brain-project/SKILL.md`); if (!r.ok) throw new Error(); await navigator.clipboard.writeText(await r.text()); b.textContent = '복사했다'; } catch { b.textContent = '복사하지 못했다 — 파일로 받는다'; } };
+  const step = (n, title, ...body) => h('li', null, h('div', { class: 'row' }, h('span', { class: 'chip fill' }, String(n)), h('strong', null, title)), body.length ? h('div', { class: 'guide-body' }, body) : null);
+  back.firstChild.replaceChildren(
+    h('div', { class: 'row' }, h('span', { class: 'chip y fill' }, 'RFP로 자동 채우기'), h('button', { class: 'btn sm', type: 'button', style: 'margin-left:auto', onclick: () => back.remove() }, '닫기')),
+    h('p', { class: 'small' }, 'RFP · 팩트북을 LLM에 올리면 이 화면에 넣을 프로젝트 파일(JSON)을 만들어 준다. 직접 입력해도 결과는 같다.'),
+    h('h3', { class: 'guide-h' }, 'Claude를 쓴다 — 스킬을 한 번 설치한다'),
+    h('ol', { class: 'list guide' },
+      step(1, '스킬 파일을 받는다', h('a', { class: 'btn sm go', href: `${SKILL_BASE}thefrom-brain-project.zip`, download: 'thefrom-brain-project.zip' }, 'thefrom-brain-project.zip 받기'), h('p', { class: 'small' }, '압축을 풀지 않는다.')),
+      step(2, 'Claude에 올린다', h('p', { class: 'small' }, 'Claude의 사용자 지정(Customize) → 스킬(Skills) → "+" → 스킬 만들기 → 스킬 업로드에서 받은 ZIP을 고른다. 목록에 thefrom-brain-project가 보이고 켜져 있으면 된다.')),
+      step(3, '자료를 올리고 요청한다', h('p', { class: 'small' }, '새 대화에 RFP · 팩트북 · 초안을 첨부하고 "브레인 프로젝트로 만들어줘"라고 쓴다. 미션이 정해져 있으면 한 줄 덧붙인다. 예: "미션은 보안 중심 운영 플랜".')),
+      step(4, '받은 파일을 가져온다', h('p', { class: 'small' }, 'Claude가 준 JSON을 이 탭의 "프로젝트 가져오기"로 올린다. 올린 뒤 칸을 직접 고칠 수 있다.'))),
+    h('h3', { class: 'guide-h' }, '다른 LLM을 쓴다 — 지시문을 같이 올린다'),
+    h('ol', { class: 'list guide' },
+      step(1, '지시문을 받는다', h('div', { class: 'row' }, h('a', { class: 'btn sm', href: `${SKILL_BASE}thefrom-brain-project/SKILL.md`, download: 'thefrom-brain-project.md' }, '지시문 파일 받기'), h('button', { class: 'btn sm', type: 'button', onclick: copy }, '지시문 복사'))),
+      step(2, '자료와 함께 올리고 요청한다', h('p', { class: 'small' }, '지시문과 RFP · 팩트북을 같이 올리고 "이 지시문대로 브레인 프로젝트 파일을 만들어줘"라고 쓴다.')),
+      step(3, '받은 JSON을 가져온다', h('p', { class: 'small' }, '파일로 주지 않으면 답의 JSON을 .json 파일로 저장해 "프로젝트 가져오기"로 올린다.'))),
+    h('h3', { class: 'guide-h' }, '올린 뒤 볼 것'),
+    h('ul', { class: 'list guide' },
+      h('li', null, h('p', { class: 'small' }, '자료에서 옮긴 팩트는 "자료에서 옮김 · 확인 전"으로 들어온다. 제안서에 쓸 수치는 원문을 보고 "원문 확인함"을 누른다.')),
+      h('li', null, h('p', { class: 'small' }, '이슈는 근본 1개와 하위 4개 안쪽으로 둔다. 이슈가 많을수록 실행이 길어진다.')),
+      h('li', null, h('p', { class: 'small' }, '클라이언트 자료는 회사가 허용한 LLM에만 올린다.'))));
+  document.body.append(back);
 }
 
 /** 사용자 관리 — 관리자는 승인과 중지, 수퍼관리자는 관리자 지정까지 */

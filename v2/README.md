@@ -164,6 +164,4 @@ v2/
 
 ## RFP · 팩트북으로 프로젝트 채우기
 
-- Claude: `skill/thefrom-brain-project/SKILL.md`를 스킬로 등록하고, RFP · 팩트북을 올린 뒤 "브레인 프로젝트로 만들어줘"라고 한다.
-- 다른 LLM: 같은 파일(또는 `docs/PROJECT-FILE.md`)을 자료와 함께 올리고 같은 요청을 한다.
-- 받은 JSON을 사이트 미션 탭의 "프로젝트 가져오기"로 올린다. 사이트에서 직접 입력해도 된다.
+사이트 미션 탭의 **RFP로 자동 채우기**에서 스킬 ZIP과 지시문을 받는다. 설치와 사용법은 [docs/SKILL-GUIDE.md](docs/SKILL-GUIDE.md). 사이트에서 직접 입력해도 된다.

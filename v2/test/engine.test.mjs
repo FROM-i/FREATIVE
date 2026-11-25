@@ -797,3 +797,18 @@ test('팩트 — 받은 자료에서 옮긴 것(doc)은 내부 자료로 받고,
   const md = factsToMarkdown({ title: 't', facts: [doc] }); assert.match(md, /자료에서 옮김 · 확인 전/);
   const back = parseFactbook(md); const list = Array.isArray(back) ? back : back.facts; assert.equal(list[0].by, 'doc'); assert.equal(list[0].checked, false);
 });
+
+test('스킬 — ZIP이 최신이고, 맨 위가 스킬 폴더이며, 지시문이 브레인이 받는 형식을 가르친다', async () => {
+  const fs = await import('node:fs'); const { packSkill, SKILL } = await import('../scripts/pack-skill.mjs');
+  const md = fs.readFileSync(new URL(`../skill/${SKILL}/SKILL.md`, import.meta.url), 'utf8');
+  const zip = fs.readFileSync(new URL(`../skill/${SKILL}.zip`, import.meta.url));
+  assert.ok(zip.equals(packSkill()), 'SKILL.md를 고친 뒤 npm run skill:zip 을 다시 돌린다');
+  assert.equal(zip.readUInt32LE(0), 0x04034b50); assert.equal(zip.subarray(30, 30 + zip.readUInt16LE(26)).toString('utf8'), `${SKILL}/SKILL.md`);
+  assert.match(md, new RegExp(`^---\\nname: ${SKILL}\\ndescription: .+\\n---\\n`));
+  // 지시문의 예시 JSON이 그대로 통과한다
+  const example = JSON.parse(md.match(/```json\n([\s\S]+?)\n```/)[1]);
+  const { factProblem } = await import('../knowledge/facts.js');
+  assert.equal(factProblem(example.facts[0]), ''); assert.equal(example.facts[0].by, 'doc');
+  const p = newProject(example); assert.deepEqual(p.categories, ['ops', 'dev']);
+  for (const kind of ['burger', 'bulb', 'bolt', 'phone', 'server']) assert.ok(md.includes('`' + kind + '`'), `지시문에 ${kind} 형상`);
+});

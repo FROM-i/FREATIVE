@@ -11,7 +11,8 @@
     "start": "node server.js",
     "test": "node --test",
     "build": "node scripts/build-single.mjs",
-    "sync:knowledge": "node scripts/sync-knowledge.mjs"
+    "sync:knowledge": "node scripts/sync-knowledge.mjs",
+    "skill:zip": "node scripts/pack-skill.mjs"
   },
   "devDependencies": {
     "esbuild": "0.25.10"
