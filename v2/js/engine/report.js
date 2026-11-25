@@ -18,9 +18,27 @@ export function reportMarkdown(project) {
   L.push(`> THE FROM BRAIN · ${run.at.slice(0, 10)} · 공급자 ${run.provider} · AI의 판단은 모두 예비 판정이다. 방향의 결정은 사람이 한다.`, '');
   const st = run.strategy;
   if (st) {
-    L.push('## 전략 한 장', '', `**${st.concept.name}** — ${st.concept.line}`, st.principle ? `\n${st.principle}` : '', '');
-    st.pillars.forEach((p) => L.push(`- **${p.label || '축'} · ${p.name}** — ${p.guide}${p.moves.length ? ` (${p.moves.join(' / ')})` : ''}${p.facts.length ? ` [${p.facts.join(' ')}]` : ''}`));
-    L.push('', `팩트 ${st.coverage.facts.used}/${st.coverage.facts.total}건, 판단 ${st.coverage.signals.used}/${st.coverage.signals.total}건(인사이트에 쓰이지 않던 것 ${st.coverage.signals.fresh}건)을 썼다.`, '');
+    if (st.v === 2) {
+      const d = st.direction; const ax = (id) => st.axes.find((a) => a.id === id)?.name || '';
+      L.push('## 전략 한 장', '', '### 1. 운영 방향', '', `**${d.name}** — ${d.line}`, '', `기준: ${d.standard}`, d.from || d.to ? `지금 ${d.from} → 바뀌는 것 ${d.to}` : '', d.keeps ? `키우는 것: ${d.keeps}` : '', d.drops.length ? `하지 않는 것: ${d.drops.join(' / ')}` : '', '');
+      if (st.rivals?.length) {
+        L.push('겨룬 방향:', '');
+        for (const id of st.judge.order) { const r = st.rivals.find((x) => x.id === id); const it = st.judge.items.find((x) => x.id === id); L.push(id === 'BASE' ? `- 기본 방향 — ${st.base?.line || ''}` : `- ${id}${id === d.id ? ' (채택)' : ''} ${r.name} — ${r.line}${it?.level === '전술' ? ' [전술로 판정]' : ''}${it?.weak ? ` · 약점: ${it.weak}` : ''}`); }
+        if (st.judge.why) L.push('', `고른 이유: ${st.judge.why}`);
+        L.push('');
+      }
+      if (!st.check.ok) L.push(`> 확인할 문제: ${st.check.problems.join(' / ')}`, '');
+      L.push('### 2. 축과 단계', '', ...st.axes.map((a) => `- **${a.id} ${a.name}** — ${a.rule}${a.facts.length ? ` [${a.facts.join(' ')}]` : ''}`), '', ...st.phases.map((p) => `- **${p.when}** — ${p.line}`), '');
+      L.push('### 3. 파트별 × 단계별 할 일', '', `| 파트 | ${st.phases.map((p) => p.when).join(' | ')} |`, `| --- | ${st.phases.map(() => '---').join(' | ')} |`,
+        ...st.pillars.map((p) => `| **${p.label || p.name}** ${p.guide} | ${st.phases.map((ph) => { const c = p.cells.find((x) => x.phase === ph.id); const t = st.insights.filter((x) => x.fit === '맞음' && x.part === p.part && x.phase === ph.id).map((x) => `◆${x.name}`); return [c ? `${c.move}${c.axis ? ` (${ax(c.axis)})` : ''}` : '', ...t].filter(Boolean).join(' '); }).join(' | ')} |`), '');
+      const off = st.insights.filter((x) => x.fit !== '맞음');
+      if (off.length) L.push(`방향에 맞지 않아 놓지 않은 인사이트: ${off.map((x) => `${x.id} ${x.name}`).join(', ')}`, '');
+    } else {
+      L.push('## 전략 한 장', '', `**${st.concept.name}** — ${st.concept.line}`, st.principle ? `\n${st.principle}` : '', '');
+      st.pillars.forEach((p) => L.push(`- **${p.label || '축'} · ${p.name}** — ${p.guide}${p.moves.length ? ` (${p.moves.join(' / ')})` : ''}${p.facts.length ? ` [${p.facts.join(' ')}]` : ''}`));
+      L.push('');
+    }
+    L.push(`팩트 ${st.coverage.facts.used}/${st.coverage.facts.total}건, 판단 ${st.coverage.signals.used}/${st.coverage.signals.total}건(인사이트에 쓰이지 않던 것 ${st.coverage.signals.fresh}건)을 썼다.`, '');
   }
   L.push('## 결론', '');
   L.push(`통합 인사이트 ${run.insights.length}건. 판단 ${u.signals}건 중 ${u.used}건(${pct(u.used, u.signals)}%)이 인사이트에 쓰였다.`, '');
@@ -125,6 +143,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<
 export function strategyHtml(project) {
   const run = project.run; const st = run?.strategy;
   if (!st) return `<!doctype html><meta charset="utf-8"><title>${esc(project.title)}</title><p>전략 한 장이 아직 없습니다.</p>`;
+  if (st.v === 2) return courseHtml(project);
   const facts = new Map((project.facts || []).map((f) => [f.id, f]));
   const usedFacts = [...new Set([...st.pillars.flatMap((p) => p.facts), ...st.fixes.flatMap((x) => x.facts), ...st.boosts.flatMap((x) => x.facts)])].filter((id) => facts.has(id));
   const ev = (ids) => (ids.length ? `<span class="ev">${ids.map((id) => `#${esc(id)}`).join(' ')}</span>` : '');
@@ -171,5 +190,81 @@ ${st.gaps.length ? `<h2>확인할 것</h2><ul class="gaps">${st.gaps.map((g) => 
 </section></div>
 <div class="foot">${usedFacts.map((id) => `<p><b>${esc(id)}</b> ${esc(facts.get(id).text)} <i>(${esc(facts.get(id).source)})</i></p>`).join('')}</div>
 <p class="note">근거 번호(#F)는 팩트북의 번호입니다. 사람이 확인하지 않은 팩트는 제출 전에 원문을 대조합니다.</p>
+</body></html>`;
+}
+
+// 전략 과제의 한 장 — 위에서 아래로 3층: 운영 방향 → 축 · 단계 → 파트별 × 단계별 할 일
+function courseHtml(project) {
+  const run = project.run; const st = run.strategy; const d = st.direction; const cv = st.coverage;
+  const facts = new Map((project.facts || []).map((f) => [f.id, f]));
+  const usedFacts = [...new Set([...d.facts, ...st.axes.flatMap((a) => a.facts), ...st.pillars.flatMap((p) => p.facts), ...st.fixes.flatMap((x) => x.facts), ...st.boosts.flatMap((x) => x.facts)])].filter((id) => facts.has(id)).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+  const ev = (ids) => (ids.length ? `<span class="ev">${ids.map((id) => `#${esc(id)}`).join(' ')}</span>` : '');
+  const pair = (a, b, f) => `<tr><td class="from">${esc(a)}</td><td class="arrow">→</td><td><b>${esc(b)}</b> ${ev(f)}</td></tr>`;
+  const axisNo = (id) => st.axes.findIndex((a) => a.id === id) + 1;
+  const rivalRow = (id) => {
+    if (id === 'BASE') return st.base ? `<tr class="base"><td class="tag">기본</td><td>${esc(st.base.line || st.base.name)}</td><td class="why">노드 없이 낸 방향</td></tr>` : '';
+    const r = st.rivals.find((x) => x.id === id); const it = st.judge.items.find((x) => x.id === id) || {};
+    return `<tr class="${id === d.id ? 'won' : ''}"><td class="tag">${id === d.id ? '채택' : it.level === '전술' ? '전술' : '후보'}</td><td><b>${esc(r.name)}</b> ${esc(r.line)}</td><td class="why">${esc(id === d.id ? st.judge.why : it.weak || '')}</td></tr>`;
+  };
+  const cell = (p, ph) => {
+    const c = p.cells.find((x) => x.phase === ph.id);
+    const tac = st.insights.filter((x) => x.fit === '맞음' && x.part === p.part && x.phase === ph.id);
+    return `<td>${c ? `${c.axis ? `<i class="ax a${axisNo(c.axis)}">${axisNo(c.axis)}</i>` : ''}${esc(c.move)}` : ''}${tac.map((x) => `<span class="ins" title="${esc(x.line)}">${esc(x.name)}</span>`).join('')}</td>`;
+  };
+  const off = st.insights.filter((x) => x.fit !== '맞음');
+  return `<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(project.title)} — 전략 한 장</title>
+<style>
+@page { size: A4 landscape; margin: 9mm; }
+* { box-sizing: border-box; } body { margin: 0; padding: 22px 26px; font-family: 'Pretendard', -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; color: #15181C; font-size: 11.5px; line-height: 1.45; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.top { display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; color: #6B7280; border-bottom: 1px solid #15181C; padding-bottom: 5px; }
+.layer { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 14px; padding: 12px 0; border-bottom: 1px solid #15181C; break-inside: avoid; }
+.layer > .no { font-size: 10px; letter-spacing: .08em; color: #6B7280; font-weight: 700; } .layer > .no b { display: block; font-size: 22px; color: #15181C; letter-spacing: 0; line-height: 1; margin-bottom: 3px; }
+h1 { font-size: 30px; line-height: 1.15; margin: 0 0 4px; letter-spacing: -.01em; } h1 mark { background: #FFD200; padding: 0 6px; }
+.line { font-size: 16px; font-weight: 700; margin: 0; } .standard { margin: 5px 0 0; color: #3F4650; font-size: 12.5px; }
+.l1 { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 22px; }
+.shift { display: grid; grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr); gap: 6px; align-items: start; margin-top: 9px; } .shift span { color: #6B7280; } .shift b { font-weight: 700; } .shift i { color: #9AA1AB; font-style: normal; }
+.kv { margin: 5px 0 0; color: #3F4650; } .kv b { color: #6B7280; font-weight: 700; font-size: 10px; margin-right: 6px; }
+h2 { font-size: 10px; letter-spacing: .1em; color: #6B7280; margin: 0 0 5px; font-weight: 700; }
+table { width: 100%; border-collapse: collapse; } td, th { padding: 4px 6px 4px 0; border-top: 1px solid #D6DAE0; vertical-align: top; text-align: left; }
+.rivals td.tag { width: 34px; font-size: 9.5px; font-weight: 700; color: #6B7280; } .rivals tr.won td.tag { color: #15181C; } .rivals tr.won td { background: #FFF6BF; } .rivals td.why { width: 38%; color: #6B7280; font-size: 10.5px; } .rivals tr.base td { color: #8A919B; }
+.axes { display: grid; gap: 14px; } .axis { border-top: 2px solid #15181C; padding-top: 5px; } .axis h3 { margin: 0; font-size: 13.5px; } .axis p { margin: 2px 0 0; color: #3F4650; }
+.ax { display: inline-block; width: 14px; height: 14px; line-height: 14px; text-align: center; border-radius: 50%; background: #15181C; color: #fff; font-size: 9px; font-style: normal; font-weight: 700; margin-right: 5px; vertical-align: 1px; }
+.matrix th { font-size: 10.5px; border-top: 0; border-bottom: 1px solid #15181C; padding-bottom: 5px; } .matrix th small { display: block; font-weight: 400; color: #6B7280; font-size: 10px; }
+.matrix td { padding: 6px 8px 6px 0; } .matrix td.part { width: 19%; } .matrix td.part b { display: block; font-size: 12.5px; } .matrix td.part span { color: #6B7280; font-size: 10.5px; }
+.ins { display: block; margin-top: 2px; font-size: 10px; color: #3F4650; } .ins::before { content: '◆ '; color: #E0B400; }
+.ev { font-family: ui-monospace, Consolas, monospace; font-size: 9px; color: #8A919B; }
+.tail { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; padding-top: 10px; } td.from { color: #6B7280; width: 44%; } td.arrow { width: 16px; color: #9AA1AB; } .gaps { margin: 0; padding-left: 15px; color: #3F4650; }
+.cov { display: flex; gap: 16px; font-size: 10.5px; color: #3F4650; margin-top: 8px; } .cov b { font-size: 13px; color: #15181C; }
+.warn { margin: 8px 0 0; padding: 5px 8px; background: #FFF1F0; color: #B42318; font-size: 10.5px; }
+.foot { margin-top: 12px; border-top: 1px solid #15181C; padding-top: 5px; font-size: 9px; color: #6B7280; columns: 3; column-gap: 18px; } .foot p { margin: 0 0 2px; break-inside: avoid; } .foot b { font-family: ui-monospace, Consolas, monospace; color: #15181C; }
+.note { font-size: 9px; color: #8A919B; margin-top: 6px; }
+</style></head><body>
+<div class="top"><span>${esc(project.title)}</span><span>THE FROM BRAIN · ${esc((run.at || '').slice(0, 10))} · AI의 판단은 예비 판정입니다</span></div>
+<section class="layer"><div class="no"><b>1</b>운영 방향</div><div class="l1">
+<div><h1><mark>${esc(d.name)}</mark></h1><p class="line">${esc(d.line)}</p><p class="standard">${esc(d.standard)}</p>
+${d.from || d.to ? `<div class="shift"><span>${esc(d.from)}</span><i>→</i><b>${esc(d.to)}</b></div>` : ''}
+${d.keeps ? `<p class="kv"><b>키우는 것</b>${esc(d.keeps)}</p>` : ''}${d.drops.length ? `<p class="kv"><b>하지 않는 것</b>${esc(d.drops.join(' · '))}</p>` : ''}
+<div class="cov"><span><b>${cv.facts.used}</b>/${cv.facts.total} 팩트</span><span><b>${cv.signals.used}</b>/${cv.signals.total} 판단</span><span><b>${cv.nodes.used}</b>/${cv.nodes.total} 노드</span></div></div>
+<div>${st.rivals?.length ? `<h2>겨룬 방향 ${st.rivals.length}개와 기본 방향</h2><table class="rivals">${st.judge.order.map(rivalRow).join('')}</table>` : ''}
+${st.check.ok ? '' : `<p class="warn">확인할 문제 — ${esc(st.check.problems.join(' / '))}</p>`}</div>
+</div></section>
+<section class="layer"><div class="no"><b>2</b>축</div><div class="axes" style="grid-template-columns: repeat(${Math.max(1, st.axes.length)}, minmax(0, 1fr))">
+${st.axes.map((a, i) => `<div class="axis"><h3><i class="ax">${i + 1}</i>${esc(a.name)}</h3><p>${esc(a.rule)}</p>${ev(a.facts)}</div>`).join('')}
+</div></section>
+<section class="layer"><div class="no"><b>3</b>파트 × 단계</div><div>
+<table class="matrix"><thead><tr><th></th>${st.phases.map((ph) => `<th>${esc(ph.when)}<small>${esc(ph.line)}</small></th>`).join('')}</tr></thead><tbody>
+${st.pillars.map((p) => `<tr><td class="part"><b>${esc(p.label || p.name)}</b><span>${esc(p.guide)}</span></td>${st.phases.map((ph) => cell(p, ph)).join('')}</tr>`).join('\n')}
+</tbody></table>
+${off.length ? `<p class="note">방향에 맞지 않아 놓지 않은 인사이트: ${esc(off.map((x) => x.name || x.id).join(', '))}</p>` : ''}
+</div></section>
+<div class="tail">
+<div>${st.fixes.length ? `<h2>푸는 것</h2><table>${st.fixes.map((x) => pair(x.pain, x.answer, x.facts)).join('')}</table>` : ''}</div>
+<div>${st.boosts.length ? `<h2>키우는 것</h2><table>${st.boosts.map((x) => pair(x.strength, x.answer, x.facts)).join('')}</table>` : ''}</div>
+<div>${st.gaps.length ? `<h2>확인할 것</h2><ul class="gaps">${st.gaps.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}</div>
+</div>
+<div class="foot">${usedFacts.map((id) => `<p><b>${esc(id)}</b> ${esc(facts.get(id).text)} <i>(${esc(facts.get(id).source)})</i></p>`).join('')}</div>
+<p class="note">◆는 경쟁에서 이긴 인사이트를 전술로 놓은 자리입니다. 동그라미 숫자는 그 할 일이 따르는 축입니다. 근거 번호(#F)는 팩트북의 번호이며, 사람이 확인하지 않은 팩트는 제출 전에 원문을 대조합니다.</p>
 </body></html>`;
 }
