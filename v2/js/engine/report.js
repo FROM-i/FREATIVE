@@ -22,15 +22,18 @@ export function reportMarkdown(project) {
     if (st.v >= 2) {
       const d = st.direction; const v3 = st.v >= 3; const area = (id) => (st.areas || []).find((a) => a.id === id)?.name || id;
       L.push('## 전략 한 장', '', `### 1. ${v3 ? '통합 운영 방향' : '운영 방향'}`, '', `**${d.name}** — ${d.line}`, '', `기준: ${d.standard}`, '');
+      if (d.lenses?.length) L.push(`만든 노드: ${d.lenses.map(lensName).join(' · ')}`, d.spine ? `푼 충돌: ${lensName(d.spine.a)} ↔ ${lensName(d.spine.b)}${d.how ? ` — ${d.how}` : ''}` : '', d.swap ? `경쟁사가 못 쓰는 이유: ${d.swap}` : '', '');
       if (d.covers?.length) L.push(...d.covers.map((c) => `- ${area(c.area)}: ${c.line}`), '');
       L.push(d.from || d.to ? `지금 ${d.from} → 바뀌는 것 ${d.to}` : '', d.keeps ? `키우는 것: ${d.keeps}` : '', d.drops.length ? `하지 않는 것: ${d.drops.join(' / ')}` : '', '');
       if (st.rivals?.length) {
         L.push('겨룬 방향:', '');
-        for (const id of st.judge.order) { const r = st.rivals.find((x) => x.id === id); const it = st.judge.items.find((x) => x.id === id); L.push(id === 'BASE' ? `- 기본 방향 — ${st.base?.line || ''}` : `- ${id}${id === d.id ? ' (채택)' : ''} ${r.name} — ${r.line}${it?.level && it.level !== '방향' ? ` [${it.level}으로 판정]` : ''}${it?.weak ? ` · 약점: ${it.weak}` : ''}`); }
+        for (const id of st.judge.order) { const r = st.rivals.find((x) => x.id === id); const it = st.judge.items.find((x) => x.id === id); L.push(id === 'BASE' ? `- 기본 방향 — ${st.base?.line || ''}` : `- ${id}${id === d.id ? ' (채택)' : ''} ${r.name} — ${r.line}${it?.level && it.level !== '방향' ? ` [${it.level}으로 판정]` : it?.own === '범용' ? ' [범용 문장으로 판정]' : ''}${it?.weak ? ` · 약점: ${it.weak}` : ''}`); }
         if (st.judge.why) L.push('', `고른 이유: ${st.judge.why}`);
         L.push('');
       }
       if (!st.check.ok) L.push(`> 확인할 문제: ${st.check.problems.join(' / ')}`, '');
+      const hi = run.course;
+      if (hi?.signals?.length && st.v >= 4) { const hs = new Map(hi.signals.map((x) => [x.id, x])); L.push('방향 높이의 노드 판단(통합):', '', ...hi.signals.filter((x) => x.scope === 'ALL').map((x) => `- ${d.signals.includes(x.id) ? '**' : ''}${lensName(x.lens)}${d.signals.includes(x.id) ? '**' : ''} — ${x.claim}`), '', '통합 판단 사이의 충돌:', '', ...hi.edges.filter((e) => e.type === 'tension').map((e) => `- ${lensName(hs.get(e.from).lens)} ↔ ${lensName(hs.get(e.to).lens)}: ${e.why}`), ''); }
       if (v3) L.push('### 2. 영역별 전략', '', ...st.pillars.map((p) => `- **${p.label} · ${p.name}** — ${p.guide}${p.facts.length ? ` [${p.facts.join(' ')}]` : ''}${p.thin ? ' (판단 근거 얇음)' : ''}`), '');
       else L.push('### 2. 축과 단계', '', ...st.axes.map((a) => `- **${a.id} ${a.name}** — ${a.rule}${a.facts.length ? ` [${a.facts.join(' ')}]` : ''}`), '');
       L.push(`### 3. ${v3 ? '전술 — 영역 × 단계' : '파트별 × 단계별 할 일'}`, '', ...st.phases.map((p) => `- **${p.when}** — ${p.line}`), '',
@@ -210,7 +213,7 @@ function courseHtml(project) {
   const rivalRow = (id) => {
     if (id === 'BASE') return st.base ? `<tr class="base"><td class="tag">기본</td><td>${esc(st.base.line || st.base.name)}</td><td class="why">노드 없이 낸 방향</td></tr>` : '';
     const r = st.rivals.find((x) => x.id === id); const it = st.judge.items.find((x) => x.id === id) || {};
-    return `<tr class="${id === d.id ? 'won' : ''}"><td class="tag">${id === d.id ? '채택' : it.level && it.level !== '방향' ? esc(it.level) : '후보'}</td><td><b>${esc(r.name)}</b> ${esc(r.line)}</td><td class="why">${esc(id === d.id ? st.judge.why : it.weak || '')}</td></tr>`;
+    return `<tr class="${id === d.id ? 'won' : ''}"><td class="tag">${id === d.id ? '채택' : it.level && it.level !== '방향' ? esc(it.level) : it.own === '범용' ? '범용' : '후보'}</td><td><b>${esc(r.name)}</b> ${esc(r.line)}</td><td class="why">${esc(id === d.id ? st.judge.why : it.weak || '')}</td></tr>`;
   };
   const cell = (p, ph) => `<td>${cellItems(st, p, ph).map((x) => `<p class="tac${x.insight ? ' won' : ''}">${x.axis ? `<i class="ax">${axisNo(x.axis)}</i>` : ''}${esc(x.move)}${x.parts?.length ? ` <small>${esc(x.parts.map((c) => categoryById(c)?.name).filter(Boolean).join(' · '))}</small>` : ''}</p>`).join('')}</td>`;
   const off = st.insights.filter((x) => x.fit !== '맞음');
@@ -241,16 +244,17 @@ table { width: 100%; border-collapse: collapse; } td, th { padding: 4px 6px 4px 
 .tail { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; padding-top: 10px; } td.from { color: #6B7280; width: 44%; } td.arrow { width: 16px; color: #9AA1AB; } .gaps { margin: 0; padding-left: 15px; color: #3F4650; }
 .cov { display: flex; gap: 16px; font-size: 10.5px; color: #3F4650; margin-top: 8px; } .cov b { font-size: 13px; color: #15181C; }
 .warn { margin: 8px 0 0; padding: 5px 8px; background: #FFF1F0; color: #B42318; font-size: 10.5px; }
-.foot { margin-top: 12px; border-top: 1px solid #15181C; padding-top: 5px; font-size: 9px; color: #6B7280; columns: 3; column-gap: 18px; } .foot p { margin: 0 0 2px; break-inside: avoid; } .foot b { font-family: ui-monospace, Consolas, monospace; color: #15181C; }
+.foot { margin-top: 10px; border-top: 1px solid #15181C; padding-top: 5px; font-size: 8.5px; color: #6B7280; columns: 4; column-gap: 14px; } .foot p { margin: 0 0 1px; break-inside: avoid; } .foot b { font-family: ui-monospace, Consolas, monospace; color: #15181C; }
 .note { font-size: 9px; color: #8A919B; margin-top: 6px; }
 </style></head><body>
 <div class="top"><span>${esc(project.title)}</span><span>THE FROM BRAIN · ${esc((run.at || '').slice(0, 10))} · AI의 판단은 예비 판정입니다</span></div>
 <section class="layer"><div class="no"><b>1</b>${v3 ? '통합 운영 방향' : '운영 방향'}</div><div class="l1">
 <div><h1><mark>${esc(d.name)}</mark></h1><p class="line">${esc(d.line)}</p><p class="standard">${esc(d.standard)}</p>
+${d.lenses?.length ? `<p class="kv"><b>만든 노드</b>${esc(d.lenses.map(lensName).join(' · '))}</p>` : ''}${d.spine ? `<p class="kv"><b>푼 충돌</b>${esc(`${lensName(d.spine.a)} ↔ ${lensName(d.spine.b)}${d.how ? ` — ${d.how}` : ''}`)}</p>` : ''}${d.swap ? `<p class="kv"><b>고유한 이유</b>${esc(d.swap)}</p>` : ''}
 ${d.covers?.length ? `<table class="covers">${d.covers.map((c) => `<tr><td>${esc(area(c.area))}</td><td>${esc(c.line)}</td></tr>`).join('')}</table>` : ''}
 ${d.from || d.to ? `<div class="shift"><span>${esc(d.from)}</span><i>→</i><b>${esc(d.to)}</b></div>` : ''}
 ${d.keeps ? `<p class="kv"><b>키우는 것</b>${esc(d.keeps)}</p>` : ''}${d.drops.length ? `<p class="kv"><b>하지 않는 것</b>${esc(d.drops.join(' · '))}</p>` : ''}
-<div class="cov"><span><b>${cv.facts.used}</b>/${cv.facts.total} 팩트</span><span><b>${cv.signals.used}</b>/${cv.signals.total} 판단</span><span><b>${cv.nodes.used}</b>/${cv.nodes.total} 노드</span></div></div>
+<div class="cov"><span><b>${cv.facts.used}</b>/${cv.facts.total} 팩트</span><span><b>${cv.signals.used}</b>/${cv.signals.total} 판단</span><span><b>${cv.nodes.used}</b>/${cv.nodes.total} 노드</span>${cv.high ? `<span>방향 높이 판단 <b>${cv.high.used}</b>/${cv.high.total} · 충돌 ${cv.high.tensions}</span>` : ''}</div></div>
 <div>${st.rivals?.length ? `<h2>겨룬 방향 ${st.rivals.length}개와 기본 방향</h2><table class="rivals">${st.judge.order.map(rivalRow).join('')}</table>` : ''}
 ${st.check.ok ? '' : `<p class="warn">확인할 문제 — ${esc(st.check.problems.join(' / '))}</p>`}</div>
 </div></section>
@@ -270,7 +274,7 @@ ${off.length ? `<p class="note">방향에 맞지 않아 놓지 않은 인사이�
 <div>${st.boosts.length ? `<h2>키우는 것</h2><table>${st.boosts.map((x) => pair(x.strength, x.answer, x.facts)).join('')}</table>` : ''}</div>
 <div>${st.gaps.length ? `<h2>확인할 것</h2><ul class="gaps">${st.gaps.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}</div>
 </div>
-<div class="foot">${usedFacts.map((id) => `<p><b>${esc(id)}</b> ${esc(facts.get(id).text)} <i>(${esc(facts.get(id).source)})</i></p>`).join('')}</div>
-<p class="note">◆는 경쟁에서 이긴 인사이트를 전술로 놓은 자리입니다.${v3 ? ' 전술 뒤의 작은 글씨는 맡는 파트입니다.' : ' 동그라미 숫자는 그 할 일이 따르는 축입니다.'} 근거 번호(#F)는 팩트북의 번호이며, 사람이 확인하지 않은 팩트는 제출 전에 원문을 대조합니다.</p>
+<div class="foot">${usedFacts.map((id) => { const t = String(facts.get(id).text || ''); return `<p><b>${esc(id)}</b> ${esc(t.length > 58 ? `${t.slice(0, 56)}…` : t)}</p>`; }).join('')}</div>
+<p class="note">◆는 경쟁에서 이긴 인사이트를 전술로 놓은 자리입니다. 팩트의 전문과 출처는 팩트북과 전체 기록(.md)에 있습니다.${v3 ? ' 전술 뒤의 작은 글씨는 맡는 파트입니다.' : ' 동그라미 숫자는 그 할 일이 따르는 축입니다.'} 근거 번호(#F)는 팩트북의 번호이며, 사람이 확인하지 않은 팩트는 제출 전에 원문을 대조합니다.</p>
 </body></html>`;
 }

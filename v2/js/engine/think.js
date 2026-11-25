@@ -27,7 +27,7 @@ const STANCES = new Set(['keep', 'change', 'limit', 'open']);
 const TYPES = new Set(['cause', 'condition', 'reinforce', 'tension']);
 const SOURCES = ['팩트', '브리프', '일반 관찰', '추론', '확인 필요'];
 const ASSUMED = 0.6;   // 팩트 없이 쓴 터널 판단의 비중
-const STAGE_NAMES = { weave: '그래프 통합안', strategy: '전략 한 장', courseScope: '업무 영역', courseBase: '기본 방향', course: '운영 방향 후보', courseJudge: '방향 판정', layers: '영역별 전략 · 전술', baseline: '기본안', reframe: '프레임', route: '사조 고르기', activate: '노드 판단', link: '연결', integrate: '통합', cross: '교배', screen: '선별', duel: '대결', distinct: '같은 해법 확인', stance: '기조', attack: '공격', revise: '보완', hold: '기조 확인', verdict: '판정', direct: '방향', plan: '기획' };
+const STAGE_NAMES = { weave: '그래프 통합안', strategy: '전략 한 장', courseScope: '업무 영역', courseLens: '방향 높이의 노드 판단', courseLink: '통합 판단 연결', courseBase: '기본 방향', course: '운영 방향 후보', courseJudge: '방향 판정', layers: '영역별 전략 · 전술', baseline: '기본안', reframe: '프레임', route: '사조 고르기', activate: '노드 판단', link: '연결', integrate: '통합', cross: '교배', screen: '선별', duel: '대결', distinct: '같은 해법 확인', stance: '기조', attack: '공격', revise: '보완', hold: '기조 확인', verdict: '판정', direct: '방향', plan: '기획' };
 const LINK_AT_ONCE = 45;   // 한 번의 호출로 잇는 신호 수의 한도. 이보다 많으면 이슈별로 나눈다
 const clamp = (v, d = 0.5) => (Number.isFinite(+v) ? Math.min(1, Math.max(0, +v)) : d);
 const text = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -515,7 +515,7 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
 
 /** 이미 있는 분석 결과 위에 전략 한 장만 만든다. 앞 단계는 다시 돌리지 않는다.
  *  컨셉 과제는 호출 1~2회, 전략 과제는 방향 후보 · 판정 · 3층 전개까지 4~6회. */
-export async function strategizeOnly(project, provider, { signal, onEvent = () => {}, precedents = SEED_PRECEDENTS } = {}) {
+export async function strategizeOnly(project, provider, { signal, onEvent = () => {}, precedents = SEED_PRECEDENTS, fresh = false } = {}) {
   const run = project.run;
   if (!run?.insights?.length) throw new Error('먼저 분석을 해야 한다');
   const call = async (args) => {
@@ -529,6 +529,6 @@ export async function strategizeOnly(project, provider, { signal, onEvent = () =
   const scoped = { ...project, facts: validFacts(project).facts, view: { precedents } };
   if (run.strategy && !(run.strategy.v >= 2) && levelOf(project) === 'strategy') run.strategyBefore = run.strategy;   // 인사이트에서 올려 쓴 예전 한 장은 지우지 않고 남긴다
   const emit = (type, extra = {}) => onEvent({ type, run, ...extra });
-  return (levelOf(project) === 'strategy' ? chart : strategize)({ project: scoped, run, call, emit });
+  return (levelOf(project) === 'strategy' ? chart : strategize)({ project: scoped, run, call, emit, fresh });
 }
 export { levelOf };

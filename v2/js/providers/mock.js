@@ -194,18 +194,23 @@ function strategy({ project, run }) {
 // 운영 방향 — 전략 과제. 업무 영역, 기본 방향, 방향 후보, 판정, 영역별 전략과 전술
 const courseScope = () => ({ areas: [{ name: '[목업] 영역 1', note: '[목업] 이 영역에 드는 일' }, { name: '[목업] 영역 2', note: '[목업] 이 영역에 드는 일' }, { name: '[목업] 영역 3', note: '[목업] 이 영역에 드는 일' }] });
 const courseBase = () => ({ name: '[목업] 기본 방향', line: '[목업] 누구나 낼 운영 방향', standard: '[목업] 통상의 기준' });
-function course({ run, need, areas }) {
-  const live = run.signals.filter((s) => !s.muted);
+// 방향 높이의 노드 판단 — 통합 1개와 영역마다 1개. 연결은 이웃한 통합 판단끼리 충돌과 강화를 번갈아 낸다
+const courseLens = ({ lens, areas, project }) => ({ against: '[목업] 통념의 틀린 점', signals: [{ scope: 'ALL', claim: `[목업] ${lens.name}로 본 통합 판단`, basis: '[목업] 원문의 대목', stance: 'change', facts: (project.facts || []).slice(0, 1).map((f) => f.id) },
+  ...areas.map((a, i) => ({ scope: a.id, claim: `[목업] ${lens.name}로 본 ${a.name}의 방침`, basis: '[목업]', stance: 'keep', facts: (project.facts || []).slice(i % 2, (i % 2) + 1).map((f) => f.id) }))] });
+const courseLink = ({ signals }) => ({ edges: signals.slice(1).map((x, i) => ({ from: signals[i].id, to: x.id, type: i % 2 ? 'reinforce' : 'tension', why: '[목업] 둘을 그대로 함께 따를 수 없다' })) });
+function course({ need, areas, high, spines }) {
+  const all = high.filter((x) => x.scope === 'ALL');
+  const rank = (x) => (x.family === 'identity' ? 0 : x.family === 'tunnel' ? 1 : 2);
   return { candidates: [0, 1, 2].map((i) => {
-    const seen = new Set(); const picked = [];
-    const order = [...live].sort((a, b) => (a.family === 'tunnel' ? 0 : 1) - (b.family === 'tunnel' ? 0 : 1) || hash(`course${i}${a.id}`) - hash(`course${i}${b.id}`));
-    for (const x of order) { if (seen.has(x.lens)) continue; seen.add(x.lens); picked.push(x); if (picked.length >= Math.max(need?.nodes || 2, 4)) break; }
-    return { id: `D${i + 1}`, name: `[목업] 운영 방향 ${i + 1}`, line: '[목업] 실제 모델이 방향 한 줄을 쓴다', standard: '[목업] 결정을 가르는 기준 한 문장', covers: areas.map((a) => ({ area: a.id, line: '[목업] 이 영역에서 달라지는 것' })),
-      from: '[목업] 지금의 기준', to: '[목업] 바뀌는 기준', keeps: '[목업] 키우는 것', drops: ['[목업] 하지 않는 것'], answer: '[목업] 판정 질문의 답', signals: picked.map((x) => x.id), facts: [...new Set(picked.flatMap((x) => x.facts || []))] };
+    const sp = spines[i]; const seen = new Set(); const picked = [];
+    const order = [...(sp ? [sp.a, sp.b] : []), ...all.filter((x) => x.family === 'tunnel').slice(i % 2, (i % 2) + 1), ...[...all].sort((a, b) => rank(a) - rank(b) || hash(`course${i}${a.id}`) - hash(`course${i}${b.id}`))];
+    for (const x of order) { if (seen.has(x.lens)) continue; seen.add(x.lens); picked.push(x); if (picked.length >= Math.max(need?.nodes || 2, 5)) break; }
+    return { id: `D${i + 1}`, name: `[목업] 운영 방향 ${i + 1}`, line: '[목업] 실제 모델이 방향 한 줄을 쓴다', standard: '[목업] 결정을 가르는 기준 한 문장', how: '[목업] 충돌을 푸는 방법', swap: '[목업] 경쟁사가 그대로 쓸 수 없는 이유', covers: areas.map((a) => ({ area: a.id, line: '[목업] 이 영역에서 달라지는 것' })),
+      from: '[목업] 당연하게 여기던 관행', to: '[목업] 다르게 읽은 것', keeps: '[목업] 키우는 것', drops: ['[목업] 하지 않는 것'], answer: '[목업] 판정 질문의 답', signals: picked.map((x) => x.id), facts: [...new Set([...picked.flatMap((x) => x.facts || []), ...high.flatMap((x) => x.facts || [])])] };
   }) };
 }
-const courseJudge = ({ rivals, areas }) => ({ order: [rivals[0].id, 'BASE', ...rivals.slice(1).map((r) => r.id)], items: rivals.map((r) => ({ id: r.id, level: '방향', reaches: areas.map((a) => a.id), vsBase: '다름', strong: '[목업] 강한 점', weak: '[목업] 약한 점' })), why: '[목업] 고른 이유는 실제 모델이 쓴다', borrow: rivals[1] ? [{ from: rivals[1].id, what: '[목업] 가져올 것' }] : [], risk: '[목업] 무너질 수 있는 지점' });
-function layers({ project, run, areas, need }) {
+const courseJudge = ({ rivals, areas }) => ({ order: [rivals[0].id, 'BASE', ...rivals.slice(1).map((r) => r.id)], items: rivals.map((r, i) => ({ id: r.id, level: '방향', reaches: areas.map((a) => ({ area: a.id, case: '[목업] 이 영역에서 가르는 결정' })), own: i === rivals.length - 1 && rivals.length > 1 ? '범용' : '고유', control: '가능', vsBase: '다름', strong: '[목업] 강한 점', weak: '[목업] 약한 점' })), why: '[목업] 고른 이유는 실제 모델이 쓴다', borrow: rivals[1] ? [{ from: rivals[1].id, what: '[목업] 가져올 것' }] : [], risk: '[목업] 무너질 수 있는 지점' });
+function layers({ project, run, areas, need, high = [] }) {
   const cats = (project.categories?.length ? project.categories : [project.category].filter(Boolean)).filter((c) => c !== 'integrated');
   const used = new Set((run.insights || []).flatMap((i) => i.check?.used || []));
   const live = run.signals.filter((s) => !s.muted);
@@ -218,14 +223,14 @@ function layers({ project, run, areas, need }) {
     phases: phases.map((id, i) => ({ id, when: ['처음', '중간', '끝'][i], line: '[목업] 이 시기에 이룰 상태' })),
     areas: areas.map((a, i) => ({ area: a.id, name: `[목업] 영역 전략 ${i + 1}`, line: '[목업] 방향이 이 영역에서 되는 방침',
       tactics: Array.from({ length: count }, (_, k) => ({ phase: phases[k % phases.length], move: `[목업] 전술 ${i + 1}-${k + 1}`, parts: cats.length ? [cats[part++ % cats.length]] : [], insight: k === 1 ? ins.filter((_, n) => n % areas.length === i)[0]?.id || '' : '' })),
-      facts: pick(facts, i, 2), signals: [...pick(fresh, i, 2), ...pick(rest, i, 1)].map((s) => s.id) })),
+      facts: pick(facts, i, 2), signals: [...high.filter((x) => x.scope === a.id).slice(0, 2).map((x) => x.id), ...[...pick(fresh, i, 2), ...pick(rest, i, 1)].map((s) => s.id)] })),
     insights: ins.map((n, i) => ({ id: n.id, name: `[목업] 전술 ${i + 1}`, line: '[목업] 실제 모델이 줄여 쓴다', fit: '맞음' })),
     fixes: facts.length ? [{ pain: '[목업] 지금의 문제', answer: '[목업] 바꾸는 것', facts: facts.slice(0, 1) }] : [],
     boosts: facts.length > 1 ? [{ strength: '[목업] 이미 잘하는 것', answer: '[목업] 더 키우는 것', facts: facts.slice(1, 2) }] : [],
     gaps: ['[목업] 확인할 것'],
   };
 }
-const HANDLERS = { courseScope, courseBase, course, courseJudge, layers, weave, strategy, plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, distinct, stance, hold, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
+const HANDLERS = { courseScope, courseLens, courseLink, courseBase, course, courseJudge, layers, weave, strategy, plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, distinct, stance, hold, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
 
 export function createMock({ delay = 0 } = {}) {
   return {
