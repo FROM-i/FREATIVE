@@ -62,7 +62,9 @@ const screen = ({ project, candidates, baseline }) => ({ screens: candidates.map
 // 고친 안(id가 r로 끝난다)과 고치기 전 안이 겨루면 목업에서는 고치기 전 안이 이긴다 — 예시 문장을 그대로 보여 주기 위해서다
 const duel = ({ pairs }) => ({ duels: pairs.map((p) => ({ pair: p.id, winner: p.a.id.endsWith('r') ? p.b.id : p.b.id.endsWith('r') ? p.a.id : (mockScore(p.a.title) >= mockScore(p.b.title) ? p.a.id : p.b.id), why: '[목업] 이긴 이유는 실제 모델이 쓴다.', notable: hash(`not${p.a.id}${p.b.id}`) < 0.25 ? p.b.id : '', notable_why: '[목업] 뚜렷한 점', unsure: false })) });
 const attack = () => ({ attacks: [{ from: '제약', hit: '[목업] 약점은 실제 모델이 찾는다.', severity: 2 }], keep: '[목업] 지켜야 할 대담한 부분' });
-const revise = ({ cand }) => ({ title: cand.title, concept: cand.concept, visual: cand.visual, gain: cand.gain, keep: '[목업]', change: '[목업]', verdict: '[목업]', fixed: [{ hit: '[목업] 받은 공격', fix: '[목업] 고친 것' }], open: [] });
+const revise = ({ cand, attack }) => ({ title: cand.title, concept: cand.concept, visual: cand.visual, gain: cand.gain, keep: '[목업]', change: '[목업]', verdict: '[목업]', responses: (attack?.attacks || [{ hit: '[목업] 받은 공격' }]).map((a, i) => ({ hit: a.hit, how: ['고침', '대가', '받지 않음'][i % 3], note: ['[목업] 기조 안에서 고친 것', '[목업] 기조를 택해 감수하는 것', '[목업] 받으면 다른 안이 된다'][i % 3] })), open: [] });
+const stance = ({ candidates }) => ({ stances: candidates.map((c) => ({ id: c.id, bet: `[목업] ${c.title}에 건다`, device: '[목업] 핵심 장치', gives_up: '[목업] 포기한 것' })) });
+const hold = ({ items }) => ({ checks: items.map((x) => ({ id: x.id, kept: '지킴', why: '[목업] 기조가 그대로다' })), groups: items.map((x) => ({ name: x.after.title, ids: [x.id], why: '' })) });
 
 function link({ project, signals }) {
   if (project.id !== SAMPLE_ID) return { edges: templateEdges(signals, signals) };
@@ -161,7 +163,7 @@ const creative = ({ run, chapters }) => { const n = run.insights[0].id; const b 
 
 // 같은 해법 묶기 — 목업 후보는 제목으로 만든 묶음 이름이 같으면 한 묶음, 그 밖에는 하나씩
 const distinct = ({ candidates }) => { const m = new Map(); for (const c of candidates) { const k = String(c.title).startsWith('[목업]') ? `[목업] 해법 ${Math.floor(hash(`fam${c.title}`) * 5) + 1}` : c.id; m.set(k, [...(m.get(k) || []), c.id]); } return { groups: [...m].map(([name, ids]) => ({ name: name.startsWith('[목업]') ? name : candidates.find((c) => c.id === ids[0]).title, ids, why: ids.length > 1 ? '[목업] 같은 해법' : '' })) }; };
-const HANDLERS = { plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, distinct, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
+const HANDLERS = { plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, distinct, stance, hold, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
 
 export function createMock({ delay = 0 } = {}) {
   return {

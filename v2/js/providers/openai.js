@@ -8,8 +8,8 @@ export const OPENAI_DEFAULTS = {
   mode: 'direct',
   baseUrl: 'https://api.openai.com/v1',
   proxyUrl: '/api/llm',
-  // judge — 고르고 가르고 판정하는 호출(사조 훑기 · 기본안 대조 · 대결 · 같은 해법 묶기 · 공격 · 더프롬 판정). 만드는 호출과 모델을 따로 둘 수 있다.
-  models: { director: 'gpt-6-astra', brain: 'gpt-6.1-sol', sub: 'gpt-6.1-sol', judge: 'gpt-6-astra' },
+  // lead · support — knowledge/orchestration.js가 호출마다 붙이는 급. 여기에 모델을 적으면 역할별 모델보다 먼저 쓴다. 비워 두면 역할별 모델을 쓴다.
+  models: { director: 'gpt-6-astra', brain: 'gpt-6.1-sol', sub: 'gpt-6.1-sol', judge: 'gpt-6-astra', lead: '', support: '' },
   efforts: { director: 'high', brain: 'high', sub: 'low', judge: 'high' },
 };
 
@@ -51,8 +51,8 @@ export function createOpenAI(config = {}, { getKey = () => '', getCode = () => '
     name: 'openai',
     label: c.mode === 'proxy' ? 'OpenAI (서버 키)' : 'OpenAI (내 키)',
     models: c.models,
-    async json({ role = 'director', system, user, signal }) {
-      const model = c.models[role] || c.models.director;
+    async json({ role = 'director', tier = '', system, user, signal }) {
+      const model = c.models[tier] || c.models[role] || c.models.director;
       const body = {
         model, instructions: system,
         input: [{ role: 'user', content: [{ type: 'input_text', text: user }] }],

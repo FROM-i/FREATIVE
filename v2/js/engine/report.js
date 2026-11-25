@@ -71,6 +71,7 @@ export function reportMarkdown(project) {
     if (!c.ok) L.push(`> 검증 미통과: ${c.problems.join(' / ')}`, '');
     L.push(`- 컨셉 방향: ${n.concept}`, `- 보이는 표현: ${n.visual}`, `- 지킬 관성: ${n.keep}`, `- 바꿀 해석: ${n.change}`);
     L.push(`- 근본 이슈에 적용하면: ${n.substitute.who} — ${n.substitute.changes}`, `- 판정 질문의 답: ${n.verdict}`, `- 문(N7): ${n.gate}`);
+    if (n.stance?.bet) L.push(`- 기조: ${n.stance.bet}${n.stance.givesUp ? ` (포기한 것: ${n.stance.givesUp})` : ''}${n.kept ? ` — 고친 뒤 ${n.kept}` : ''}`, ...(n.costs || []).map((x) => `  - 감수한 대가: ${x.note}`), ...(n.refused || []).map((x) => `  - 받지 않은 공격: ${x.hit} — ${x.note}`));
     if (n.from) { const v = n.from; const ans = (o) => Object.entries(o).filter(([k, x]) => !['level', 'confidence'].includes(k) && x).map(([, x]) => x).join(' '); L.push(`- 더프롬 판정: ${v.verdict}${v.push ? ` — 더 밀 곳: ${v.push}` : ''}`, `- 차별화: ${v.differentiation.level || '판단 보류'} — ${ans(v.differentiation)}`, `- 실효성: ${v.effectiveness.level || '판단 보류'} (${v.effectiveness.confidence}) — ${ans(v.effectiveness)}`, `- 확인 항목: ${v.checks.map((c) => `${c.item} ${c.result}`).join(' · ')}`, ...(v.held.length ? [`- 판단을 미룬 것: ${v.held.join(' / ')}`] : [])); }
     if (n.attacks?.length) L.push(`- 받은 공격 ${n.attacks.length}건: ${n.attacks.map((x) => `[${x.from}] ${x.hit}`).join(' / ')}`, ...(n.fixed?.length ? [`- 고친 것: ${n.fixed.map((f) => f.fix).join(' / ')}`] : []));
     if (n.facts?.length) L.push(`- 근거 팩트: ${n.facts.join(', ')}`);

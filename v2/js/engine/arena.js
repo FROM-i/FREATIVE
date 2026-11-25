@@ -9,7 +9,7 @@
 //   재대결        고친 안과 고치기 전 안이 겨뤄 이긴 쪽을 남긴다
 //
 // 선별의 잣대는 모두 더프롬의 관점(knowledge/viewpoint.js)이다. 순위 계산은 코드가 한다.
-import { crossPrompt, screenPrompt, duelPrompt, distinctPrompt, attackPrompt, revisePrompt } from '../../knowledge/prompts-arena.js';
+import { crossPrompt, screenPrompt, duelPrompt, distinctPrompt, stancePrompt, holdPrompt, attackPrompt, revisePrompt } from '../../knowledge/prompts-arena.js';
 import { FAMILIES } from '../../knowledge/nodes.js';
 import { lensName } from '../graph/model.js';
 
@@ -153,7 +153,7 @@ export async function arena({ project, run, call, emit, pool }) {
   const duels = [];
   const judge = async (group, tag) => {
     const pairs = group.map((m) => ({ id: m.id, a: byId.get(m.a), b: byId.get(m.b) }));
-    const p = duelPrompt(project, pairs);
+    const p = duelPrompt(project, pairs, tag);
     const raw = await call({ role: 'judge', ...p, task: { kind: 'duel', project, pairs, tag } });
     const got = new Map((Array.isArray(raw?.duels) ? raw.duels : []).map((d) => [text(d.pair), d]));
     return group.map((m) => { const d = got.get(m.id); const w = text(d?.winner); const n = text(d?.notable); return { ...m, winner: w === m.a || w === m.b ? w : '', why: text(d?.why), notable: n === m.a || n === m.b ? n : '', notableWhy: text(d?.notable_why), unsure: d?.unsure === true }; });
@@ -209,22 +209,37 @@ export async function arena({ project, run, call, emit, pool }) {
 
   // 5) 공격 · 보완 — 이긴 안을 고친다
   emit('stage', { stage: 'forge' });
+  const where = (c) => (c.origin.type === 'node' ? `${lensName(c.origin.lens)}의 완성안${c.origin.frame && c.origin.frame !== 'R0' ? ` · ${c.origin.frame}` : ''}` : c.origin.type === 'cross' ? `${c.origin.lenses.map(lensName).join(' × ')} 교배` : `묶음 통합안 ${c.origin.insight}`);
+  // 기조 — 공격을 받기 전에, 안마다 끝까지 지킬 것(거는 것 · 핵심 장치 · 포기한 것)을 정한다.
+  // 받은 공격을 전부 고치게 하면 안이 무난해지고 서로 닮는다. 기조가 있어야 고치면서도 구분이 남는다.
+  emit('stage', { stage: 'stance' });
+  {
+    const p = stancePrompt(project, winners.map((c) => ({ ...c, where: where(c) })));
+    const raw = await call({ role: 'director', ...p, task: { kind: 'stance', project, candidates: winners } });
+    const got = new Map((Array.isArray(raw?.stances) ? raw.stances : []).map((x) => [text(x.id), x]));
+    for (const c of winners) { const x = got.get(c.id); c.stance = { bet: text(x?.bet) || c.concept, device: text(x?.device), givesUp: text(x?.gives_up) }; }
+  }
+
   // 공격은 한꺼번에 받고, 보완은 순위대로 하나씩 한다 — 뒤에 고치는 안이 앞 안의 장치를 가져다 쓰면 최종안이 다시 같아진다.
+  const HOW = ['고침', '대가', '받지 않음'];
   const attacked = await pool(winners, s.concurrency, async (c) => {
-    const ap = attackPrompt(project, c, run.baseline);
+    const ap = attackPrompt(project, c, run.baseline, c.stance);
     const araw = await call({ role: 'judge', ...ap, task: { kind: 'attack', project, cand: c } });
     return { cand: c, attack: { attacks: (Array.isArray(araw?.attacks) ? araw.attacks : []).map((a) => ({ from: text(a.from), hit: text(a.hit), severity: Math.min(3, Math.max(1, Math.round(+a.severity || 1))) })).filter((a) => a.hit), keep: text(araw?.keep) } };
   });
   const forged = [];
   for (const { cand: c, attack } of attacked) {
     if (!attack.attacks.length) { forged.push({ cand: c, attack, revised: null }); continue; }
-    // 다른 최종안의 지금 모습 — 이미 고친 안은 고친 모습으로
-    const others = winners.filter((w) => w !== c).map((w) => { const f = forged.find((x) => x.cand === w); const v = f?.revised || w; return { title: v.title, concept: v.concept }; });
-    const rp = revisePrompt(project, c, attack, run.baseline, others);
+    // 다른 최종안의 지금 모습과 기조 — 이미 고친 안은 고친 모습으로
+    const others = winners.filter((w) => w !== c).map((w) => { const f = forged.find((x) => x.cand === w); const v = f?.revised || w; return { title: v.title, concept: v.concept, bet: w.stance.bet, device: w.stance.device }; });
+    const rp = revisePrompt(project, c, attack, run.baseline, others, c.stance);
     const rraw = await call({ role: 'director', ...rp, task: { kind: 'revise', project, cand: c, attack, others } });
     if (!text(rraw?.concept)) { forged.push({ cand: c, attack, revised: null }); continue; }
+    // 공격마다 고침 · 대가 · 받지 않음 가운데 하나. 예전 형식(fixed)도 받는다
+    const responses = (Array.isArray(rraw.responses) ? rraw.responses : (Array.isArray(rraw.fixed) ? rraw.fixed.map((f) => ({ hit: f.hit, how: '고침', note: f.fix })) : []))
+      .map((r) => ({ hit: text(r.hit), how: HOW.includes(text(r.how)) ? text(r.how) : '고침', note: text(r.note) })).filter((r) => r.note);
     forged.push({ cand: c, attack, revised: { id: `${c.id}r`, title: text(rraw.title) || c.title, concept: text(rraw.concept), visual: text(rraw.visual) || c.visual, gain: text(rraw.gain) || c.gain, keep: text(rraw.keep), change: text(rraw.change), verdict: text(rraw.verdict),
-      fixed: (Array.isArray(rraw.fixed) ? rraw.fixed : []).map((f) => ({ hit: text(f.hit), fix: text(f.fix) })).filter((f) => f.fix), open: (Array.isArray(rraw.open) ? rraw.open : []).map(text).filter(Boolean) } });
+      responses, fixed: responses.filter((r) => r.how === '고침').map((r) => ({ hit: r.hit, fix: r.note })), costs: responses.filter((r) => r.how === '대가'), refused: responses.filter((r) => r.how === '받지 않음'), open: (Array.isArray(rraw.open) ? rraw.open : []).map(text).filter(Boolean) } });
   }
 
   // 6) 재대결 — 고친 안과 고치기 전 안
@@ -233,18 +248,24 @@ export async function arena({ project, run, call, emit, pool }) {
   duels.push(...rres.map((d) => ({ ...d, stage: '재대결' })));
   for (const f of forged) { const r = rres.find((x) => x.id === `X${f.cand.id}`); f.adopted = !!(f.revised && r && r.winner === f.revised.id); f.rematch = r ? r.why : ''; }
 
-  // 고친 뒤 다시 견준다 — 고치다가 같은 해법이 된 안은 고치기 전으로 되돌린다(고치기 전에는 서로 달랐다).
+  // 기조 확인 — 고친 안이 기조를 버렸으면 고치기 전으로 되돌린다. 고치다가 서로 같아진 안도 되돌린다(고치기 전에는 달랐다).
   let reverted = 0;
-  if (forged.filter((f) => f.adopted).length && forged.length > 1) {
-    const now = forged.map((f) => { const v = f.adopted ? f.revised : f.cand; return { id: f.cand.id, title: v.title, concept: v.concept, visual: v.visual, gain: v.gain }; });
-    const p = distinctPrompt(project, now);
-    const raw = await call({ role: 'judge', ...p, task: { kind: 'distinct', project, candidates: now, stage: 'revised' } });
+  if (forged.some((f) => f.adopted)) {
+    const items = forged.map((f) => ({ id: f.cand.id, stance: { 거는_것: f.cand.stance.bet, 핵심_장치: f.cand.stance.device }, before: f.cand, after: f.adopted ? f.revised : f.cand }));
+    const p = holdPrompt(project, items);
+    const raw = await call({ role: 'judge', ...p, task: { kind: 'hold', project, items } });
+    const KEPT = ['지킴', '약해짐', '버림'];
+    for (const x of Array.isArray(raw?.checks) ? raw.checks : []) {
+      const f = forged.find((y) => y.cand.id === text(x.id)); if (!f || !f.adopted) continue;
+      f.kept = KEPT.includes(text(x.kept)) ? text(x.kept) : ''; f.keptWhy = text(x.why);
+      if (f.kept === '버림') { f.adopted = false; f.reverted = true; reverted++; f.rematch = `고친 안이 기조를 버려 고치기 전 안을 남겼다 — ${f.keptWhy}`; }
+    }
     for (const g of Array.isArray(raw?.groups) ? raw.groups : []) {
       const same = forged.filter((f) => (Array.isArray(g.ids) ? g.ids : []).map(text).includes(f.cand.id));
       // 순위가 가장 높은 안은 그대로 두고, 나머지 가운데 고친 안을 되돌린다
       for (const f of same.slice(1)) { if (!f.adopted) continue; f.adopted = false; f.reverted = true; reverted++; f.rematch = `고친 안이 ${same[0].cand.id}와 같은 해법이 되어 고치기 전 안을 남겼다`; }
     }
-    if (reverted) run.notes.push(`고친 뒤 같은 해법이 된 안 ${reverted}개를 고치기 전으로 되돌렸다. 그 안이 받은 공격은 고쳐지지 않은 채 남는다`);
+    if (reverted) run.notes.push(`고친 뒤 기조를 버렸거나 다른 안과 같아진 안 ${reverted}개를 고치기 전으로 되돌렸다. 그 안이 받은 공격은 고쳐지지 않은 채 남는다`);
   }
 
   // 7) 이긴 안을 통합 인사이트의 모양으로 — 근거 판단은 후보가 나온 판단이다
@@ -264,11 +285,10 @@ export async function arena({ project, run, call, emit, pool }) {
       without: { nearest: c.screen?.nearest || src?.without?.nearest || '', baseline: src?.without?.baseline || '', difference: c.screen?.why || src?.without?.difference || '' },
       open: [...(f.adopted ? f.revised.open : []), ...(src?.open || [])],
       check: { ok: true, problems: [], used, byFamily, families: Object.keys(byFamily).filter((k) => byFamily[k]), lenses: [...new Set(used.map((id) => sig.get(id).lens))], foreign: 0 },
-      origin: c.origin, wins: c.wins ?? null, seat: c.seat, family: c.group || c.screen?.family || '', reach: c.screen?.success || '', contested: !!c.contested, attacks: f.attack.attacks, kept: f.attack.keep, fixed: f.adopted ? f.revised.fixed : [], revised: f.adopted, reverted: !!f.reverted, rematch: f.rematch,
+      origin: c.origin, wins: c.wins ?? null, seat: c.seat, family: c.group || c.screen?.family || '', reach: c.screen?.success || '', contested: !!c.contested, attacks: f.attack.attacks, bold: f.attack.keep, fixed: f.adopted ? f.revised.fixed : [], revised: f.adopted, reverted: !!f.reverted, rematch: f.rematch, stance: c.stance, kept: f.kept || '', keptWhy: f.keptWhy || '', costs: f.adopted ? f.revised.costs : [], refused: f.adopted ? f.revised.refused : [],
     };
   });
 
-  const where = (c) => (c.origin.type === 'node' ? `${lensName(c.origin.lens)}의 완성안${c.origin.frame && c.origin.frame !== 'R0' ? ` · ${c.origin.frame}` : ''}` : c.origin.type === 'cross' ? `${c.origin.lenses.map(lensName).join(' × ')} 교배` : `묶음 통합안 ${c.origin.insight}`);
   run.arena = {
     candidates: cands.map((c) => ({ id: c.id, title: c.title, concept: c.concept, from: where(c), type: c.origin.type, screen: c.screen || null, family: c.group || c.screen?.family || '', reach: c.screen?.success || '', seat: c.seat || '', swiss: c.swiss ?? null, wins: c.wins ?? null, rank: c.rank ?? null, notable: c.notable || '', contested: !!c.contested, status: c.status })),
     duels: duels.map((d) => ({ stage: d.stage, a: d.a, b: d.b, winner: d.winner, split: !!d.split, unsure: !!d.unsure, why: d.why })),

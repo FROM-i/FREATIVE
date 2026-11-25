@@ -9,6 +9,7 @@
 //   ⑦ 통합 디렉션     인사이트를 기획·디자인·개발·서비스 관점의 할 일로 묶는다 (호출 1) — 중앙 통제
 import { issuesPrompt, routePrompt, activatePrompt, linkPrompt, integratePrompt, directionPrompt, baselinePrompt, verdictPrompt, researchPrompt } from '../../knowledge/prompts.js';
 import { SEED_PRECEDENTS } from '../../knowledge/viewpoint.js';
+import { tierOf } from '../../knowledge/orchestration.js';
 import { DIFFERENTIATION, EFFECTIVENESS, CHECKS, SUCCESS_CHECK, CHECK_RESULTS, VERDICTS4 } from '../../knowledge/criteria.js';
 import { validFacts, acceptResearch } from '../../knowledge/facts.js';
 import { LAYERS } from '../../knowledge/ism-depth.js';
@@ -52,7 +53,7 @@ export function selectByProbe(probes, need) {
 /** 브리프 → 근본 이슈 후보. 고르는 것은 사람이다. */
 export async function proposeIssues(project, provider, { signal } = {}) {
   const p = issuesPrompt(project);
-  const { json } = await provider.json({ role: 'director', ...p, signal, task: { kind: 'issues', project } });
+  const { json } = await provider.json({ role: 'director', tier: tierOf({ kind: 'issues' }), ...p, signal, task: { kind: 'issues', project } });
   const tidy = (list, root) => (Array.isArray(list) ? list : [])
     .map((i) => ({ title: text(i.title), detail: text(i.detail), test: text(i.test), root, ...(root ? { covers: text(i.covers), misses: text(i.misses) } : {}) }))
     .filter((i) => i.title);
@@ -299,7 +300,7 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
   const emit = (type, extra = {}) => onEvent({ type, run, ...extra });
   const call = async (args) => {
     if (signal?.aborted) throw new Error('취소됨');
-    const r = await provider.json({ ...args, signal });
+    const r = await provider.json({ ...args, tier: tierOf(args.task), signal });
     run.calls++;
     if (r.usage) { run.tokens.in += r.usage.in || 0; run.tokens.out += r.usage.out || 0; }
     return r.json;

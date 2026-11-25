@@ -14,16 +14,17 @@ export async function createClaudePage() {
   return {
     name: 'claude',
     label: 'Claude (이 페이지)',
-    async json({ role = 'director', system, user, signal }) {
+    async json({ role = 'director', tier = '', system, user, signal }) {
+      const modelTier = tier === 'lead' ? 'complex' : tier === 'support' ? 'default' : TIER[role] || 'default';
       const input = `${system}\n\n---\n\n${user}`;
       try {
-        return { json: parseJSON(await sample.json(input, { signal, modelTier: TIER[role] || 'default' })), usage: null };
+        return { json: parseJSON(await sample.json(input, { signal, modelTier })), usage: null };
       } catch (e) {
         if (e?.code === 'not_granted') throw new Error('Claude 사용에 동의하지 않아 실행하지 못했습니다.');
         if (e?.code === 'rate_limited') throw new Error('Claude 사용 한도에 닿았습니다. 잠시 뒤 다시 실행해 주세요.');
         if (signal?.aborted) throw new Error('취소됨');
         // JSON이 깨진 경우 글로 받아 한 번 더 읽는다
-        const r = await sample(input, { signal, modelTier: TIER[role] || 'default' });
+        const r = await sample(input, { signal, modelTier });
         return { json: parseJSON(r.text), usage: null };
       }
     },

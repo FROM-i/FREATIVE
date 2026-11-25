@@ -572,23 +572,52 @@ test('범위 확인 — 성공 기준을 겨눈 문제 정의가 없으면 한 �
   assert.ok(!pickSeats(live2, wins, {}, [], 4).some((x) => x.seat === '성공 기준에 닿는 안'));
 });
 
-test('고친 뒤 재확인 — 보완은 다른 최종안을 보고 하나씩 하고, 고치다가 같아진 안은 고치기 전으로 되돌린다', async () => {
-  const { revisePrompt } = await import('../knowledge/prompts-arena.js');
-  assert.ok(revisePrompt(sample(), { id: 'K1' }, { attacks: [], keep: '' }, null, [{ title: '다른 안', concept: '달력에 넣는다' }]).user.includes('## 다른 최종안'));
+test('기조 — 공격 전에 기조를 세우고, 보완은 기조를 지킨 채 고침 · 대가 · 받지 않음으로 답한다', async () => {
+  const { revisePrompt, stancePrompt, holdPrompt, attackPrompt, duelPrompt } = await import('../knowledge/prompts-arena.js');
+  const st = { bet: '같은 틀에 건다', device: '네 칸 틀', givesUp: '화려함' };
+  const rp = revisePrompt(sample(), { id: 'K1' }, { attacks: [], keep: '' }, null, [{ title: '다른 안', concept: '달력에 넣는다', bet: '고객이 정한 알림에 건다', device: '달력 일정' }], st);
+  assert.ok(rp.user.includes('## 이 안의 기조 (지킨다)') && rp.user.includes('같은 틀에 건다') && rp.user.includes('## 다른 최종안'));
+  assert.ok(rp.system.includes('"고침"') && rp.system.includes('"대가"') && rp.system.includes('"받지 않음"') && rp.system.includes('전부 고치려 하지 않는다'));
   assert.ok(!revisePrompt(sample(), { id: 'K1' }, { attacks: [], keep: '' }, null).user.includes('## 다른 최종안'));
-  const mock = createMock(); const seen = []; let stages = [];
+  assert.ok(stancePrompt(sample(), []).system.includes('gives_up') && holdPrompt(sample(), []).system.includes('버림'));
+  assert.ok(attackPrompt(sample(), { id: 'K1' }, null, st).user.includes('## 이 안의 기조'));
+  assert.ok(duelPrompt(sample(), [], 'rematch').system.includes('고치기 전 안이 이긴다') && !duelPrompt(sample(), [], 'final').system.includes('고치기 전 안이 이긴다'));
+
+  const mock = createMock(); const order = []; const seen = [];
+  // 고친 안이 고치기 전 안을 이기게 하고, 기조 확인에서 2위 안은 "버림", 3위 안은 1위와 같은 묶음으로 답한다
   const p = { ...mock, json: async (a) => {
+    if (['stance', 'attack', 'revise', 'hold'].includes(a.task.kind) && order.at(-1) !== a.task.kind) order.push(a.task.kind);
     if (a.task.kind === 'revise') { seen.push(a.task.others.length); const r = await mock.json(a); r.json.concept = `${r.json.concept} (고침)`; return r; }
-    // 고친 안이 고치기 전 안을 이기게 한다
     if (a.task.kind === 'duel' && a.task.tag === 'rematch') return { json: { duels: a.task.pairs.map((x) => ({ pair: x.id, winner: x.a.id.endsWith('r') ? x.a.id : x.b.id, why: '고친 안이 낫다' })) }, usage: null };
-    if (a.task.kind === 'distinct') { stages.push(a.task.stage || 'final'); if (a.task.stage === 'revised') return { json: { groups: [{ name: '같아진 해법', ids: a.task.candidates.map((c) => c.id), why: '같은 장치' }] }, usage: null }; }
+    if (a.task.kind === 'hold') { const ids = a.task.items.map((x) => x.id); return { json: { checks: ids.map((id, i) => ({ id, kept: i === 1 ? '버림' : '지킴', why: i === 1 ? '달력 안이 됐다' : '' })), groups: [{ name: '같아진 해법', ids: [ids[0], ids[2]], why: '같은 장치' }, { name: '다른 해법', ids: [ids[1]], why: '' }] }, usage: null }; }
     return mock.json(a);
   } };
   const run = await think(sample(), p);
-  assert.deepEqual(stages, ['final', 'revised']);
+  assert.deepEqual(order, ['stance', 'attack', 'revise', 'hold'], '기조 → 공격 → 보완 → 기조 확인 순서');
   assert.deepEqual(seen, run.insights.map(() => run.insights.length - 1), '보완마다 다른 최종안을 함께 받는다');
-  assert.equal(run.insights[0].revised, true, '순위가 가장 높은 안은 고친 채로 둔다');
-  assert.ok(run.insights.slice(1).every((n) => n.revised === false && n.reverted === true && !n.concept.endsWith('(고침)')));
-  assert.equal(run.arena.counts.reverted, run.insights.length - 1);
+  const [a1, a2, a3] = run.insights;
+  assert.ok(a1.stance.bet && a1.stance.givesUp, '인사이트에 기조가 남는다');
+  assert.equal(a1.revised, true); assert.equal(a1.kept, '지킴');
+  assert.ok(a1.fixed.length === 1 && a1.costs.length === 0 && a1.refused.length === 0, '목업 공격 1건은 고침으로 답했다');
+  assert.ok(a2.reverted && !a2.revised && a2.rematch.includes('기조를 버려'), '기조를 버린 안은 되돌린다');
+  assert.ok(a3.reverted && !a3.revised && a3.rematch.includes('같은 해법'), '고치다가 같아진 안은 되돌린다');
+  assert.ok(!a2.concept.endsWith('(고침)') && !a3.concept.endsWith('(고침)') && a1.concept.endsWith('(고침)'));
+  assert.equal(run.arena.counts.reverted, 2);
   assert.ok(run.notes.some((n) => n.includes('고치기 전으로 되돌렸다')));
 });
+
+test('오케스트레이션 — 방향을 정하는 호출은 lead, 정리 · 대조는 support로 나간다', async () => {
+  const { tierOf, KIND_TIER } = await import('../knowledge/orchestration.js');
+  assert.equal(tierOf({ kind: 'activate', lens: { family: 'tunnel' } }), 'support');
+  assert.equal(tierOf({ kind: 'activate', lens: { family: 'identity' } }), 'lead');
+  assert.equal(tierOf({ kind: 'activate', lens: { family: 'airplane' } }), 'lead');
+  assert.equal(tierOf({ kind: '모르는 호출' }), 'support');
+  const mock = createMock(); const tiers = {};
+  const spy = { ...mock, json: async (a) => { (tiers[a.task.kind] ||= new Set()).add(a.tier); return mock.json(a); } };
+  const p = sample(); await proposeIssuesFor(p, spy); await think(p, spy);
+  for (const [kind, set] of Object.entries(tiers)) { if (kind === 'activate') assert.deepEqual([...set].sort(), ['lead', 'support']); else assert.deepEqual([...set], [KIND_TIER[kind]], `${kind} → ${KIND_TIER[kind]}`); }
+  for (const k of ['issues', 'baseline', 'reframe', 'route', 'link', 'cross', 'stance', 'revise', 'verdict']) assert.ok(tiers[k].has('lead'), `${k}는 lead`);
+  for (const k of ['integrate', 'screen', 'duel', 'distinct', 'attack', 'direct', 'plan']) assert.ok(tiers[k].has('support'), `${k}는 support`);
+  assert.equal(KIND_TIER.hold, 'support');
+});
+async function proposeIssuesFor(p, provider) { const { proposeIssues } = await import('../js/engine/think.js'); return proposeIssues(p, provider); }

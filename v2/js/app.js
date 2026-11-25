@@ -48,6 +48,7 @@ const TIPS = {
   충돌: '두 판단이 같은 자리에서 서로 반대를 요구하는 관계다. 한쪽을 따르면 다른 쪽을 지킬 수 없다. 브레인은 충돌하는 두 안을 둘 다 살리는 안을 따로 만들어 후보에 넣는다.',
   차별화: '다르기만 한 것은 차별화가 아니다. 타겟에게 의미가 있고 경쟁이 대신할 수 없어야 한다. 4단계로 본다.',
   실효성: '성공 기준과 목적에 실제로 닿는 정도다. 성공 기준에 닿지 못하면 "목적 미달"이다. 3단계로 본다.',
+  기조: '이 안이 공격을 받기 전에 정한, 끝까지 지킬 방향이다. 무엇에 거는지와 그 대신 포기한 것을 적는다. 고칠 때 이 방향은 바꾸지 않는다.',
   강점: '이 안의 근거가 된 판단을 낸 노드, 안에서 풀어낸 충돌, 이긴 대결, 공격을 받고 고친 곳이다.',
   약점: '이 안이 따르지 않은 판단(충돌), 진 대결과 그 이유, 고치지 못한 공격, 미달인 점검, 판단을 미룬 것이다.',
 };
@@ -92,7 +93,8 @@ function insightLinks(n, run) {
   const attacks = n.attacks || [];
   const fx = fixMap(n);
   const fixed = attacks.filter((x) => fx.has(x));
-  const open = attacks.filter((x) => !fx.has(x));
+  const answered = new Set([...(n.costs || []), ...(n.refused || [])].map((r) => r.hit));
+  const open = attacks.filter((x) => !fx.has(x) && !answered.has(x.hit)).slice(0, Math.max(0, attacks.length - fx.size - answered.size));
   const v = n.from;
   // 대결 기록 — 이 안이 진 대결의 상대와 이유는 약점이고, 이긴 대결은 강점이다
   const cands = new Map((run.arena?.candidates || []).map((c) => [c.id, c]));
@@ -112,8 +114,10 @@ function prosCons(n, run) {
   ].filter(Boolean);
   const cons = [
     L.against.length ? h('div', null, h('p', { class: 'pc-h' }, tip(`부딪히는 노드 ${new Set(L.against.map((a) => a.other.lens)).size}개`, '이 안이 따르지 않은 판단이다. 그 판단을 낸 노드의 기준에서는 이 안이 약하다.')), L.against.map((a) => h('p', { class: 'pc-row', title: a.e.why }, nodeChip(a.other.lens, a.other.family), h('span', null, clip(a.other.claim, 46))))) : null,
-    L.lost.length ? h('div', null, h('p', { class: 'pc-h' }, `진 대결 ${L.lost.length}건`), L.lost.map((x) => h('p', { class: 'pc-row', title: `${x.by?.title || ''}\n${x.d.why}` }, h('span', { class: 'chip ghost' }, clip(x.by?.from || x.d.winner, 18)), h('span', null, clip(x.d.why, 46))))) : null,
+    L.lost.length ? h('div', null, h('p', { class: 'pc-h' }, `진 대결 ${L.lost.length}건`), L.lost.slice(0, 2).map((x) => h('p', { class: 'pc-row', title: `${x.by?.title || ''}\n${x.d.why}` }, h('span', { class: 'chip ghost' }, clip(x.by?.from || x.d.winner, 18)), h('span', null, clip(x.d.why, 46)))), L.lost.length > 2 ? h('p', { class: 'small', title: L.lost.slice(2).map((x) => x.d.why).join('\n') }, `외 ${L.lost.length - 2}건`) : null) : null,
     L.open.length ? h('div', null, h('p', { class: 'pc-h' }, `남은 공격 ${L.open.length}건`), h('ul', { class: 'bullets small' }, L.open.map((x) => h('li', { title: x.hit }, `${x.from} — ${clip(x.hit, 44)}`)))) : null,
+    (n.costs || []).length ? h('div', null, h('p', { class: 'pc-h' }, tip(`감수한 대가 ${n.costs.length}건`, '기조를 택했기 때문에 따라오는 약점이다. 고치지 않고 감수하기로 한 것이다.')), h('ul', { class: 'bullets small' }, n.costs.map((x) => h('li', { title: x.hit }, clip(x.note, 60))))) : null,
+    (n.refused || []).length ? h('div', null, h('p', { class: 'pc-h' }, tip(`받지 않은 공격 ${n.refused.length}건`, '이 공격을 받으면 다른 안이 된다고 보고 고치지 않은 것이다. 사람이 다시 판단할 수 있다.')), h('ul', { class: 'bullets small' }, n.refused.map((x) => h('li', { title: x.note }, clip(x.hit, 60))))) : null,
     L.failed.length ? h('div', null, h('p', { class: 'pc-h' }, `미달 점검 ${L.failed.length}건`), h('div', { class: 'row' }, L.failed.map((c) => h('span', { class: 'chip warn', title: c.why }, c.item)))) : null,
     L.held ? h('p', { class: 'pc-h' }, `판단을 미룬 것 ${L.held}건`) : null,
   ].filter(Boolean);
@@ -664,6 +668,7 @@ function insightTab() {
         open ? h('div', { class: 'more' },
           c.ok ? null : h('div', { class: 'banner warn' }, h('strong', null, '검증 미통과 — '), c.problems.join(' / ')),
           h('p', { class: 'concept' }, n.concept),
+          n.stance?.bet ? h('div', { class: 'push stance' }, h('b', null, tip('기조')), n.stance.bet, n.stance.givesUp ? h('small', null, `포기한 것: ${n.stance.givesUp}`) : null, n.reverted ? h('small', null, n.rematch) : n.kept ? h('small', null, `고친 뒤 기조: ${n.kept}`) : null) : null,
           v ? h('div', { class: 'meters' },
             meter('차별화', DIFFERENTIATION.levels, v.differentiation.level),
             meter('실효성', EFFECTIVENESS.levels, v.effectiveness.level, v.effectiveness.confidence),
@@ -688,7 +693,7 @@ function insightTab() {
             n.tension ? h('div', { class: 'tension' }, h('b', null, tip(`충돌 ${n.tension.a} ↔ ${n.tension.b}`, TIPS.충돌)), n.tension.resolve) : null,
             n.facts?.length ? h('ul', { class: 'bullets small' }, n.facts.map((id) => { const f = (p.facts || []).find((x) => x.id === id); return h('li', null, `${id} ${f ? `${clip(f.text, 60)} (${f.source})` : ''}`); })) : h('p', { class: 'small' }, '근거 팩트 없음. 시장과 타겟에 대한 말은 추정이다.')]),
           n.attacks?.length ? fold(`${n.id}:attack`, '받은 공격', `${n.attacks.length}건 중 ${L.fixed.length}건 고침`, [
-            n.kept ? h('p', { class: 'small' }, `지킨 것: ${n.kept}`) : null,
+            n.bold ? h('p', { class: 'small' }, `공격한 쪽이 짚은 지킬 것: ${n.bold}`) : null,
             h('ul', { class: 'bullets' }, n.attacks.map((x) => { const fx = fixMap(n).get(x); return h('li', null, h('span', { class: `chip ${x.severity >= 3 ? 'warn' : 'ghost'}` }, `${x.from} · ${x.severity}`), ` ${x.hit}`, fx ? h('div', { class: 'small' }, `→ ${fx.fix}`) : null); }))]) : null,
           n.open.length ? fold(`${n.id}:open`, '사람이 확인할 것', `${n.open.length}건`, h('ul', { class: 'bullets' }, n.open.map((x) => h('li', null, x)))) : null,
           fold(`${n.id}:human`, '내 판정 남기기', '다음 분석의 판정 사례가 된다', humanVerdict(n)))) : null);
