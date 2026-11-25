@@ -16,6 +16,8 @@ import { createOpenAI, OPENAI_DEFAULTS } from './providers/openai.js';
 import { createClaudePage } from './providers/claude-page.js';
 import { createAnthropic, ANTHROPIC_DEFAULTS } from './providers/anthropic.js';
 import { TIERS } from '../knowledge/orchestration.js';
+import { CLOUD, cloudOn } from './cloud/config.js';
+import { createCloud, ROLES, canUse, isAdmin } from './cloud/supabase.js';
 import { SAMPLE, SAMPLE_ID } from '../knowledge/sample-project.js';
 import { FAMILIES, LENSES, DEFAULTS, IDENTITY } from '../knowledge/nodes.js';
 
@@ -140,8 +142,21 @@ function load() {
 let saveTimer = 0;
 function persist(now = false) {
   clearTimeout(saveTimer);
-  const write = () => { try { localStorage.setItem(LS, JSON.stringify({ projects: S.projects, current: S.project.id, config: S.config })); } catch { /* 저장 실패는 화면을 막지 않는다 */ } };
+  // 로그인해서 쓸 때는 프로젝트를 서버에 둔다. 이 브라우저에는 예시와 설정만 남긴다
+  const local = S.cloud ? Object.fromEntries(Object.entries(S.projects).filter(([, p]) => p.example)) : S.projects;
+  const write = () => { try { localStorage.setItem(LS, JSON.stringify({ projects: local, current: S.project.id, config: S.config })); } catch { /* 저장 실패는 화면을 막지 않는다 */ } };
   if (now) write(); else saveTimer = setTimeout(write, 400);
+  cloudSave(now);
+}
+/** 고칠 수 있는 프로젝트인가 — 만든 사람과 관리자만. 서버(RLS)도 같은 규칙으로 막는다 */
+const canEdit = (p) => !S.cloud || !p || p.example || !p.owner || p.owner === S.me?.id || isAdmin(S.me?.role);
+let cloudTimer = 0;
+function cloudSave(now = false) {
+  const p = S.project;
+  if (!S.cloud || !S.me || !p || p.example || p._stub || !canEdit(p)) return;
+  clearTimeout(cloudTimer);
+  const run = async () => { try { await S.cloud.saveProject(p); S.saveError = ''; } catch (e) { if (S.saveError !== e.message) toast(`저장하지 못했다 — ${e.message}`, true); S.saveError = e.message; } };
+  if (now) run(); else cloudTimer = setTimeout(run, 1500);
 }
 function toast(msg, err = false) {
   const t = $('toast'); t.textContent = msg; t.className = `toast${err ? ' err' : ''}`; t.hidden = false;
@@ -156,7 +171,7 @@ async function getProvider() {
     if (S.claude) return S.claude;
     toast('이 화면에서는 Claude를 부를 수 없어 목업으로 실행한다.', true);
   }
-  if (c.provider === 'anthropic') return createAnthropic(c.anthropic, { getKey: () => c.akey, getCode: () => c.code });
+  if (c.provider === 'anthropic') return createAnthropic(S.cloud ? { ...c.anthropic, mode: 'proxy' } : c.anthropic, { getKey: () => c.akey, getCode: () => c.code, getToken: async () => (S.cloud ? S.cloud.token() : '') });
   if (c.provider === 'openai') return createOpenAI(c.openai, { getKey: () => c.key, getCode: () => c.code });
   return createMock({ delay: reduce ? 0 : 260 });
 }
@@ -267,7 +282,7 @@ function onHover(node) {
 // ---------- 위쪽 · HUD ----------
 function renderChrome() {
   const sel = $('project-select');
-  sel.replaceChildren(...Object.values(S.projects).map((p) => h('option', { value: p.id, selected: p.id === S.project.id }, `${p.example ? '[예시] ' : ''}${p.title || '(이름 없음)'}`)));
+  sel.replaceChildren(...Object.values(S.projects).map((p) => h('option', { value: p.id, selected: p.id === S.project.id }, `${p.example ? '[예시] ' : ''}${p.title || '(이름 없음)'}${S.me && p.owner && p.owner !== S.me.id ? ` · ${String(p.ownerEmail || '').split('@')[0]}` : ''}`)));
   const r = S.running;
   $('btn-think').textContent = r ? '멈춤' : S.project.run ? '처음부터 다시 분석' : '분석 시작';
   $('run-status').className = `status${r ? ' live' : ''}`;
@@ -434,6 +449,14 @@ function missionTab() {
   const out = [];
   if (p.example) out.push(h('div', { class: 'banner' }, '예시 프로젝트다. 판단·연결·인사이트는 구조를 보여 주려고 미리 써 둔 답이며, 목업 공급자에서만 나온다. 내 과제는 ', h('button', { class: 'link', type: 'button', onclick: newBlank }, '새 프로젝트'), '로 시작한다.'));
 
+  // 계정 — 로그인해서 쓸 때만
+  if (S.me) out.push(h('section', { class: 'sec' }, h('h2', null, '계정', h('small', null, ROLES[S.me.role])),
+    h('div', { class: 'row' }, h('strong', { class: 'grow' }, S.me.email),
+      isAdmin(S.me.role) ? h('button', { class: 'btn sm', type: 'button', id: 'btn-users', onclick: usersModal }, '사용자 관리') : null,
+      h('button', { class: 'btn sm', type: 'button', id: 'btn-logout', onclick: async () => { await S.cloud.signOut(); location.reload(); } }, '로그아웃'))));
+  if (S.me && !canEdit(p)) out.push(h('div', { class: 'banner warn' }, h('strong', null, '읽기 전용 — '), `${p.ownerEmail || '다른 사람'}이 만든 프로젝트다. 여기서 고치거나 분석한 내용은 저장되지 않는다. `,
+    h('button', { class: 'link', type: 'button', onclick: copyAsMine }, '내 프로젝트로 복사'), '하면 고칠 수 있다.'));
+
   const allText = () => [p.title, ...Object.values(b), ...p.issues.flatMap((i) => [i.title, i.detail])].join(' ');
   out.push(h('section', { class: 'sec' }, h('h2', null, '공통 인풋', h('small', null, '모든 프로젝트 공통')),
     field('프로젝트', bind(p, 'title', { graph: true, id: 'f-title' })),
@@ -513,7 +536,11 @@ function missionTab() {
       h('option', { value: 'openai', selected: c.provider === 'openai' }, 'OpenAI — FREATIVE 1.x와 같은 모델'))),
     c.provider === 'mock' ? h('p', { class: 'small' }, '목업 문장은 판단이 아니다. "[목업]"이 붙은 틀 문장이 나온다.') : null,
     c.provider === 'claude' ? h('p', { class: 'small' }, '보는 사람의 Claude에게 묻는다. 첫 실행에서 동의를 묻고, 키는 필요 없다. 로컬 파일로 연 화면에서는 쓸 수 없다.') : null,
-    c.provider === 'anthropic' ? [
+    c.provider === 'anthropic' && S.cloud ? [
+      h('p', { class: 'small' }, '서버에 둔 키로 부른다. 로그인하고 승인된 사용자만 쓸 수 있다. 주 모델은 방향을 정하는 호출, 보조 모델은 정리와 대조를 맡는다.'),
+      h('div', { class: 'grid2' }, field(TIERS.lead.name, cfg(c.anthropic.models, 'lead', { id: 'set-m-lead' })), field(TIERS.support.name, cfg(c.anthropic.models, 'support', { id: 'set-m-support' }))),
+    ] : null,
+    c.provider === 'anthropic' && !S.cloud ? [
       h('p', { class: 'small' }, '호출마다 급을 붙여 모델을 고른다. 주 모델은 방향을 정하는 호출(근본 이슈 · 문제 정의 · 판단 도출 · 충돌 교배 · 기조 · 보완 · 최종 판정), 보조 모델은 정리와 대조를 맡는다.'),
       field('키를 두는 곳', h('select', { id: 'set-amode', onchange: (e) => { c.anthropic.mode = e.target.value; persist(); rerender(); } },
         h('option', { value: 'direct', selected: c.anthropic.mode === 'direct' }, '내 키 — 이 브라우저에만 저장'),
@@ -865,16 +892,22 @@ async function propose() {
 }
 function newBlank() {
   const p = newProject({ title: '새 프로젝트', issues: [{ root: true }] });
+  if (S.me) { p.owner = S.me.id; p.ownerEmail = S.me.email; }
   S.projects[p.id] = p; switchProject(p.id, 'mission');
 }
-function switchProject(id, tab) {
+async function switchProject(id, tab) {
   if (S.running) { toast('분석이 끝난 뒤에 바꾼다.', true); renderChrome(); return; }
+  if (!(await openStub(id))) { renderChrome(); return; }
   S.project = S.projects[id]; S.selected = null; S.open = null; S.dirty = false; S.proposals = null; S.confirmDelete = false;
   S.tab = tab || (S.project.run ? 'insight' : 'mission');
   view.trace(null); view.select(null); persist(true); render(); view.fit();
 }
 function removeProject() {
   if (!S.confirmDelete) { S.confirmDelete = true; rerender(); setTimeout(() => { if (S.confirmDelete) { S.confirmDelete = false; if (S.tab === 'mission') rerender(); } }, 4000); return; }
+  if (S.cloud && !S.project.example) {
+    if (!canEdit(S.project)) { toast('만든 사람이나 관리자만 지울 수 있다.', true); S.confirmDelete = false; rerender(); return; }
+    S.cloud.deleteProject(S.project.id).catch((e) => toast(`지우지 못했다 — ${e.message}`, true));
+  }
   delete S.projects[S.project.id];
   if (!Object.keys(S.projects).length) { const p = newProject(SAMPLE); S.projects[p.id] = p; }
   switchProject(Object.keys(S.projects)[0]);
@@ -894,11 +927,115 @@ async function copy(text) {
 async function importFile(e) {
   const file = e.target.files[0]; if (!file) return;
   try {
-    const data = JSON.parse(await file.text());
+    const raw = JSON.parse(await file.text()); const data = raw?.project || raw;   // 실행 기록({ project, log })도 받는다
     if (!data || !data.brief || !Array.isArray(data.issues)) throw new Error('형식');
     const p = newProject({ ...data, id: S.projects[data.id] ? undefined : data.id });
+    if (S.me) { p.owner = S.me.id; p.ownerEmail = S.me.email; }
     S.projects[p.id] = p; switchProject(p.id); toast(`"${p.title}"을 가져왔다.`);
   } catch { toast('THE FROM BRAIN 프로젝트 파일이 아니다.', true); }
+}
+
+// ---------- 로그인 · 권한 · 서버 저장 (수파베이스가 연결돼 있을 때만) ----------
+/** 이름만 받아 둔 프로젝트를 서버에서 연다 */
+async function openStub(id) {
+  const stub = S.projects[id];
+  if (!stub?._stub) return true;
+  try {
+    const row = await S.cloud.getProject(id);
+    if (!row) throw new Error('프로젝트를 찾을 수 없다. 지워졌을 수 있다.');
+    S.projects[id] = Object.assign(newProject({ ...row.data, id }), { owner: row.owner, ownerEmail: row.owner_email });
+    return true;
+  } catch (e) { toast(e.message, true); return false; }
+}
+/** 남의 프로젝트를 내 것으로 복사한다 — 읽기 전용 프로젝트를 고쳐 보고 싶을 때 */
+function copyAsMine() {
+  const src = S.project; const q = newProject({ ...JSON.parse(JSON.stringify(src)), id: undefined, title: `${src.title} (복사)`, example: false });
+  q.owner = S.me.id; q.ownerEmail = S.me.email; S.projects[q.id] = q; switchProject(q.id, 'mission'); toast('내 프로젝트로 복사했다.');
+}
+
+/** 로그인 화면 — 로그인 · 가입 · 승인 대기. 쓸 수 있게 되면 닫힌다 */
+function enter() {
+  return new Promise((resolve) => {
+    const draft = { mode: 'login', email: '', password: '', name: '', msg: '', busy: false };
+    const close = () => { document.getElementById('gate')?.remove(); resolve(true); };
+    const check = async () => {
+      if (!S.cloud.user || !(await S.cloud.token())) { draft.mode = draft.mode === 'signup' || draft.mode === 'sent' ? draft.mode : 'login'; return paint(); }
+      try { S.me = await S.cloud.profile(); } catch (e) { draft.msg = e.message; draft.mode = 'login'; return paint(); }
+      if (!S.me) { draft.msg = '프로필을 찾을 수 없습니다. 관리자에게 알려 주세요.'; draft.mode = 'login'; return paint(); }
+      if (!canUse(S.me.role)) { draft.mode = 'pending'; return paint(); }
+      close();
+    };
+    const submit = async (e) => {
+      e.preventDefault(); if (draft.busy) return;
+      const email = draft.email.trim().toLowerCase();
+      if (!email.endsWith(`@${CLOUD.domain}`)) { draft.msg = `회사 메일(@${CLOUD.domain})만 쓸 수 있습니다.`; return paint(); }
+      if (draft.password.length < 8) { draft.msg = '비밀번호는 8자 이상으로 정해 주세요.'; return paint(); }
+      draft.busy = true; draft.msg = ''; paint();
+      try {
+        if (draft.mode === 'signup') { const r = await S.cloud.signUp(email, draft.password, draft.name); draft.busy = false; if (!r.confirmed) { draft.mode = 'sent'; return paint(); } }
+        else await S.cloud.signIn(email, draft.password);
+        draft.busy = false; await check();
+      } catch (err) { draft.busy = false; draft.msg = err.message; paint(); }
+    };
+    const input = (key, attrs) => h('input', { value: draft[key], ...attrs, oninput: (e) => { draft[key] = e.target.value; } });
+    function paint() {
+      const m = draft.mode;
+      const box = m === 'pending' ? [
+        h('h1', null, '승인을 기다리는 중입니다'),
+        h('p', { class: 'note' }, `${S.me.email} 로 가입했습니다. 관리자가 승인하면 쓸 수 있습니다.`),
+        h('div', { class: 'row' }, h('button', { class: 'btn go', type: 'button', onclick: check }, '다시 확인'), h('button', { class: 'btn', type: 'button', onclick: async () => { await S.cloud.signOut(); S.me = null; draft.mode = 'login'; paint(); } }, '로그아웃')),
+      ] : m === 'sent' ? [
+        h('h1', null, '확인 메일을 보냈습니다'),
+        h('p', { class: 'note' }, `${draft.email} 로 온 메일의 링크를 누른 뒤 로그인해 주세요. 로그인하면 관리자 승인을 기다립니다.`),
+        h('div', { class: 'row' }, h('button', { class: 'btn go', type: 'button', onclick: () => { draft.mode = 'login'; draft.msg = ''; paint(); } }, '로그인으로')),
+      ] : [
+        h('h1', null, m === 'signup' ? '가입' : '로그인'),
+        h('p', { class: 'note' }, m === 'signup' ? `회사 메일(@${CLOUD.domain})로 가입합니다. 메일 확인과 관리자 승인을 거쳐야 쓸 수 있습니다.` : 'THE FROM BRAIN은 승인된 사용자만 씁니다.'),
+        h('form', { class: 'gate-form', onsubmit: submit },
+          m === 'signup' ? field('이름', input('name', { type: 'text', id: 'gate-name', autocomplete: 'name', required: true })) : null,
+          field('회사 메일', input('email', { type: 'email', id: 'gate-email', autocomplete: 'username', placeholder: `이름@${CLOUD.domain}`, required: true })),
+          field('비밀번호', input('password', { type: 'password', id: 'gate-password', autocomplete: m === 'signup' ? 'new-password' : 'current-password', required: true })),
+          draft.msg ? h('p', { class: 'gate-msg', role: 'alert' }, draft.msg) : null,
+          h('div', { class: 'row' }, h('button', { class: 'btn go', type: 'submit', disabled: draft.busy }, draft.busy ? '확인하는 중' : m === 'signup' ? '가입하기' : '로그인'),
+            h('button', { class: 'btn', type: 'button', onclick: () => { draft.mode = m === 'signup' ? 'login' : 'signup'; draft.msg = ''; paint(); } }, m === 'signup' ? '이미 가입했다' : '처음이라 가입한다'))),
+      ];
+      const gate = document.getElementById('gate') || document.body.appendChild(h('div', { id: 'gate', class: 'gate' }));
+      gate.replaceChildren(h('div', { class: 'gate-box' }, h('p', { class: 'gate-brand' }, 'THE FROM BRAIN'), box));
+    }
+    // 확인 메일의 링크를 누르고 돌아왔으면 그대로 로그인한다
+    const hash = location.hash;
+    if (/access_token=|error_description=/.test(hash)) {
+      history.replaceState(null, '', location.pathname + location.search);
+      S.cloud.adoptHash(hash).catch((e) => { draft.msg = e.message; }).finally(check);
+    } else check();
+  });
+}
+
+/** 사용자 관리 — 관리자는 승인과 중지, 수퍼관리자는 관리자 지정까지 */
+async function usersModal() {
+  document.querySelector('.modal-back')?.remove();
+  const back = h('div', { class: 'modal-back', onclick: (e) => { if (e.target === back) back.remove(); } }, h('div', { class: 'modal', role: 'dialog', 'aria-label': '사용자 관리' }));
+  document.body.append(back);
+  const boss = S.me.role === 'super_admin';
+  const paint = async (msg = '') => {
+    let rows = []; try { rows = await S.cloud.listProfiles(); } catch (e) { msg = e.message; }
+    const act = (u, role, label) => h('button', { class: 'btn sm', type: 'button', onclick: async () => { try { await S.cloud.setRole(u.id, role); paint(`${u.email} → ${ROLES[role]}`); } catch (e) { paint(e.message); } } }, label);
+    const actions = (u) => u.id === S.me.id ? h('span', { class: 'small' }, '나') : [
+      u.role === 'pending' ? act(u, 'member', '승인') : null,
+      u.role === 'member' ? act(u, 'pending', '사용 중지') : null,
+      boss && u.role === 'member' ? act(u, 'admin', '관리자로') : null,
+      boss && u.role === 'admin' ? act(u, 'member', '사용자로') : null,
+      boss && u.role === 'admin' ? act(u, 'super_admin', '수퍼관리자로') : null,
+      boss && u.role === 'super_admin' ? act(u, 'admin', '관리자로') : null,
+    ];
+    const wait = rows.filter((u) => u.role === 'pending').length;
+    back.firstChild.replaceChildren(
+      h('div', { class: 'row' }, h('span', { class: 'chip y fill' }, '사용자 관리'), h('span', { class: 'chip ghost' }, `전체 ${rows.length}명 · 승인 대기 ${wait}명`), h('button', { class: 'btn sm', type: 'button', style: 'margin-left:auto', onclick: () => back.remove() }, '닫기')),
+      msg ? h('p', { class: 'small' }, msg) : null,
+      h('ul', { class: 'list users' }, rows.map((u) => h('li', null, h('div', { class: 'row' }, h('strong', { class: 'grow' }, u.email), h('span', { class: `chip ${u.role === 'pending' ? 'warn' : u.role === 'member' ? 'ghost' : 'y'}` }, ROLES[u.role]), actions(u)), u.name ? h('span', { class: 'small' }, u.name) : null))),
+      h('p', { class: 'small' }, boss ? '승인, 사용 중지, 관리자 지정을 할 수 있다.' : '승인과 사용 중지를 할 수 있다. 관리자 지정은 수퍼관리자가 한다.'));
+  };
+  paint();
 }
 
 // ---------- 시작 ----------
@@ -909,8 +1046,18 @@ async function init() {
   S.config = { provider: 'mock', key: '', code: '', ...(saved?.config || {}) };
   S.config.openai = { ...OPENAI_DEFAULTS, ...(S.config.openai || {}), models: { ...OPENAI_DEFAULTS.models, ...(S.config.openai?.models || {}) } };
   S.config.anthropic = { ...ANTHROPIC_DEFAULTS, ...(S.config.anthropic || {}), models: { ...ANTHROPIC_DEFAULTS.models, ...(S.config.anthropic?.models || {}) } };
+  if (cloudOn()) {
+    S.cloud = createCloud(CLOUD);
+    await enter();
+    // 서버의 프로젝트는 이름만 먼저 받고, 열 때 내용을 받는다. 이 브라우저에 있던 것은 예시만 남긴다
+    S.projects = Object.fromEntries(Object.entries(S.projects).filter(([, p]) => p.example));
+    try { for (const row of await S.cloud.listProjects()) S.projects[row.id] = { id: row.id, title: row.title, owner: row.owner, ownerEmail: row.owner_email, _stub: true }; } catch (e) { toast(`프로젝트 목록을 받지 못했다 — ${e.message}`, true); }
+    if (!saved?.config) { S.config.provider = 'anthropic'; }
+  }
   if (!Object.keys(S.projects).length) { const p = newProject(SAMPLE); S.projects[p.id] = p; }
-  S.project = S.projects[saved?.current] || Object.values(S.projects)[0];
+  let first = S.projects[saved?.current] ? saved.current : Object.keys(S.projects)[0];
+  if (S.projects[first]._stub && !(await openStub(first))) { const p = newProject(SAMPLE); S.projects[p.id] = p; first = p.id; }
+  S.project = S.projects[first];
   // 예시는 열자마자 결과가 보이게 한다 (목업 · 지연 없음)
   if (S.project.id === SAMPLE_ID && !S.project.run) { try { S.project.run = await think(S.project, createMock()); } catch { /* 예시 없이도 화면은 뜬다 */ } }
   S.tab = S.project.run ? 'insight' : 'mission';

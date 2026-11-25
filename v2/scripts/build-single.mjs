@@ -10,7 +10,7 @@ import path from 'node:path';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (k, d) => (process.argv.find((a) => a.startsWith(`--${k}=`)) || '').split('=').slice(1).join('=') || d;
 const out = path.resolve(root, arg('out', 'standalone/the-from-brain.html'));
-const font = arg('font', '../../src/renderer/fonts/PretendardVariable.woff2');
+const font = arg('font', '../fonts/PretendardVariable.woff2');
 
 const js = (await build({ entryPoints: [path.join(root, 'js/app.js')], bundle: true, format: 'iife', minify: true, target: 'es2022', write: false, legalComments: 'none' })).outputFiles[0].text;
 const css = (await readFile(path.join(root, 'css/brain.css'), 'utf8')).replace(/url\('[^']*PretendardVariable\.woff2'\)/, `url('${font}')`);

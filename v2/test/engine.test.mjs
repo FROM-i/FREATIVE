@@ -674,3 +674,72 @@ test('Claude API 공급자 — 급에 따라 모델을 고르고, 문서의 호�
   assert.equal((await forward({ method: 'POST', payload: { body: { model: '다른 모델', messages: [] } } })).status, 400);
   if (old === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = old;
 });
+
+test('수파베이스 — 로그인 · 토큰 갱신 · 프로젝트 저장 요청의 모양, 서버 중계는 승인된 사용자만 받는다', async () => {
+  const { createCloud, canUse, isAdmin } = await import('../js/cloud/supabase.js');
+  const { guard } = await import('../api/_guard.js');
+  assert.ok(canUse('member') && canUse('super_admin') && !canUse('pending') && isAdmin('admin') && !isAdmin('member'));
+  const sent = []; const store = new Map(); const storage = { getItem: (k) => store.get(k) || null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) };
+  let clock = 1_000_000;
+  const reply = (status, body) => ({ ok: status < 300, status, text: async () => (body === null ? '' : JSON.stringify(body)), json: async () => body });
+  const answers = [];
+  const fake = async (url, init = {}) => { sent.push({ url, method: init.method || 'GET', headers: init.headers || {}, body: init.body ? JSON.parse(init.body) : undefined }); return answers.shift(); };
+  const cloud = createCloud({ url: 'https://x.supabase.co/', key: 'pk' }, { fetchImpl: fake, storage, now: () => clock });
+  // 가입 — 확인 메일을 기다린다(세션 없음)
+  answers.push(reply(200, { id: 'u1', email: 'a@from.co.kr' }));
+  assert.deepEqual(await cloud.signUp(' A@from.co.kr ', 'password1', '에이'), { confirmed: false, email: 'a@from.co.kr' });
+  assert.equal(sent[0].url, 'https://x.supabase.co/auth/v1/signup'); assert.equal(sent[0].headers.apikey, 'pk');
+  assert.deepEqual(sent[0].body, { email: 'a@from.co.kr', password: 'password1', data: { name: '에이' } });
+  // 로그인 실패는 우리말로
+  answers.push(reply(400, { error_code: 'invalid_credentials', msg: 'Invalid login credentials' }));
+  await assert.rejects(() => cloud.signIn('a@from.co.kr', 'x'), /비밀번호가 맞지 않습니다/);
+  // 로그인 — 세션을 저장한다
+  answers.push(reply(200, { access_token: 't1', refresh_token: 'r1', expires_in: 3600, user: { id: 'u1', email: 'a@from.co.kr' } }));
+  assert.deepEqual(await cloud.signIn('a@from.co.kr', 'password1'), { id: 'u1', email: 'a@from.co.kr' });
+  assert.equal(sent.at(-1).url, 'https://x.supabase.co/auth/v1/token?grant_type=password');
+  assert.equal(await cloud.token(), 't1');
+  // 저장 — 있으면 고치고 없으면 만든다
+  answers.push(reply(201, null));
+  await cloud.saveProject({ id: 'p1', title: '제목', brief: {} });
+  const save = sent.at(-1);
+  assert.equal(save.url, 'https://x.supabase.co/rest/v1/projects?on_conflict=id'); assert.equal(save.method, 'POST');
+  assert.equal(save.headers.Authorization, 'Bearer t1'); assert.match(save.headers.Prefer, /merge-duplicates/);
+  assert.deepEqual(Object.keys(save.body).sort(), ['data', 'id', 'owner', 'owner_email', 'title']); assert.equal(save.body.owner, 'u1');
+  // 만료가 가까우면 토큰을 새로 받는다
+  clock += 3600 * 1000 - 30000;
+  answers.push(reply(200, { access_token: 't2', refresh_token: 'r2', expires_in: 3600, user: { id: 'u1', email: 'a@from.co.kr' } }));
+  assert.equal(await cloud.token(), 't2'); assert.equal(sent.at(-1).url, 'https://x.supabase.co/auth/v1/token?grant_type=refresh_token'); assert.deepEqual(sent.at(-1).body, { refresh_token: 'r1' });
+  // 권한이 없어 막히면 우리말로
+  answers.push(reply(403, { code: '42501', message: 'new row violates row-level security policy' }));
+  await assert.rejects(() => cloud.saveProject({ id: 'p2' }), /권한이 없습니다/);
+  // 로그인은 배포된 주소에서만 켠다
+  const { cloudOn } = await import('../js/cloud/config.js');
+  assert.equal(cloudOn({ hostname: 'thefrombrain.vercel.app', search: '' }), true);
+  assert.equal(cloudOn({ hostname: 'localhost', search: '' }), false); assert.equal(cloudOn({ hostname: '', search: '' }), false); assert.equal(cloudOn(undefined), false);
+  assert.equal(cloudOn({ hostname: 'localhost', search: '?cloud=1' }), true);
+  assert.equal(cloudOn({ hostname: 'thefrom-brain-git-x.vercel.app', search: '' }), true); assert.equal(cloudOn({ hostname: 'www.claudeusercontent.com', search: '?cloud=1' }), false);
+  // 다시 열어도 로그인이 남아 있다
+  assert.equal(createCloud({ url: 'https://x.supabase.co', key: 'pk' }, { fetchImpl: fake, storage, now: () => clock }).user.email, 'a@from.co.kr');
+  answers.push(reply(204, null)); await cloud.signOut(); assert.equal(cloud.user, null); assert.equal(await cloud.token(), null);
+  // 확인 메일 링크로 돌아오면 주소 뒤에 실린 로그인을 받는다
+  assert.equal(await cloud.adoptHash('#type=signup'), false);
+  answers.push(reply(200, { id: 'u1', email: 'a@from.co.kr' }));
+  assert.equal(await cloud.adoptHash('#access_token=t9&refresh_token=r9&expires_in=3600&type=signup'), true);
+  assert.equal(sent.at(-1).url, 'https://x.supabase.co/auth/v1/user'); assert.equal(sent.at(-1).headers.Authorization, 'Bearer t9'); assert.equal(await cloud.token(), 't9');
+  await assert.rejects(() => cloud.adoptHash('#error=access_denied&error_description=Email+link+is+invalid+or+has+expired'), /invalid or has expired/);
+  answers.push(reply(204, null)); await cloud.signOut();
+
+  // 문지기 — 수파베이스가 연결되면 로그인과 역할을 확인한다
+  const env = { ...process.env }; process.env.SUPABASE_URL = 'https://x.supabase.co'; process.env.SUPABASE_PUBLISHABLE_KEY = 'pk';
+  const g = (role, userOk = true) => guard({ token: 'tok', fetchImpl: async (url) => (url.includes('/auth/v1/user') ? reply(userOk ? 200 : 401, { id: 'u1', email: 'a@from.co.kr' }) : reply(200, role ? [{ role }] : [])) });
+  assert.equal((await guard({ token: '' })).status, 401);
+  assert.equal((await g('member', false)).status, 401);
+  assert.equal((await g('pending')).status, 403);
+  assert.equal((await g(null)).status, 403);
+  assert.deepEqual(await g('member'), { ok: true, user: { id: 'u1', email: 'a@from.co.kr', role: 'member' } });
+  delete process.env.SUPABASE_URL; delete process.env.SUPABASE_PUBLISHABLE_KEY; delete process.env.VERCEL;
+  // 연결되지 않았으면 접속 코드로 지킨다
+  process.env.BRAIN_ACCESS_CODE = 'c'; assert.equal((await guard({ code: 'x' })).status, 401); assert.deepEqual(await guard({ code: 'c' }), { ok: true });
+  delete process.env.BRAIN_ACCESS_CODE; assert.deepEqual(await guard({}), { ok: true });
+  Object.assign(process.env, env);
+});

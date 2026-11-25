@@ -20,12 +20,12 @@ createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     if (url.pathname === '/api/claude') {
       let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 4e6) throw Object.assign(new Error('요청이 너무 크다'), { status: 413 }); }
-      const out = await forwardClaude({ method: req.method, code: req.headers['x-brain-code'], payload: raw ? JSON.parse(raw) : {} });
+      const out = await forwardClaude({ method: req.method, code: req.headers['x-brain-code'], token: (req.headers.authorization || '').replace(/^Bearer /, ''), payload: raw ? JSON.parse(raw) : {} });
       res.writeHead(out.status, { 'Content-Type': 'application/json' }); res.end(out.body); return;
     }
     if (url.pathname === '/api/llm') {
       let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 4e6) throw Object.assign(new Error('요청이 너무 크다'), { status: 413 }); }
-      const out = await forward({ method: req.method, code: req.headers['x-brain-code'], payload: raw ? JSON.parse(raw) : {} });
+      const out = await forward({ method: req.method, code: req.headers['x-brain-code'], token: (req.headers.authorization || '').replace(/^Bearer /, ''), payload: raw ? JSON.parse(raw) : {} });
       res.writeHead(out.status, { 'Content-Type': 'application/json' }); res.end(out.body); return;
     }
     // 글꼴은 1.x 것을 그대로 쓴다 (/src/renderer/fonts). 그 밖에는 v2/ 안만 연다.

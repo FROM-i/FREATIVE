@@ -157,3 +157,7 @@ v2/
   eval/                             1.x · 2.0 비교 평가 도구와 결과
   DESIGN.md · docs/ARCHITECTURE.md · docs/EVALUATION.md
 ```
+
+## 배포 · 로그인
+
+웹에는 `v2/`만 올린다(Vercel, Root Directory `v2`). 배포된 사이트는 회사 메일로 가입하고 관리자 승인을 받아야 쓴다. 프로젝트는 수파베이스에 저장한다. 내 컴퓨터에서 열면 로그인 없이 돈다. 자세한 것은 [docs/DEPLOY.md](docs/DEPLOY.md).

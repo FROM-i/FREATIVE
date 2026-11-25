@@ -17,7 +17,7 @@ export const ANTHROPIC_DEFAULTS = {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const readText = (r) => (Array.isArray(r?.content) ? r.content : []).filter((b) => b.type === 'text').map((b) => b.text || '').join('');
 
-export function createAnthropic(config = {}, { getKey = () => '', getCode = () => '', fetchImpl = (...a) => fetch(...a) } = {}) {
+export function createAnthropic(config = {}, { getKey = () => '', getCode = () => '', getToken = async () => '', fetchImpl = (...a) => fetch(...a) } = {}) {
   const c = { ...ANTHROPIC_DEFAULTS, ...config, models: { ...ANTHROPIC_DEFAULTS.models, ...(config.models || {}) } };
 
   async function post(body, signal) {
@@ -25,12 +25,13 @@ export function createAnthropic(config = {}, { getKey = () => '', getCode = () =
     for (let attempt = 0; attempt < 4; attempt++) {
       const direct = c.mode === 'direct';
       if (direct && !getKey()) throw new Error('Claude API 키가 없습니다. 설정에서 넣어 주세요.');
+      const login = direct ? '' : await getToken();   // 로그인한 사용자의 토큰 — 서버가 역할을 확인한다
       const r = await fetchImpl(direct ? `${c.baseUrl.replace(/\/$/, '')}/messages` : c.proxyUrl, {
         method: 'POST', signal,
         headers: direct
           // 브라우저에서 직접 부를 때는 이 헤더가 있어야 받아 준다. 데이터 보존을 끈(ZDR) 조직은 이 헤더가 있어도 거절된다 — 그때는 proxy로 쓴다.
           ? { 'Content-Type': 'application/json', Authorization: `Bearer ${getKey()}`, 'anthropic-version': c.version, 'anthropic-dangerous-direct-browser-access': 'true' }
-          : { 'Content-Type': 'application/json', 'x-brain-code': getCode() },
+          : { 'Content-Type': 'application/json', 'x-brain-code': getCode(), ...(login ? { Authorization: `Bearer ${login}` } : {}) },
         body: JSON.stringify(direct ? body : { body }),
       });
       const raw = await r.text();

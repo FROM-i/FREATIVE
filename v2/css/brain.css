@@ -5,7 +5,7 @@
  */
 @font-face {
   font-family: 'Pretendard';
-  src: url('../../src/renderer/fonts/PretendardVariable.woff2') format('woff2-variations');
+  src: url('../fonts/PretendardVariable.woff2') format('woff2-variations');
   font-weight: 45 920;
   font-display: swap;
 }
@@ -130,7 +130,7 @@ ul, ol { list-style: none; }
 
 .field { display: flex; flex-direction: column; gap: calc(var(--u) * .5); min-width: 0; }
 .field > span { font-size: var(--t-cap); font-weight: 600; color: var(--mute); }
-.field input[type="text"], .field input[type="password"], .field textarea, .field select {
+.field input[type="text"], .field input[type="email"], .field input[type="password"], .field textarea, .field select {
   width: 100%; border: 1px solid var(--line); background: var(--ground); color: var(--text); padding: var(--u); font-size: var(--t-sub); line-height: 20px; min-width: 0; }
 .field textarea { resize: vertical; min-height: calc(var(--u) * 7); }
 .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--yellow); outline: 0; }
@@ -381,3 +381,12 @@ details[open] > summary { margin-bottom: var(--u); }
 .layer { display: grid; grid-template-columns: calc(var(--u) * 4) minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr); gap: var(--u); align-items: center; }
 .layer input[type="color"] { width: 100%; height: calc(var(--u) * 4); padding: 2px; background: var(--ground); border: 1px solid var(--line-2); }
 .layer input[type="text"], .layer select { height: calc(var(--u) * 4); min-width: 0; background: var(--ground); color: var(--text); border: 1px solid var(--line-2); padding: 0 var(--u); font-size: var(--t-cap); }
+
+/* 로그인 화면 */
+.gate { position: fixed; inset: 0; z-index: 80; background: var(--ground); display: grid; place-items: center; padding: calc(var(--u) * 3); }
+.gate-box { width: min(420px, 100%); display: flex; flex-direction: column; gap: calc(var(--u) * 2); }
+.gate-brand { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .16em; color: var(--mute); }
+.gate h1 { font-size: var(--t-head); line-height: 32px; font-weight: 700; }
+.gate-form { display: flex; flex-direction: column; gap: calc(var(--u) * 1.5); }
+.gate-msg { color: var(--red-soft); font-size: var(--t-sub); }
+.users li { display: flex; flex-direction: column; gap: 2px; }
