@@ -107,6 +107,7 @@ ${count}개를 골라 JSON으로 출력하라.`,
  */
 export function activatePrompt(project, lens, max) {
   const ism = lens.family === 'airplane';
+  const arena = Array.isArray(project.frames);   // 경쟁 구조 — 노드가 완성안도 함께 낸다
   const source = ism
     ? `## 이 사조의 깊이\n${depthBlock(lens.id)}\n\n## 이 사조의 카드 원문\n${lens.card}\n\n카드의 "가져올 것 · 두고 올 것"은 지난 적용 메모다. 규칙으로 쓰지 않는다. 이번 과제에서는 다르게 읽을 수 있다.\n\n## 방법론 원문 (참고)\n${lens.rules}`
     : `## 이 노드의 원문 (더프롬 방법론 CORE)\n${lens.text}\n\n판정 기준: ${lens.criteria}`;
@@ -145,13 +146,14 @@ ${think}
 - 이슈마다 가장 깊은 신호를 최대 ${max}개 낸다. 얕은 신호로 칸을 채우지 않는다. 낼 것이 없는 이슈는 건너뛴다.
 - 신호 하나는 판단 하나다. 관찰만 쓰지 않고 "그래서 무엇을 지키거나 바꾸는가"까지 쓴다.
 - \`effect\`에는 이 신호가 반영되면 누구의 무엇이 달라지는지를 행동·시간·장소로 쓴다. 쓸 수 없으면 그 신호를 버린다.
+${arena ? '- **완성안(proposal).** 판단과 별개로, 네 기준을 끝까지 밀었을 때 나오는 완성안 하나를 낸다. 다른 기준과 타협하지 않는다. 균형은 뒤의 경쟁 단계에서 잡는다. 아래 기본안의 해법은 당연히 갖출 것으로 깔고 그 위의 것을 낸다. 기본안과 같은 해법이 되면 다른 문제 정의로 옮겨 다시 낸다. `frame`에 어느 문제 정의에 답했는지 적는다(R0은 브리프의 정의).' : ''}
 - \`stance\`: keep(지킬 관성) · change(바꿀 해석) · limit(넘지 않을 경계) · open(비어 있는 자리)
 ${lens.family === 'tunnel' ? '- 너는 터널의 레이어다. 팩트북이 있으면 거기서 출발한다. 판단이 기대는 팩트의 id를 `facts`에 적는다. 팩트 없이 쓴 판단은 추정으로 표시되고 비중이 낮아진다. 팩트북에 없는 사실이 필요하면 `need`에 "무슨 자료가 필요한가"를 적는다.' : '- 판단이 팩트북의 사실에 기대면 그 id를 `facts`에 적는다.'}
 
 ## 출력 JSON
-{ "signals": [ { "issue": "이슈 id", "ladder": ["현상 한 문장", "왜 한 문장", "왜 한 문장", "본질 한 문장"], "claim": "판단 한 문장", "basis": "원문의 어느 대목에서 나왔나 한 문장", "stance": "keep|change|limit|open", "effect": "누구의 무엇이 달라지나", "strength": 0.0, "source": "팩트|브리프|일반 관찰|추론|확인 필요", "facts": ["팩트 id"], "need": "필요한 자료 (없으면 빈 문자열)"${extra} } ] }
+{ "signals": [ { "issue": "이슈 id", "ladder": ["현상 한 문장", "왜 한 문장", "왜 한 문장", "본질 한 문장"], "claim": "판단 한 문장", "basis": "원문의 어느 대목에서 나왔나 한 문장", "stance": "keep|change|limit|open", "effect": "누구의 무엇이 달라지나", "strength": 0.0, "source": "팩트|브리프|일반 관찰|추론|확인 필요", "facts": ["팩트 id"], "need": "필요한 자료 (없으면 빈 문자열)"${extra} } ]${arena ? ', "proposal": { "frame": "R0", "title": "제목 — 수단 + 효과", "concept": "완성안 한두 문장", "visual": "실제로 보이는 모습", "gain": "누가 언제 무엇을 얻나" }' : ''} }
 \`ladder\`는 3~5줄. \`strength\`는 이 신호가 이슈의 답을 얼마나 좁히는지(0~1)다.`,
-    user: `${missionBlock(project, lens.id)}\n\n노드 "${lens.name}"의 신호를 JSON으로 출력하라.`,
+    user: `${missionBlock(project, lens.id)}${arena ? `\n\n## 문제 정의 — 완성안이 답할 질문을 고른다\n${j([{ id: 'R0', 정의: '브리프의 정의 (근본 이슈 그대로)' }, ...project.frames.map((f) => ({ id: f.id, 정의: f.frame, 브리프와_다른_점: f.why }))])}\n\n## 기본안 — 당연히 갖출 것. 이 해법을 다시 내지 않는다\n${j((project.baseline?.concepts || []).map((c) => ({ id: c.id, 컨셉: c.concept })))}` : ''}\n\n노드 "${lens.name}"의 신호를 JSON으로 출력하라.`,
   };
 }
 
@@ -358,3 +360,6 @@ ${FACT_KINDS.map((k) => `- ${k.id} (${k.name}): ${k.hint}`).join('\n')}
 팩트북을 JSON으로 출력하라.`,
   };
 }
+
+// 경쟁 단계의 프롬프트(prompts-arena.js)가 같은 머리말과 미션 글을 쓴다
+export { common, missionBlock, j as toJson };

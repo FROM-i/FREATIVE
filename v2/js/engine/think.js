@@ -11,6 +11,8 @@ import { issuesPrompt, routePrompt, activatePrompt, linkPrompt, integratePrompt,
 import { WEIGHTS, VERDICTS, SEED_PRECEDENTS, weightedScore, normalizeWeights } from '../../knowledge/viewpoint.js';
 import { validFacts, acceptResearch } from '../../knowledge/facts.js';
 import { LAYERS } from '../../knowledge/ism-depth.js';
+import { reframePrompt } from '../../knowledge/prompts-arena.js';
+import { arena, shapeProposal, shapeFrames } from './arena.js';
 import { PERSPECTIVES } from '../../knowledge/tags.js';
 import { AIRPLANE, OPPOSITIONS, GATES, FAMILIES, IDENTITY } from '../../knowledge/nodes.js';
 import { activeLenses, signalPrefix, hints, lensName, validateProject, needsDevelopment } from '../graph/model.js';
@@ -253,13 +255,14 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
     at: new Date().toISOString(), provider: provider.name, mode,
     picks: prev?.picks || [], signals: prev ? prev.signals.map((x) => ({ ...x })) : [],
     edges: prev ? prev.edges.map((x) => ({ ...x })) : [], energy: {}, clusters: [], insights: [],
-    baseline: prev?.baseline || null,
+    baseline: prev?.baseline || null, frames: prev?.frames || [], proposals: prev ? (prev.proposals || []).map((x) => ({ ...x })) : [],
     facts: { total: fb.facts.length, rejected: fb.rejected, unchecked: fb.facts.filter((f) => f.by === 'ai' && !f.checked).length },
     failed: [], notes: setup.problems.map((x) => `세팅: ${x.where} — ${x.what}`), calls: 0, tokens: { in: 0, out: 0 },
     setup: { ok: setup.ok, issues: setup.ready.map((i) => ({ id: i.id, tags: i.tags, auto: i.autoTags })), skipped: whole.issues.filter((i) => !setup.ready.some((r) => r.id === i.id)).map((i) => i.id) },
   };
   if (fb.rejected) run.notes.push(`팩트북: 출처 조건을 채우지 못한 ${fb.rejected}건을 제외했다`);
   if (!fb.facts.length) run.notes.push('팩트북이 비어 있다 — 터널 판단은 모두 추정으로 표시된다');
+  const useArena = s.arena !== false;
   const emit = (type, extra = {}) => onEvent({ type, run, ...extra });
   const call = async (args) => {
     if (signal?.aborted) throw new Error('취소됨');
@@ -278,6 +281,12 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
     run.baseline = concepts.length ? { concepts, common: text(json.common) } : null;
     if (!run.baseline) run.notes.push('기본안을 받지 못해 대조 없이 진행했다');
     emit('baseline');
+    // 문제 다시 정의 — 브리프가 묻는 대로만 답하면 기본안이 나온다
+    if (useArena && run.baseline) {
+      emit('stage', { stage: 'reframe' });
+      const rp = reframePrompt(project, run.baseline);
+      run.frames = shapeFrames(await call({ role: 'brain', ...rp, task: { kind: 'reframe', project, baseline: run.baseline } }), project.facts);
+    }
   }
 
   if (mode !== 'relink') {
@@ -310,7 +319,7 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
     const lenses = activeLenses(project, run.picks);
     const pendingIssues = mode === 'add' ? project.issues.filter((i) => !run.signals.some((x) => x.issue === i.id)) : project.issues;
     if (mode === 'add' && !pendingIssues.length) throw new Error('새로 더한 이슈가 없습니다.');
-    const scoped = { ...project, issues: pendingIssues };
+    const scoped = { ...project, issues: pendingIssues, ...(useArena ? { frames: run.frames, baseline: run.baseline } : {}) };
     const hinted = new Set(hints(project).map((h) => `${h.issue}|${h.lens}`));
     await pool(lenses, s.concurrency, async (lens) => {
       try {
@@ -322,6 +331,8 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
         if (dropped) run.notes.push(`${lens.name}: 달라지는 점을 쓰지 못했거나 개수를 넘긴 판단 ${dropped}건을 제외했다`);
         if (shallow) run.notes.push(`${lens.name}: 근거 단계 없이 쓴 판단 ${shallow}건을 제외했다`);
         run.signals.push(...signals);
+        const proposal = useArena ? shapeProposal(json, lens, run.frames) : null;   // 이 노드가 자기 기준을 끝까지 민 완성안
+        if (proposal && run.signals.some((x) => x.lens === lens.id)) run.proposals = [...run.proposals.filter((x) => x.lens !== lens.id), proposal];
         emit('fire', { lens: lens.id, signals });
       } catch (e) {
         if (signal?.aborted) throw e;
@@ -370,6 +381,13 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
     return insight;
   });
   run.usage = usage(run);
+
+  // 경쟁 — 묶음 통합안도 후보 중 하나다. 노드의 완성안 · 교배안과 겨뤄 이긴 안이 통합 인사이트가 된다.
+  if (useArena && run.proposals.length + run.insights.length >= 2) {
+    await arena({ project, run, call, emit, pool, scoreOf: (raw, list) => shapeVerdict(raw, list, s.weights) });
+    run.usage = usage(run);
+    emit('clustered');
+  }
   for (const ins of run.insights) ins.facts = [...new Set(ins.check.used.flatMap((id) => sigMap.get(id)?.facts || []))];
 
   // 더프롬 판정 — 통합 인사이트를 더프롬의 기준(가중치 · 판정 사례)으로 채점한다. 합계는 코드가 계산한다.

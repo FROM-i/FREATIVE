@@ -53,8 +53,21 @@ function activate({ project, lens }) {
       ...(lens.family === 'tunnel' && project.facts?.length ? { facts: [project.facts[Math.floor(h * project.facts.length) % project.facts.length].id] } : {}),
     };
   });
-  return { signals: [...fromFixture, ...templated] };
+  const out = { signals: [...fromFixture, ...templated] };
+  // 경쟁 구조 — 노드의 완성안. 목업은 틀 문장만 낸다
+  if (Array.isArray(project.frames)) out.proposal = { frame: project.frames.length ? `R${Math.floor(hash(lens.id) * (project.frames.length + 1))}` : 'R0', title: `[목업] ${lens.name}의 완성안`, concept: `[목업] ${lens.name} 기준을 끝까지 민 안 — 실제 모델이 쓴다.`, visual: '[목업] 보이는 모습', gain: '[목업] 사용자가 얻는 것' };
+  return out;
 }
+
+// ---------- 경쟁 ----------
+const mockScore = (title) => (String(title).startsWith('[목업]') ? 0.1 + hash(title) * 0.3 : 0.6 + hash(title) * 0.4);
+const reframe = ({ project }) => ({ frames: [1, 2, 3].map((n) => ({ frame: `[목업] 문제 정의 ${n} — 실제 모델이 쓴다.`, why: '[목업] 브리프의 정의와 다른 점', risk: '', facts: project.facts?.[0] && n === 1 ? [project.facts[0].id] : [] })) });
+const cross = ({ a, b }) => ({ keeps: { a: '[목업]', b: '[목업]' }, title: `[목업] ${short(a.title.replace('[목업] ', ''), 10)} × ${short(b.title.replace('[목업] ', ''), 10)}`, concept: '[목업] 두 안을 모두 살린 세 번째 안 — 실제 모델이 쓴다.', visual: '[목업] 보이는 모습', gain: '[목업] 사용자가 얻는 것', how: '[목업] 충돌을 푸는 장치' });
+const screen = ({ candidates, baseline }) => ({ screens: candidates.map((c) => { const h = hash(`screen${c.id}${c.title}`); return { id: c.id, nearest: baseline.concepts[Math.floor(h * baseline.concepts.length) % baseline.concepts.length].id, verdict: String(c.title).startsWith('[목업]') ? (h < 0.2 ? '같음' : h < 0.6 ? '일부' : '다름') : (h < 0.5 ? '일부' : '다름'), why: '[목업] 기본안과의 비교는 실제 모델이 쓴다.' }; }) });
+// 고친 안(id가 r로 끝난다)과 고치기 전 안이 겨루면 목업에서는 고치기 전 안이 이긴다 — 예시 문장을 그대로 보여 주기 위해서다
+const duel = ({ pairs }) => ({ duels: pairs.map((p) => ({ pair: p.id, winner: p.a.id.endsWith('r') ? p.b.id : p.b.id.endsWith('r') ? p.a.id : (mockScore(p.a.title) >= mockScore(p.b.title) ? p.a.id : p.b.id), why: '[목업] 이긴 이유는 실제 모델이 쓴다.' })) });
+const attack = () => ({ attacks: [{ from: '제약', hit: '[목업] 약점은 실제 모델이 찾는다.', severity: 2 }], keep: '[목업] 지켜야 할 대담한 부분' });
+const revise = ({ cand }) => ({ title: cand.title, concept: cand.concept, visual: cand.visual, gain: cand.gain, keep: '[목업]', change: '[목업]', verdict: '[목업]', fixed: [{ hit: '[목업] 받은 공격', fix: '[목업] 고친 것' }], open: [] });
 
 function link({ project, signals }) {
   if (project.id !== SAMPLE_ID) return { edges: templateEdges(signals, signals) };
@@ -111,16 +124,26 @@ function baseline({ project }) {
 
 function verdict({ project, insights }) {
   const LENS = ['ID-JAMAIS', 'ID-FROM', 'ID-BENEFIT', 'ID-ONEU', 'ID-INERTIA', 'ID-YELLOW'];
-  if (project.id === SAMPLE_ID && FIXTURE.verdict) return { verdicts: FIXTURE.verdict.filter((v) => insights.some((i) => i.id === v.insight)) };
+  // 예시 프로젝트 — 미리 써 둔 판정은 제목으로 찾는다 (경쟁 단계에서는 후보 id가 달라진다)
+  const fixed = (i) => (project.id === SAMPLE_ID ? (FIXTURE.verdict || []).find((v) => v.title === i.title) : null);
   return { verdicts: insights.map((i) => {
-    const scores = Object.fromEntries(LENS.map((k) => [k, 2 + Math.floor(hash(i.id + k + i.title) * 3)]));
+    const f = fixed(i);
+    if (f) return { ...f, insight: i.id };
+    const weak = String(i.title).startsWith('[목업]');
+    const scores = Object.fromEntries(LENS.map((k) => [k, (weak ? 1 : 2) + Math.floor(hash(i.id + k + i.title) * 3)]));
     return { insight: i.id, scores, why: Object.fromEntries(LENS.map((k) => [k, '[목업] 이유는 실제 모델이 쓴다.'])), verdict: '보완', safe: '', push: '[목업] 더 밀 곳', precedent: '' };
   }) };
 }
 
 function direct({ project, insights, needDev }) {
   const ids = insights.map((i) => i.id);
-  if (project.id === SAMPLE_ID && FIXTURE.direction) return { ...FIXTURE.direction, overlap: (FIXTURE.direction.overlap || []).filter((o) => ids.includes(o.insight)) };
+  if (project.id === SAMPLE_ID && FIXTURE.direction) {
+    // 예시 디렉션은 N1 · N2 · N3을 제목으로 가리킨다 — 경쟁 뒤에 번호가 바뀌어도 같은 인사이트를 가리키게 옮긴다
+    const TITLE = { N1: '친근한 안내 문구로 재방문 습관 유도', N2: '분량을 먼저 보여 줘 읽기 부담 완화', N3: '입구에서 동선을 나눠 기존 이용자 보호' };
+    const now = Object.fromEntries(Object.entries(TITLE).map(([old, t]) => [old, insights.find((i) => i.title === t)?.id || old]));
+    const d = JSON.parse(JSON.stringify(FIXTURE.direction).replace(/"N([123])"/g, (m, n) => `"@${n}"`).replace(/"@([123])"/g, (m, n) => `"${now[`N${n}`]}"`));
+    return { ...d, overlap: (d.overlap || []).filter((o) => ids.includes(o.insight)) };
+  }
   const one = (n) => ({ direction: '[목업] 이 관점의 방향은 실제 모델이 쓴다.', actions: ['[목업] 바로 할 일 1', '[목업] 바로 할 일 2'], from: [ids[n % ids.length]], need: [] });
   return {
     headline: '[목업] 총괄 디렉션 한 문장',
@@ -131,7 +154,7 @@ function direct({ project, insights, needDev }) {
   };
 }
 
-const HANDLERS = { baseline, verdict, direct, issues: ({ project }) => issues(project), route, activate, link, integrate };
+const HANDLERS = { baseline, verdict, direct, reframe, cross, screen, duel, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
 
 export function createMock({ delay = 0 } = {}) {
   return {

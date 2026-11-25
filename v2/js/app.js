@@ -25,7 +25,7 @@ const clip = (s, n) => (String(s || '').length > n ? `${String(s).slice(0, n)}�
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const TYPE = { cause: '원인', condition: '조건', reinforce: '강화', tension: '충돌' };
 const STANCE = { keep: '지킬 관성', change: '바꿀 해석', limit: '넘지 않을 경계', open: '비어 있는 자리' };
-const STAGE = { baseline: '기본안 받는 중', verdict: '더프롬 판정 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
+const STAGE = { baseline: '기본안 받는 중', reframe: '문제 다시 정의하는 중', cross: '충돌하는 안 교배 중', screen: '기본안과 대조 중', score: '후보 채점 중', duel: '1:1 대결 중', forge: '이긴 안 공격 · 보완 중', verdict: '더프롬 판정 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
 
 /** DOM 만들기 — 글자는 언제나 텍스트 노드로 들어간다 */
 function h(tag, attrs, ...kids) {
@@ -359,7 +359,7 @@ function missionTab() {
     Array.from({ length: max - min + 1 }, (_, n) => h('option', { value: min + n, selected: (p.settings[key] ?? DEFAULTS[key]) === min + n }, min + n))));
   out.push(h('section', { class: 'sec' }, h('h2', null, '분석 설정'),
     h('div', { class: 'grid3' }, num('ismCount', '분석할 사조 수', 2, 6), num('insightCount', '통합 인사이트 수', 1, 5), num('signalsPerLens', '노드·이슈당 판단', 1, 3)),
-    h('p', { class: 'small' }, `호출 수 = 기본안 1 + 사조 고르기 1 + 노드 ${10 + (p.settings.ismCount ?? DEFAULTS.ismCount)} + 연결 1 + 인사이트 ${p.settings.insightCount ?? DEFAULTS.insightCount} + 더프롬 판정 1 + 디렉션 1 (검증에 걸리면 1회씩 더)`),
+    h('p', { class: 'small' }, `호출 수 = 기본안 1 + 사조 고르기 1 + 노드 ${10 + (p.settings.ismCount ?? DEFAULTS.ismCount)} + 연결 1 + 인사이트 ${p.settings.insightCount ?? DEFAULTS.insightCount} + 경쟁 약 19 + 더프롬 판정 1 + 디렉션 1`),
     weightRow(p)));
   out.push(casesBoard());
 
@@ -443,18 +443,32 @@ function baselineBoard(run) {
     b.common ? h('p', { class: 'small' }, `기본안의 공통 해법: ${b.common}`) : null);
 }
 
+/** 경쟁 기록 — 후보가 어디서 나와 어디서 떨어졌는지 */
+function arenaBoard(run) {
+  const a = run.arena; if (!a) return null;
+  const c = a.counts;
+  const rows = [...a.candidates].sort((x, y) => (x.rank ?? 99) - (y.rank ?? 99) || (y.score ?? -1) - (x.score ?? -1));
+  return h('section', { class: 'sec' }, h('h2', null, '경쟁 기록', h('small', null, `후보 ${c.candidates}개 → ${run.insights.length}개`)),
+    h('p', { class: 'lead sm' }, `후보 ${c.candidates}개(노드의 완성안 ${c.node} · 묶음 통합안 ${c.cluster} · 충돌 교배 ${c.cross}) 중 기본안과 같아 탈락 `, h('em', null, `${c.screened}개`), `, 결선 ${c.finalists}개가 ${c.duels}번 겨뤘다. 고친 안이 채택된 것 ${c.revised}건.`),
+    run.frames?.length ? h('div', null, h('p', { class: 'small' }, '다시 정의한 문제'), h('ul', { class: 'list' }, run.frames.map((f) => h('li', null, h('div', { class: 'row' }, h('span', { class: 'chip ghost' }, f.id), h('strong', null, f.frame)), f.why, f.risk ? h('p', { class: 'small' }, `부딪히는 요구: ${f.risk}`) : null)))) : null,
+    h('details', null, h('summary', { class: 'small' }, `후보 ${c.candidates}개 전체 보기`),
+      h('ul', { class: 'list' }, rows.map((k) => h('li', { class: k.status === '결선 통과' ? '' : 'off' },
+        h('div', { class: 'row' }, h('span', { class: `chip ${k.status === '결선 통과' ? 'y' : 'ghost'}` }, k.status), h('span', { class: 'chip ghost' }, k.from), k.screen ? h('span', { class: `chip ${k.screen.verdict === '같음' ? 'warn' : 'ghost'}` }, `기본안과 ${k.screen.verdict}`) : null, k.score != null ? h('span', { class: 'chip ghost' }, `${k.score}점`) : null, k.wins != null ? h('span', { class: 'chip ghost' }, `${k.wins}승`) : null),
+        h('strong', null, k.title), h('p', { class: 'small' }, k.concept))))));
+}
+
 function insightTab() {
   const p = S.project; const run = p.run;
   if (!run || !run.insights?.length) {
     return [h('section', { class: 'sec' }, h('p', { class: 'lead' }, S.running ? '분석하는 중이다.' : '아직 분석하지 않았다.'),
       h('p', { class: 'note' }, '분석 시작을 누르면 아래 일곱 단계가 이어서 진행된다.'),
       h('ol', { class: 'steps' }, [
-        ['기본안', '기준 노드 없이 브리프만 읽고 안 3개를 먼저 받는다. 뒤에서 통합 인사이트와 비교하는 기준이다.'],
+        ['기본안과 문제 다시 정의', '브리프만 읽고 낸 안 3개를 먼저 받고, 그 안을 넘으려면 문제를 어떻게 달리 물어야 하는지 정한다.'],
         ['노드별 분석', '각 기준 노드가 같은 미션과 이슈를 받아 따로 판단을 낸다. 근거 단계를 쓰지 못한 판단은 제외한다.'],
         ['연결', '판단끼리 원인·조건·강화·충돌 관계를 찾는다. 이유가 없는 연결은 제외한다.'],
         ['묶기', '서로 강하게 연결된 판단을 계산으로 묶는다. 입력이 같으면 결과도 같다.'],
-        ['통합', '묶음마다 통합 인사이트를 하나씩 쓴다.'],
-        ['검증', '인사이트가 아이덴티티·에어플레인·터널 판단을 모두 근거로 썼는지 확인한다.'],
+        ['후보 모으기', '노드가 자기 기준을 끝까지 민 완성안, 묶음 통합안, 충돌하는 두 안의 교배안을 모은다.'],
+        ['경쟁', '기본안과 같은 안을 떨어뜨리고, 더프롬의 기준으로 1:1 대결을 붙인다. 이긴 안은 공격을 받고 고친다.'],
         ['디렉션', '인사이트를 기획·디자인·개발·서비스 담당의 할 일로 정리하고, 인사이트가 기본안과 같은 해법인지 판정한다.'],
       ].map(([t, d], i) => h('li', null, h('b', null, i + 1), h('div', null, h('strong', null, t), h('p', { class: 'note' }, d))))))];
   }
@@ -473,6 +487,7 @@ function insightTab() {
 
   const board = directionBoard(run); if (board) out.push(board);
   const base = baselineBoard(run); if (base) out.push(base);
+  const ar = arenaBoard(run); if (ar) out.push(ar);
 
   out.push(h('section', { class: 'sec' }, h('h2', null, '통합 인사이트', h('small', null, '누르면 브레인 맵에 근거 경로가 켜진다')),
     ...[...run.insights].sort((a, b) => (b.from?.score ?? -1) - (a.from?.score ?? -1)).map((n, idx) => {
@@ -482,7 +497,9 @@ function insightTab() {
           h('span', { class: 'no' }, idx + 1), h('div', null, h('h3', null, n.title), h('p', { class: 'one' }, n.insight), n.from ? h('span', { class: `chip ${n.from.verdict === '기각' ? 'warn' : n.from.verdict === '채택' ? 'y' : 'ghost'}` }, `더프롬 ${n.from.verdict} · ${n.from.score}점`) : null, ' ', overlapOf(run, n.id) ? h('span', { class: `chip ${overlapOf(run, n.id).verdict === '같음' ? 'warn' : 'ghost'}` }, OVERLAP_LABEL[overlapOf(run, n.id).verdict]) : null)),
         open ? h('div', { class: 'more' },
           c.ok ? null : h('div', { class: 'banner warn' }, h('strong', null, '검증 미통과 — '), c.problems.join(' / ')),
+          n.origin ? h('p', { class: 'small' }, `${run.arena?.candidates.find((k) => k.id === n.candidate)?.from || ''} · 결선 ${n.wins}승${n.revised ? ' · 공격을 받고 고친 안' : ''}`) : null,
           fromBoard(n), humanVerdict(n),
+          n.attacks?.length ? h('div', null, h('p', { class: 'small' }, `받은 공격 ${n.attacks.length}건${n.kept ? ` — 지킨 것: ${n.kept}` : ''}`), h('ul', { class: 'bullets' }, n.attacks.map((x) => { const fx = (n.fixed || []).find((f) => f.hit && x.hit.includes(f.hit.slice(0, 12))); return h('li', null, `[${x.from} · ${x.severity}] ${x.hit}${fx ? ` → ${fx.fix}` : ''}`); })), n.fixed?.length ? h('ul', { class: 'bullets' }, n.fixed.map((f) => h('li', null, `고친 것: ${f.fix}`))) : null) : null,
           h('div', null, h('div', { class: 'cover', role: 'img', 'aria-label': '근거 판단의 노드군 구성' }, Object.keys(FAMILIES).map((f) => h('i', { class: f, style: `width:${pct(c.byFamily[f], c.used.length)}%` }))),
             h('div', { class: 'cover-key' }, h('strong', null, `근거 판단 ${c.used.length}건`), Object.keys(FAMILIES).map((f) => h('span', null, `${FAMILIES[f].short} ${c.byFamily[f]}건`)), h('span', null, `노드 ${c.lenses.length}개`))),
           h('ol', { class: 'chain' }, n.chain.map((s, i) => h('li', null, h('span', { class: 'step' }, i + 1),

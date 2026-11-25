@@ -30,7 +30,7 @@ test('사고 패스 — 발화 · 연결 · 수렴 · 통합이 한 번에 돈�
   const events = [];
   const run = await think(p, createMock(), { onEvent: (e) => events.push(e.type === 'stage' ? e.stage : e.type) });
   const lenses = IDENTITY.length + TUNNEL.length + p.settings.ismCount;
-  assert.equal(run.calls, 1 + 1 + lenses + 1 + p.settings.insightCount + 1 + 1, '호출 수 = 기본안 1 + 사조 고르기 1 + 노드 수 + 연결 1 + 인사이트 수 + 더프롬 판정 1 + 디렉션 1');
+  assert.equal(run.calls, 1 + 1 + 1 + lenses + 1 + p.settings.insightCount + run.arena.calls + 1 + 1, '호출 수 = 기본안 1 + 문제 다시 정의 1 + 사조 고르기 1 + 노드 수 + 연결 1 + 묶음 통합 + 경쟁 + 더프롬 판정 1 + 디렉션 1');
   assert.equal(new Set(run.signals.map((s) => s.lens)).size, lenses, '모든 노드가 발화했다');
   assert.deepEqual(events.filter((e) => ['route', 'activate', 'link', 'propagate', 'integrate', 'direct', 'done'].includes(e)), ['route', 'activate', 'link', 'propagate', 'integrate', 'direct', 'done']);
   assert.ok(OPPOSITIONS.some((o) => run.picks.some((x) => x.id === o.a) && run.picks.some((x) => x.id === o.b)), '대립하는 사조 쌍이 들어 있다');
@@ -91,13 +91,14 @@ test('가드에 걸리면 이유를 붙여 한 번 다시 쓰고, 그래도 안 
     assert.ok(a.task.attempt === 0 || a.user.includes('다시 쓰는 이유'));
     return { json: { insight: '바로 앞 단계만 인용한 결론', chain: [{ signal: a.task.cluster.members[0], role: '전제', says: '' }], substitute: { changes: '' } } };
   } };
-  const run = await think(sample(), lazy);
+  const lazyP = sample(); lazyP.settings.arena = false;   // 묶음 통합의 검증만 본다
+  const run = await think(lazyP, lazy);
   assert.equal(integrateCalls, 6, '묶음 3개 × 2번');
   assert.ok(run.insights.every((i) => !i.check.ok && i.check.problems.length));
 });
 
 test('사람의 개입 — 엣지를 고치면 발화 없이 전파·통합만 다시 돈다', async () => {
-  const p = sample();
+  const p = sample(); p.settings.arena = false;   // 묶음 통합의 검증만 본다
   p.run = await think(p, createMock());
   const before = p.run.clusters.map((c) => c.members.join());
   // 가장 강한 긴장을 끊고, 신호 하나를 끈다
@@ -106,7 +107,7 @@ test('사람의 개입 — 엣지를 고치면 발화 없이 전파·통합만 �
   const kinds = [];
   const mock = createMock();
   const again = await think(p, { name: 'spy', json: (a) => { kinds.push(a.task.kind); return mock.json(a); } }, { mode: 'relink' });
-  assert.ok(kinds.length > again.clusters.length && kinds.every((k) => k === 'integrate' || k === 'direct' || k === 'verdict'), '통합·판정·디렉션 호출만 있다');
+  assert.ok(kinds.length > again.clusters.length && kinds.every((k) => ['integrate', 'direct', 'verdict', 'cross', 'screen', 'duel', 'attack', 'revise'].includes(k)), '통합·판정·디렉션 호출만 있다');
   assert.equal(again.signals.length, 26);
   assert.ok(!again.clusters.some((c) => c.members.includes('BRUTAL-1')));
   assert.notDeepEqual(again.clusters.map((c) => c.members.join()), before);
@@ -381,4 +382,39 @@ test('팩트북 — 출처 조건, 터널 추정 표시, AI 조사 거르기, md
   assert.equal(back.length, 3);
   assert.deepEqual(back.map((f) => [f.id, f.kind, f.sourceType, f.source, f.url, f.by, f.checked]).sort(), proj.facts.map((f) => [f.id, f.kind, f.sourceType, f.source, f.url, f.by, f.checked]).sort());
   assert.equal(validFacts({ facts: back }).facts.length, 3);
+});
+
+test('경쟁 — 후보를 모아 기본안과 같은 안을 떨어뜨리고, 1:1 대결로 고른 뒤 공격 · 보완한다', async () => {
+  const { roundRobin, standings, crossPairs } = await import('../js/engine/arena.js');
+  const p = sample();
+  const kinds = [];
+  const mock = createMock();
+  const run = await think(p, { ...mock, json: (a) => { kinds.push(a.task.kind); return mock.json(a); } });
+  const a = run.arena; const c = a.counts;
+  assert.equal(kinds[1], 'reframe', '기본안 다음에 문제를 다시 정의한다');
+  assert.equal(run.frames.length, 3);
+  assert.equal(c.candidates, c.node + c.cluster + c.cross);
+  assert.ok(c.node >= 10 && c.cluster === 3 && c.cross >= 1, JSON.stringify(c));
+  assert.ok(run.proposals.every((x) => ['R0', 'R1', 'R2', 'R3'].includes(x.frame)));
+  // 기본안과 같은 안은 채점에 들어가지 않는다
+  for (const k of a.candidates.filter((x) => x.screen?.verdict === '같음')) { assert.equal(k.score, null); assert.ok(k.status.includes('기본안')); }
+  // 결선은 모두 한 번씩 겨룬다
+  assert.equal(c.finalists, 6); assert.equal(c.duels, 15);
+  assert.equal(a.candidates.filter((x) => x.status === '결선 통과').length, p.settings.insightCount);
+  assert.ok(a.duels.every((d) => d.winner === d.a || d.winner === d.b));
+  // 이긴 안이 통합 인사이트가 되고, 공격 기록이 남는다
+  assert.equal(run.insights.length, p.settings.insightCount);
+  assert.ok(run.insights.every((i) => i.check.ok && i.candidate && i.attacks.length && i.check.used.length));
+  assert.deepEqual(run.insights.map((i) => i.wins), [...run.insights.map((i) => i.wins)].sort((x, y) => y - x), '승수 순');
+  assert.equal(kinds.filter((k) => k === 'attack').length, 3); assert.equal(kinds.filter((k) => k === 'revise').length, 3);
+  // 대진과 순위는 계산이다 — 같은 입력이면 같다
+  assert.deepEqual(roundRobin(['K1', 'K2', 'K3', 'K4']), roundRobin(['K1', 'K2', 'K3', 'K4']));
+  assert.equal(roundRobin(['K1', 'K2', 'K3', 'K4']).length, 6);
+  const t = standings(['K1', 'K2', 'K3'], [{ winner: 'K2' }, { winner: 'K2' }, { winner: 'K3' }], { K1: 90, K2: 10, K3: 50 });
+  assert.deepEqual(t.map((x) => x.id), ['K2', 'K3', 'K1'], '채점 점수보다 승수가 먼저다');
+  assert.ok(crossPairs(run, 5).every((x) => x.a.lens !== x.b.lens));
+  // 경쟁을 끄면 예전처럼 묶음 통합안이 그대로 나온다
+  const q = sample(); q.settings.arena = false;
+  const plain = await think(q, createMock());
+  assert.ok(!plain.arena && plain.insights.length === 3 && plain.frames.length === 0);
 });

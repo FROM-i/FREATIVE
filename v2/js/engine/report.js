@@ -37,6 +37,13 @@ export function reportMarkdown(project) {
     L.push('### 먼저 할 일', '', ...d.priority.map((x, i) => `${i + 1}. ${x.what} (${name(x.owner)}${x.from ? ` · ${x.from}` : ''})`), '');
   }
 
+  if (run.arena) {
+    const c = run.arena.counts;
+    L.push('## 경쟁 기록', '', `후보 ${c.candidates}개(노드의 완성안 ${c.node} · 묶음 통합안 ${c.cluster} · 충돌 교배 ${c.cross}) 중 기본안과 같아 탈락 ${c.screened}개, 결선 ${c.finalists}개가 ${c.duels}번 겨뤘다. 고친 안이 채택된 것 ${c.revised}건.`, '');
+    if (run.frames?.length) L.push('다시 정의한 문제', ...run.frames.map((f) => `- ${f.id} ${f.frame} — ${f.why}`), '');
+    L.push('| 후보 | 출처 | 기본안 대조 | 점수 | 승 | 결과 | 제목 |', '|---|---|---|---|---|---|---|', ...[...run.arena.candidates].sort((x, y) => (x.rank ?? 99) - (y.rank ?? 99) || (y.score ?? -1) - (x.score ?? -1)).map((k) => `| ${k.id} | ${k.from} | ${k.screen?.verdict || '-'} | ${k.score ?? '-'} | ${k.wins ?? '-'} | ${k.status} | ${k.title} |`), '');
+  }
+
   if (run.baseline?.concepts?.length) {
     const ov = d?.overlap || [];
     const cnt = (v) => ov.filter((o) => o.verdict === v).length;
@@ -52,6 +59,9 @@ export function reportMarkdown(project) {
     if (!c.ok) L.push(`> 검증 미통과: ${c.problems.join(' / ')}`, '');
     L.push(`- 컨셉 방향: ${n.concept}`, `- 보이는 표현: ${n.visual}`, `- 지킬 관성: ${n.keep}`, `- 바꿀 해석: ${n.change}`);
     L.push(`- 근본 이슈에 적용하면: ${n.substitute.who} — ${n.substitute.changes}`, `- 판정 질문의 답: ${n.verdict}`, `- 문(N7): ${n.gate}`);
+    if (n.from) L.push(`- 더프롬 판정: ${n.from.verdict} · ${n.from.score}점${n.from.push ? ` — 더 밀 곳: ${n.from.push}` : ''}`);
+    if (n.attacks?.length) L.push(`- 받은 공격 ${n.attacks.length}건: ${n.attacks.map((x) => `[${x.from}] ${x.hit}`).join(' / ')}`, ...(n.fixed?.length ? [`- 고친 것: ${n.fixed.map((f) => f.fix).join(' / ')}`] : []));
+    if (n.facts?.length) L.push(`- 근거 팩트: ${n.facts.join(', ')}`);
     if (n.without?.baseline) L.push(`- 노드 없이 냈을 안: ${n.without.baseline}`, `- 이 안의 차이: ${n.without.difference}`);
     L.push('');
     L.push(`근거 판단 ${c.used.length}건 — ${Object.keys(FAMILIES).map((f) => `${FAMILIES[f].short} ${c.byFamily[f]}건`).join(' · ')}`, '');

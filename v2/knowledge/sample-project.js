@@ -284,7 +284,7 @@ FIXTURE.direction = {
 for (const [lens, fact] of [['TN-BRAND', 'F1'], ['TN-TARGET', 'F2'], ['TN-USAGE', 'F2']]) for (const sig of FIXTURE.signals[lens] || []) sig.facts = [fact];
 
 // 더프롬 판정 — 예시. 기준별 점수와 이유, 채택 · 보완 · 기각
-const V = (insight, s, verdict, safe, push, why) => ({ insight, scores: { 'ID-JAMAIS': s[0], 'ID-FROM': s[1], 'ID-BENEFIT': s[2], 'ID-ONEU': s[3], 'ID-INERTIA': s[4], 'ID-YELLOW': s[5] }, why: { 'ID-JAMAIS': why[0], 'ID-FROM': why[1], 'ID-BENEFIT': why[2], 'ID-ONEU': why[3], 'ID-INERTIA': why[4], 'ID-YELLOW': why[5] }, verdict, safe, push, precedent: '' });
+const V = (insight, s, verdict, safe, push, why) => ({ insight, title: { N1: '친근한 안내 문구로 재방문 습관 유도', N2: '분량을 먼저 보여 줘 읽기 부담 완화', N3: '입구에서 동선을 나눠 기존 이용자 보호' }[insight], scores: { 'ID-JAMAIS': s[0], 'ID-FROM': s[1], 'ID-BENEFIT': s[2], 'ID-ONEU': s[3], 'ID-INERTIA': s[4], 'ID-YELLOW': s[5] }, why: { 'ID-JAMAIS': why[0], 'ID-FROM': why[1], 'ID-BENEFIT': why[2], 'ID-ONEU': why[3], 'ID-INERTIA': why[4], 'ID-YELLOW': why[5] }, verdict, safe, push, precedent: '' });
 FIXTURE.verdict = [
   V('N1', [4, 4, 4, 3, 5, 4], '채택', '', '문구 한 줄에 그치지 않게, 반납 안내부터 연체 안내까지 같은 말투로 묶는다.',
     ['늘 보던 반납 안내가 다르게 읽힌다.', '빌릴 책이 없으면 갈 이유가 없다는 판단에서 출발했다.', '빌릴 일이 없는 날에도 들를 이유가 생긴다.', '문구 외의 접점으로 번지는 규칙이 약하다.', '시설과 절차를 그대로 둔다.', '안내를 읽는 모든 이용자에게 닿는다.']),
