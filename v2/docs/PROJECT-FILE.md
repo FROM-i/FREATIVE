@@ -50,7 +50,7 @@
 | `facts[].sourceType` | `stat` 공식 통계 · `disclosure` 공시 · `official` 브랜드 공식 자료 · `press` 보도자료 원문. 클라이언트가 준 내부 자료는 `internal`(사람이 넣은 것만) |
 | `facts[].by` · `checked` | LLM이 넣었으면 `"ai"` · `false`. 사람이 원문을 확인하면 화면에서 확인 표시를 한다 |
 | `issues` | 비워 두거나 `{ "id": "I1", "root": true, "title": "누구의 무엇이 바뀌는가", "detail": "", "test": "판정 질문", "tags": [] }` |
-| `settings.look` | 브레인 맵 모양. `{ "kind": "brain" }` 기본 · `{ "kind": "burger" }` 층 쌓기 예시 · `{ "kind": "stack", "layers": [...] }` 직접 정한 층 |
+| `settings.look` | 브레인 맵 모양. `{ "kind": "brain" }` 기본 · `{ "kind": "burger" }` 층 쌓기 예시 · `{ "kind": "bulb" }` 전구 · `"bolt"` 번개 · `"phone"` 폰을 쥔 손 · `"server"` 클라우드와 서버 · `{ "kind": "stack", "layers": [...] }` 직접 정한 층 |
 
 ## 4. 하지 않는 것
 

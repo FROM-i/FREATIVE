@@ -3,7 +3,7 @@
 import { newProject, buildGraph, describe, nextIssueId, lensName, activeLenses, uid, validateProject } from './graph/model.js';
 import { CATEGORIES, TAGS, COMMON_INPUT, SEED_INPUT, PERSPECTIVES, tagById, categoryById, categoriesOf, recommendTags, recommendCategory } from '../knowledge/tags.js';
 import { createView } from './graph/view.js';
-import { shapeFor, PRESETS, LAYER_ROLES, LAYER_FORMS } from './graph/shapes.js';
+import { shapeFor, PRESETS, LAYER_ROLES, LAYER_FORMS, FIGURES, figureParts } from './graph/shapes.js';
 import { think, proposeIssues, researchFacts } from './engine/think.js';
 import { FACT_KINDS, SOURCE_TYPES, factKind, sourceType, factProblem, validFacts, nextFactId, factsToMarkdown, parseFactbook } from '../knowledge/facts.js';
 import { WEIGHTS, SEED_PRECEDENTS, normalizeWeights } from '../knowledge/viewpoint.js';
@@ -512,12 +512,16 @@ function missionTab() {
   {
     const st = p.settings; const look = st.look || { kind: 'brain' };
     const setLook = (next) => { st.look = next; persist(); refreshGraph(); rerender(); };
-    const layers = look.kind === 'stack' ? look.layers : look.kind !== 'brain' && PRESETS[look.kind] ? PRESETS[look.kind].layers : null;
+    const fig = FIGURES[look.kind] ? look.kind : null;
+    const layers = fig ? null : look.kind === 'stack' ? look.layers : look.kind !== 'brain' && PRESETS[look.kind] ? PRESETS[look.kind].layers : null;
     const edit = (i, key, value) => { const list = layers.map((l) => ({ ...l })); list[i][key] = value; setLook({ kind: 'stack', name: look.name || PRESETS[look.kind]?.name || '내 형상', layers: list }); };
+    const parts = fig ? figureParts(fig, look.parts) : null;
+    const editPart = (id, key, value) => setLook({ kind: fig, parts: { ...(look.parts || {}), [id]: { ...(look.parts?.[id] || {}), [key]: value } } });
     out.push(h('section', { class: 'sec' }, h('h2', null, '브레인 맵 모양', h('small', null, '이 프로젝트에만 적용')),
-      field('형상', h('select', { id: 'set-look', onchange: (e) => setLook(e.target.value === 'brain' ? { kind: 'brain' } : { kind: e.target.value }) },
+      field('형상', h('select', { id: 'set-look', onchange: (e) => setLook({ kind: e.target.value }) },
         h('option', { value: 'brain', selected: look.kind === 'brain' }, '뇌 — 기본'),
         Object.entries(PRESETS).map(([id, d]) => h('option', { value: id, selected: look.kind === id }, `${d.name} — 층 ${d.layers.length}개`)),
+        Object.entries(FIGURES).map(([id, d]) => h('option', { value: id, selected: look.kind === id }, `${d.name} — 부분 ${d.parts().length}개`)),
         look.kind === 'stack' ? h('option', { value: 'stack', selected: true }, `${look.name || '내 형상'} — 고친 것`) : null)),
       layers ? [h('p', { class: 'small' }, '위에서 아래 순서다. 층마다 이름, 색, 맡는 노드군을 고친다.'),
         h('div', { class: 'layers' }, layers.map((l, i) => h('div', { class: 'layer' },
@@ -525,7 +529,12 @@ function missionTab() {
           h('input', { type: 'text', value: l.name, 'aria-label': '층 이름', onchange: (e) => edit(i, 'name', e.target.value.trim() || l.name) }),
           h('select', { 'aria-label': `${l.name}이 맡는 것`, onchange: (e) => edit(i, 'role', e.target.value) }, LAYER_ROLES.map((r) => h('option', { value: r.id, selected: l.role === r.id }, r.name))),
           h('select', { 'aria-label': `${l.name}의 모양`, onchange: (e) => edit(i, 'form', e.target.value) }, LAYER_FORMS.map((f) => h('option', { value: f.id, selected: l.form === f.id }, f.name)))))),
-      ] : h('p', { class: 'small' }, '층을 쌓은 형상으로 바꾸면 층마다 색과 맡는 노드군을 정할 수 있다.')));
+      ] : parts ? [h('p', { class: 'small' }, '부분마다 이름, 색, 맡는 노드군을 고친다. 외곽선은 정해져 있다.'),
+        h('div', { class: 'layers' }, parts.map((l) => h('div', { class: 'layer part' },
+          h('input', { type: 'color', value: l.color, 'aria-label': `${l.name} 색`, onchange: (e) => editPart(l.id, 'color', e.target.value) }),
+          h('input', { type: 'text', value: l.name, 'aria-label': '부분 이름', onchange: (e) => editPart(l.id, 'name', e.target.value.trim() || l.name) }),
+          h('select', { 'aria-label': `${l.name}이 맡는 것`, onchange: (e) => editPart(l.id, 'role', e.target.value) }, LAYER_ROLES.map((r) => h('option', { value: r.id, selected: l.role === r.id }, r.name)))))),
+      ] : h('p', { class: 'small' }, '층이나 외곽선 형상으로 바꾸면 부분마다 색과 맡는 노드군을 정할 수 있다.')));
   }
 
   out.push(h('section', { class: 'sec' }, h('h2', null, '모델'),
