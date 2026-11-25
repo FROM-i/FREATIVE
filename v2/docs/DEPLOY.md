@@ -8,7 +8,7 @@ THE FROM BRAIN(2.0)은 `v2/`만 웹에 올린다. FREATIVE 1.x는 저장소 루�
 | --- | --- | --- |
 | 코드 | GitHub `FROM-i/FREATIVE` | 2.0은 `v2/`, 1.x는 루트 |
 | 배포 | Vercel `from-is-projects/thefrom_brain` | Root Directory `v2`, 배포 브랜치 `main`, 주소 `thefrombrain.vercel.app` |
-| 로그인 · 저장 | Supabase `qifxzkzpixdmyajhbdsx` (서울) | 스키마 `supabase/migrations/0001_brain_auth.sql` |
+| 로그인 · 저장 | Supabase `qifxzkzpixdmyajhbdsx` (서울) | 스키마 `supabase/migrations/` (0001, 0002 적용) |
 | 모델 키 | Vercel 환경 변수 `ANTHROPIC_API_KEY` | 서버에만 둔다. 브라우저로 내려가지 않는다 |
 
 `main`에 푸시하면 사이트가 다시 배포된다. Vercel은 `v2/`만 보므로 1.x(`src/` · `knowledge/`)를 고쳐도 사이트 내용은 바뀌지 않는다. 1.x 설치 파일은 `electron-builder.yml`이 `src/` · `knowledge/`만 담아서 `v2/`가 들어가지 않는다.
@@ -16,7 +16,8 @@ THE FROM BRAIN(2.0)은 `v2/`만 웹에 올린다. FREATIVE 1.x는 저장소 루�
 ## 로그인과 역할
 
 - 가입은 회사 메일(@from.co.kr)만 된다. 다른 주소는 DB가 막는다.
-- 가입 → 확인 메일의 링크 → 로그인 → **승인 대기** → 관리자가 승인하면 쓴다.
+- 가입 → 로그인 → **승인 대기** → 관리자가 승인하면 쓴다. 확인 메일은 보내지 않는다(Confirm email 꺼짐).
+- 메일 확인이 없으므로 주소의 주인인지는 시스템이 모른다. **승인할 때 본인이 신청한 것인지 직접 확인한다.**
 - 역할 4가지
 
 | 역할 | 할 수 있는 일 |
@@ -26,7 +27,7 @@ THE FROM BRAIN(2.0)은 `v2/`만 웹에 올린다. FREATIVE 1.x는 저장소 루�
 | 관리자 `admin` | 사용자 승인 · 사용 중지, 모든 프로젝트 수정 · 삭제 |
 | 수퍼관리자 `super_admin` | 관리자 지정까지 |
 
-- 처음 수퍼관리자는 `jh.min@from.co.kr`이다. 이 주소로 가입하고 메일을 확인하면 바로 수퍼관리자다.
+- 처음 수퍼관리자는 가입한 뒤 SQL Editor에서 한 번 올린다(`supabase/migrations/0002_no_mail_confirm.sql`의 주석). 메일 주소만으로 자동 지정하지 않는다.
 - 승인과 역할 변경은 미션 탭의 **계정 → 사용자 관리**에서 한다.
 
 ## 프로젝트
@@ -51,7 +52,7 @@ THE FROM BRAIN(2.0)은 `v2/`만 웹에 올린다. FREATIVE 1.x는 저장소 루�
 
 ## 알아 둘 것
 
-- **메일 발송(SMTP)을 연결해야 직원이 스스로 가입할 수 있다.** 수파베이스 기본 발송은 수파베이스 조직 멤버 주소로만, 시간당 2통까지 보낸다. 지금 조직 멤버는 1명이라 회사 메일로는 확인 메일이 가지 않는다. Authentication → Emails → SMTP Settings에 회사 메일이나 발송 서비스(Resend 등)를 넣는다.
-- SMTP를 넣기 전에는 수파베이스 대시보드의 Authentication → Users → Add user에서 **Auto Confirm User**를 켜고 계정을 직접 만든다. 이렇게 만들어도 역할 규칙은 같다(`jh.min@from.co.kr`은 수퍼관리자, 나머지는 승인 대기).
+- 메일을 보내지 않으므로 비밀번호 찾기가 없다. 비밀번호를 잊으면 수파베이스 대시보드(Authentication → Users)에서 관리자가 다시 정해 준다.
+- 메일 확인을 다시 켜려면 메일 발송(SMTP)을 먼저 연결한다. 수파베이스 기본 발송은 조직 멤버 주소로만, 시간당 2통까지 보낸다.
 - 수파베이스 주소와 공개 키(`js/cloud/config.js`)는 브라우저에 내려가도 되는 값이다. 비밀 키(`sb_secret_…`)는 어디에도 적지 않는다.
 - 스키마를 바꾸면 `supabase/migrations/`에 파일을 더하고 SQL Editor에서 실행한다.
