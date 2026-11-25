@@ -58,7 +58,7 @@ export function createAnthropic(config = {}, { getKey = () => '', getCode = () =
         const r = await post({ model, max_tokens: max, system, messages: [{ role: 'user', content: user }] }, signal);
         // 답이 길어 잘렸으면 한 번만 늘려서 다시 받는다. 잘린 JSON을 고쳐 쓰지 않는다
         if (r.stop_reason === 'max_tokens' && i === 0) { max *= 2; continue; }
-        if (r.stop_reason === 'max_tokens') throw new Error('Claude API: 답이 길어 잘렸습니다. 이슈나 노드 수를 줄여 다시 실행해 주세요.');
+        if (r.stop_reason === 'max_tokens') throw new Error('Claude API: 답이 길이 제한을 넘어 잘렸습니다. 같은 설정으로 다시 실행하면 같은 자리에서 멈춥니다. 이슈 수를 줄이거나 관리자에게 알려 주세요.');
         return { json: parseJSON(readText(r)), model, usage: r.usage ? { in: r.usage.input_tokens || 0, out: r.usage.output_tokens || 0 } : null };
       }
       throw new Error('Claude API 요청 실패');

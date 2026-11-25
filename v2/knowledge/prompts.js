@@ -163,7 +163,9 @@ ${lens.family === 'tunnel' ? '- 너는 터널의 레이어다. 팩트북이 있�
 }
 
 /** 신호 사이의 인과·영향을 판단한다 — 2.0의 핵심. 관계는 문장이 아니라 엣지로 남는다. */
-export function linkPrompt(project, signals, lensName) {
+/** scope: { within: 이슈 id } 한 이슈 안의 연결만 · { across: 최대 개수 } 서로 다른 이슈 사이의 연결만 */
+export function linkPrompt(project, signals, lensName, scope = null) {
+  const only = scope?.within ? `\n- **이번에는 이슈 ${scope.within} 안의 신호끼리만 잇는다.** 다른 이슈와의 연결은 따로 본다.` : scope?.across ? `\n- **이번에는 서로 다른 이슈의 신호 사이만 잇는다.** 같은 이슈 안의 연결은 이미 따로 봤으니 내지 않는다. 가장 분명한 것부터 최대 ${scope.across}개만 낸다.` : '';
   return {
     system: `${common(project)}
 
@@ -182,7 +184,8 @@ export function linkPrompt(project, signals, lensName) {
 - 긴장을 숨기지 않는다. 좋은 안은 긴장을 푸는 자리에서 나온다. 긴장이 하나도 없다면 다시 본다.
 - 모든 엣지에 \`why\`를 한 문장으로 쓴다. 이유를 쓸 수 없으면 내지 않는다. 비슷해 보인다는 이유로 잇지 않는다.
 - 판단의 겉말이 아니라 **본질**끼리 견준다. 겉말은 달라도 본질이 같은 원인을 가리키면 잇고, 겉말이 닮아도 본질이 다르면 잇지 않는다.
-- 엣지 수는 신호 수의 1~2배 사이. 전부 잇지 않는다.
+- 엣지 수는 신호 수의 1~2배 사이. 전부 잇지 않는다.${only}
+- \`why\`는 한 문장, 60자 안팎으로 쓴다.
 - \`weight\`(0~1)는 관계가 얼마나 분명한지다.
 
 ## 출력 JSON
