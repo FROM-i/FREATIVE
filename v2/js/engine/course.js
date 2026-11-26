@@ -125,18 +125,18 @@ export async function survey({ project, run, call, emit = () => {}, areas }) {
     try {
       const own = run.signals.filter((s) => s.lens === lens.id && !s.muted);
       const got = shapeAtoms(await call({ role: 'sub', ...courseLensPrompt(project, lens, areas, own), task: { kind: 'courseLens', project, lens, areas } }), lens, project, areas);
-      if (got.length < 3) failed.push({ lens: lens.id, error: `조각을 ${got.length}개만 냈다` });
+      if (got.length < 3) failed.push({ lens: lens.id, error: `분석 포인트를 ${got.length}개만 냈다` });
       signals.push(...got);
     } catch (e) { if (/취소/.test(e.message)) throw e; failed.push({ lens: lens.id, error: e.message }); }
   });
   const order = new Map(lenses.map((l, i) => [l.id, i]));
   signals.sort((a, b) => order.get(a.lens) - order.get(b.lens) || (a.id < b.id ? -1 : 1));
-  if (uniq(signals.map((s) => s.lens)).length < 3) throw new Error(`조각을 낸 노드가 ${uniq(signals.map((s) => s.lens)).length}개뿐이다${failed[0] ? ` — ${failed[0].error}` : ''}`);
+  if (uniq(signals.map((s) => s.lens)).length < 3) throw new Error(`분석 포인트를 낸 노드가 ${uniq(signals.map((s) => s.lens)).length}개뿐이다${failed[0] ? ` — ${failed[0].error}` : ''}`);
   // 관계는 두 번 따로 매긴다(순서를 뒤집어서) — 한 사람의 취향이 결론이 되지 않게. 둘 다 본 관계는 온전히, 한쪽만 본 관계는 절반으로 센다
   emit('stage', { stage: 'courseRel' });
   const reads = await Promise.all([false, true].map(async (reverse) => { try { return await call({ role: 'sub', ...courseRelPrompt(project, signals, areas, lensName, reverse), task: { kind: 'courseRel', project, atoms: signals, areas, reverse } }); } catch (e) { if (/취소/.test(e.message)) throw e; return null; } }));
   const got = reads.filter(Boolean);
-  if (!got.length) throw new Error('조각 사이의 관계를 매기지 못했다');
+  if (!got.length) throw new Error('분석 포인트 간 관계 검토에 실패했다');
   const rel = mergeRelations(got, signals);
   // 같은 말을 한 조각이 얼마나 되는가 — 노드가 병렬로 다르게 읽었는지의 지표
   let pairs = 0; let dup = 0;
@@ -175,7 +175,7 @@ export function shapeRivals(raw, project, run, areas, props = []) {
       flags: [],
     };
     const miss = areas.filter((a) => !covers.some((x) => x.area === a.id));
-    if (miss.length) r.flags.push(`닿지 않는 영역: ${miss.map((a) => a.name).join(', ')}`);   // 제안은 여럿이 함께 남는다 — 범위가 좁은 제안도 제안이다. 표시만 한다
+    if (miss.length) r.flags.push(`미적용 영역: ${miss.map((a) => a.name).join(', ')}`);   // 제안은 여럿이 함께 남는다 — 범위가 좁은 제안도 제안이다. 표시만 한다
     const hit = DEVICE_WORDS.filter((w) => `${r.name} ${r.line}`.includes(w));
     if (hit.length) r.flags.push(`장치 이름이 들어 있다: ${hit.join(', ')}`);
     // 대상 낱말 검사 — 방향 문장이 한 영역의 대상에 붙었는가, 영역 줄이 남의 대상을 빌렸는가
@@ -183,7 +183,7 @@ export function shapeRivals(raw, project, run, areas, props = []) {
     if (pin) r.flags.push(`한 영역의 대상이 방향의 주어다: ${pin.name}의 "${pin.words.join(', ')}"`);
     const lent = covers.map((c) => ({ c, b: borrowed(c.line, c.area, areas) })).filter((x) => x.b);
     if (lent.length) r.flags.push(`빌린 대상: ${lent.map((x) => `${areas.find((a) => a.id === x.c.area).name} 줄에 ${x.b.name}의 "${x.b.words.join(', ')}"`).join(' / ')}`);
-    if (r.breadth.identity < 1) r.flags.push('아이덴티티 노드의 조각이 없다');
+    if (r.breadth.identity < 1) r.flags.push('아이덴티티 노드의 근거가 없다');
     if (!r.swap) r.flags.push('경쟁사가 그대로 쓸 수 없는 이유를 쓰지 않았다');
     if (!r.drops.length) r.flags.push('하지 않는 것을 쓰지 않았다');
     if (facts.length < Math.min(2, need.facts)) r.flags.push(`팩트 ${facts.length}건만 썼다`);
@@ -355,7 +355,7 @@ export async function head({ project, run, call, emit = () => {}, fresh = false 
   const high = run.course.signals;
   const need = courseNeed(project, run);
   const props = run.course.proposals;
-  if (!props.length) throw new Error('수렴에서 해석의 연합이 나오지 않았다 — 노드가 해석 조각을 내지 않았다');
+  if (!props.length) throw new Error('방향안을 도출하지 못했다 — 노드가 가설을 내지 않았다');
 
   emit('stage', { stage: 'courseBase' });
   const base = shapeBase(await call({ role: 'sub', ...courseBasePrompt(project, areas), task: { kind: 'courseBase', project, areas } }));
@@ -395,9 +395,9 @@ export function take(run, id) {
   if (item?.control === '일부 불가') warn.push('기준의 판정 대상에 우리가 통제할 수 없는 구간이 들어 있다');
   if (base && !h.picked && !judge.beatsBase) warn.push('판정이 기본 방향을 더 낫게 봤다');
   if (item?.vsBase === '같음') warn.push('기본 방향과 기준이 같다고 판정받았다');
-  for (const f of won.flags.filter((x) => /^장치|^닿지 않는 영역|^아이덴티티|^한 영역의 대상|^빌린 대상/.test(x))) warn.push(f);
-  if (run.course?.readers < 2) warn.push('조각 사이의 관계를 한 번만 매겼다 — 한 사람의 판단에 기댄 수렴이다');
-  if (run.course?.net && !run.course.net.settled) warn.push('수렴이 끝까지 가라앉지 않았다');
+  for (const f of won.flags.filter((x) => /^장치|^미적용 영역|^아이덴티티|^한 영역의 대상|^빌린 대상/.test(x))) warn.push(f);
+  if (run.course?.readers < 2) warn.push('관계 검토가 1회만 수행됐다 — 교차 검토 없이 종합한 결과다');
+  if (run.course?.net && !run.course.net.settled) warn.push('종합 검증이 안정 상태에 도달하지 못했다');
   h.warn = warn;
   return h;
 }

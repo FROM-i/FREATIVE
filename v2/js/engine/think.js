@@ -26,7 +26,7 @@ const STANCES = new Set(['keep', 'change', 'limit', 'open']);
 const TYPES = new Set(['cause', 'condition', 'reinforce', 'tension']);
 const SOURCES = ['팩트', '브리프', '일반 관찰', '추론', '확인 필요'];
 const ASSUMED = 0.6;   // 팩트 없이 쓴 터널 판단의 비중
-const STAGE_NAMES = { weave: '그래프 통합안', courseScope: '과제의 영역', courseObjects: '영역의 대상 낱말', courseLens: '노드의 조각', courseRel: '조각 사이의 관계', courseBase: '기본 방향', course: '방향 후보', courseJudge: '방향 판정', layers: '영역별 전략 · 전술', baseline: '기본안', reframe: '프레임', route: '사조 고르기', activate: '노드 판단', link: '연결', integrate: '통합', cross: '교배', screen: '선별', duel: '대결', distinct: '같은 해법 확인', stance: '기조', attack: '공격', revise: '보완', hold: '기조 확인', verdict: '판정', direct: '방향', plan: '기획' };
+const STAGE_NAMES = { weave: '그래프 통합안', courseScope: '과제의 영역', courseObjects: '영역별 대상 키워드', courseLens: '노드별 분석 포인트', courseRel: '분석 포인트 관계 검토', courseBase: '기본 방향', course: '방향안 문안', courseJudge: '방향안 검증', layers: '영역별 전략 · 전술', baseline: '기본안', reframe: '프레임', route: '사조 선정', activate: '노드 판단', link: '연결', integrate: '통합', cross: '상충안 결합', screen: '선별', duel: '비교 평가', distinct: '같은 해법 확인', stance: '기조', attack: '반론 검증', revise: '보완', hold: '기조 확인', verdict: '판정', direct: '방향', plan: '기획' };
 const LINK_AT_ONCE = 45;   // 한 번의 호출로 잇는 신호 수의 한도. 이보다 많으면 이슈별로 나눈다
 const clamp = (v, d = 0.5) => (Number.isFinite(+v) ? Math.min(1, Math.max(0, +v)) : d);
 const text = (v) => (typeof v === 'string' ? v.trim() : '');
