@@ -9,7 +9,7 @@ import { common, missionBlock, toJson as j } from './prompts.js';
 import { validFacts } from './facts.js';
 import { categoriesOf, categoryById } from './tags.js';
 
-export const COURSE_CAPS = { name: 16, line: 44, standard: 64, from: 30, to: 30, keeps: 34, drop: 26, answer: 60, axis: 14, rule: 42, when: 12, phase: 36, guide: 42, move: 28, pain: 30, fix: 32, why: 90, note: 48, area: 14, areaNote: 40, cover: 36, claim: 120, swap: 56, casee: 40, object: 8 };
+export const COURSE_CAPS = { name: 28, line: 44, standard: 64, from: 30, to: 30, keeps: 34, drop: 26, answer: 60, axis: 14, rule: 42, when: 12, phase: 36, guide: 42, move: 28, pain: 30, fix: 32, why: 90, note: 48, area: 14, areaNote: 40, cover: 36, claim: 120, swap: 56, casee: 40, object: 8 };
 
 /** 방향 문장에 들어가면 전술이라는 표시가 되는 말 — 화면 · 기능 · 표현 장치의 이름 */
 export const DEVICE_WORDS = ['화면', '버튼', '배너', '팝업', '탭', '칸', '카드', '쿠폰', '푸시', '아이콘', '위젯', '페이지', '슬롯', '알림창'];
@@ -231,7 +231,7 @@ ${levelBlock(areas)}
 - **약속할 수 있는 것만 기준으로 삼는다.** 우리가 정할 수 없는 구간은 기준의 판정 대상이 아니다.
 
 ## 글자 수 — 넘기지 않는다
-\`name\` ${C.name}자(명사로 끝낸다) · \`line\` ${C.line}자 · \`standard\` ${C.standard}자 · \`covers\`의 \`line\` ${C.cover}자 · \`how\` ${C.swap}자 · \`swap\` ${C.swap}자 · \`from\`/\`to\` ${C.from}자 · \`keeps\` ${C.keeps}자 · \`drops\` 각 ${C.drop}자 · \`answer\` ${C.answer}자 이내.
+\`name\` ${C.name}자(이름표가 아니라 "수단으로 성과" 꼴 — 예: "프로모션 어셋 표기 일관성으로 신뢰 강화". 명사로 끝낸다) · \`line\` ${C.line}자 · \`standard\` ${C.standard}자 · \`covers\`의 \`line\` ${C.cover}자 · \`how\` ${C.swap}자 · \`swap\` ${C.swap}자 · \`from\`/\`to\` ${C.from}자 · \`keeps\` ${C.keeps}자 · \`drops\` 각 ${C.drop}자 · \`answer\` ${C.answer}자 이내.
 
 ## 출력 (JSON만)
 {"candidates":[{"id":"D1","name":"","line":"방향 한 줄","standard":"과제 안의 결정을 가르는 기준 한 문장","how":"","swap":"","covers":[{"area":"${areas[0].id}","line":""}],"from":"","to":"","keeps":"","drops":[""],"answer":"","signals":["조각 id"],"facts":["F1"]}]}`,
@@ -337,7 +337,7 @@ ${areaList(areas)}
 
 ## 글자 수 — 넘기지 않는다
 보는 판이다. 설명 · 이유 · 수식어를 붙이지 않는다.
-영역 전략 \`name\` ${C.name}자(명사로 끝낸다) · \`line\` ${C.line}자 · 단계 \`when\` ${C.when}자 · \`line\` ${C.phase}자 · \`move\` ${C.move}자 · \`pain\`/\`strength\` ${C.pain}자 · \`answer\` ${C.fix}자 · 인사이트 \`name\` ${C.axis}자 · \`line\` ${C.line}자 이내.
+영역 전략 \`name\` ${C.name}자(이름표가 아니라 "수단으로 성과" 꼴 — 예: "프로모션 어셋 표기 일관성으로 신뢰 강화". 명사로 끝낸다) · \`line\` ${C.line}자 · 단계 \`when\` ${C.when}자 · \`line\` ${C.phase}자 · \`move\` ${C.move}자 · \`pain\`/\`strength\` ${C.pain}자 · \`answer\` ${C.fix}자 · 인사이트 \`name\` ${C.axis}자 · \`line\` ${C.line}자 이내.
 
 ## 출력 (JSON만)
 {"phases":[{"id":"P1","when":"","line":""}],"areas":[{"area":"${areas[0].id}","name":"영역 전략의 이름","line":"영역 전략 한 줄","tactics":[{"phase":"P1","move":"","parts":["${parts[0]?.id || 'planning'}"],"from":["판단 id"],"insight":""}],"facts":["F1"],"signals":["판단 id"]}],"insights":[{"id":"N1","name":"","line":"","fit":"맞음"}],"fixes":[{"pain":"","answer":"","facts":["F1"]}],"boosts":[{"strength":"","answer":"","facts":["F1"]}],"gaps":[""]}`,
