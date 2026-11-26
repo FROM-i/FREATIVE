@@ -33,7 +33,7 @@ const clip = (s, n) => (String(s || '').length > n ? `${String(s).slice(0, n)}�
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const TYPE = { cause: '원인', condition: '조건', reinforce: '강화', tension: '충돌' };
 const STANCE = { keep: '지킬 관성', change: '바꿀 해석', limit: '넘지 않을 경계', open: '비어 있는 자리' };
-const STAGE = { weave: '그래프 전체를 읽고 통합안 쓰는 중', strategy: '전략 한 장으로 올리는 중', courseScope: '과제의 영역 뽑는 중', courseLens: '노드가 과제 전체를 읽고 조각을 내는 중', courseRel: '조각 사이의 지지와 모순을 매기는 중', cohere: '조각을 한꺼번에 수렴시키는 중', courseBase: '기본 방향 받는 중', course: '제안을 방향 문장으로 옮기는 중', courseJudge: '제안을 시험하는 중', layers: '영역별 전략 · 전술로 내리는 중', plan: '기획 틀로 정리하는 중', creative: '디자인 틀로 정리하는 중', baseline: '기본안 받는 중', reframe: '문제 다시 정의하는 중', cross: '충돌하는 안 교배 중', screen: '기본안과 대조 중', duel: '점수 없이 1:1로 겨루는 중', forge: '이긴 안 공격 · 보완 중', verdict: '더프롬 판정 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
+const STAGE = { weave: '그래프 전체를 읽고 통합안 쓰는 중', strategy: '전략 한 장으로 올리는 중', courseScope: '과제의 영역 뽑는 중', courseLens: '노드별 분석 포인트 도출 중', courseRel: '분석 포인트 간 뒷받침 · 상충 관계 검토 중', cohere: '전체 포인트 종합 검증 중', courseBase: '기본 방향 받는 중', course: '방향안 문안 작성 중', courseJudge: '방향안 검증 중', layers: '영역별 전략 · 전술로 내리는 중', plan: '기획 틀로 정리하는 중', creative: '디자인 틀로 정리하는 중', baseline: '기본안 받는 중', reframe: '문제 다시 정의하는 중', cross: '충돌하는 안 교배 중', screen: '기본안과 대조 중', duel: '점수 없이 1:1로 겨루는 중', forge: '이긴 안 공격 · 보완 중', verdict: '더프롬 판정 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
 
 /** DOM 만들기 — 글자는 언제나 텍스트 노드로 들어간다 */
 function h(tag, attrs, ...kids) {
@@ -119,7 +119,7 @@ function prosCons(n, run) {
     L.fixed.length ? h('div', null, h('p', { class: 'pc-h' }, `고친 공격 ${L.fixed.length}건`), h('div', { class: 'row tight' }, [...new Set(L.fixed.map((x) => x.from))].map((from) => { const list = L.fixed.filter((x) => x.from === from); return h('span', { class: 'chip ghost', title: list.map((x) => x.hit).join('\n') }, from, list.length > 1 ? ` ${list.length}` : ''); }))) : null,
   ].filter(Boolean);
   const cons = [
-    L.against.length ? h('div', null, h('p', { class: 'pc-h' }, tip(`부딪히는 노드 ${new Set(L.against.map((a) => a.other.lens)).size}개`, '이 안이 따르지 않은 판단이다. 그 판단을 낸 노드의 기준에서는 이 안이 약하다.')), L.against.map((a) => h('p', { class: 'pc-row', title: a.e.why }, nodeChip(a.other.lens, a.other.family), h('span', null, clip(a.other.claim, 46))))) : null,
+    L.against.length ? h('div', null, h('p', { class: 'pc-h' }, tip(`상충하는 노드 ${new Set(L.against.map((a) => a.other.lens)).size}개`, '이 안이 따르지 않은 판단이다. 그 판단을 낸 노드의 기준에서는 이 안이 약하다.')), L.against.map((a) => h('p', { class: 'pc-row', title: a.e.why }, nodeChip(a.other.lens, a.other.family), h('span', null, clip(a.other.claim, 46))))) : null,
     L.lost.length ? h('div', null, h('p', { class: 'pc-h' }, `진 대결 ${L.lost.length}건`), L.lost.slice(0, 2).map((x) => h('p', { class: 'pc-row', title: `${x.by?.title || ''}\n${x.d.why}` }, h('span', { class: 'chip ghost' }, clip(x.by?.from || x.d.winner, 18)), h('span', null, clip(x.d.why, 46)))), L.lost.length > 2 ? h('p', { class: 'small', title: L.lost.slice(2).map((x) => x.d.why).join('\n') }, `외 ${L.lost.length - 2}건`) : null) : null,
     L.open.length ? h('div', null, h('p', { class: 'pc-h' }, `남은 공격 ${L.open.length}건`), h('ul', { class: 'bullets small' }, L.open.map((x) => h('li', { title: x.hit }, `${x.from} — ${clip(x.hit, 44)}`)))) : null,
     (n.costs || []).length ? h('div', null, h('p', { class: 'pc-h' }, tip(`감수한 대가 ${n.costs.length}건`, '기조를 택했기 때문에 따라오는 약점이다. 고치지 않고 감수하기로 한 것이다.')), h('ul', { class: 'bullets small' }, n.costs.map((x) => h('li', { title: x.hit }, clip(x.note, 60))))) : null,
@@ -266,7 +266,7 @@ async function makeStrategy(fresh = false, adopt = '') {
     if (S.project === target) { S.deck = true; S.pillar = null; S.repin = false; }
     const st = target.run.strategy; const c = st.coverage;
     adoptAreas(target);
-    toast(st.v >= 6 ? `제안 ${st.rivals.length}개 · 기준안 ${st.direction.name} · 팩트 ${c.facts.used}/${c.facts.total}건` : st.v >= 2 ? `방향 · ${st.direction.name} · 후보 ${st.rivals.length}개 중 채택 · 팩트 ${c.facts.used}/${c.facts.total}건` : `전략 한 장 · 팩트 ${c.facts.used}/${c.facts.total}건 · 새로 끌어온 판단 ${c.signals.fresh}건`);
+    toast(st.v >= 6 ? `방향안 ${st.rivals.length}개 · 추천안 ${st.direction.name} · 팩트 ${c.facts.used}/${c.facts.total}건` : st.v >= 2 ? `방향 · ${st.direction.name} · 후보 ${st.rivals.length}개 중 채택 · 팩트 ${c.facts.used}/${c.facts.total}건` : `전략 한 장 · 팩트 ${c.facts.used}/${c.facts.total}건 · 새로 끌어온 판단 ${c.signals.fresh}건`);
   } catch (e) { toast(e.message, true); }
   finally { S.strategizing = false; persist(true); render(); if (S.deck) traceStrategy(); }
 }
@@ -296,7 +296,7 @@ function strategyBoard(run, st) {
       h('section', { class: 'concept' }, h('h1', null, st.concept.name), h('p', { class: 'line' }, st.concept.line), st.principle ? h('p', { class: 'principle' }, st.principle) : null),
       h('section', { class: 'covs' },
         cover('팩트', cv.facts, `인사이트만 ${cv.facts.byInsights}건`),
-        cover('판단', cv.signals, `새로 끌어온 것 ${cv.signals.fresh}건`),
+        cover('판단', cv.signals, `추가 반영 ${cv.signals.fresh}건`),
         cover('노드', cv.nodes, `새로 쓴 노드 ${cv.nodes.fresh}개`)),
       h('div', { class: 'banner warn' }, h('strong', null, '이 한 장은 인사이트에서 올려 쓴 것이다 — '), '지금은 모든 노드가 과제 전체를 보고 방향을 먼저 정한 뒤 그 아래로 내려 쓴다. 이슈 분석은 다시 돌지 않는다. ', h('button', { class: 'link', type: 'button', disabled: !!S.strategizing || !!S.running, onclick: makeStrategy }, S.strategizing || '방향부터 다시 만들기')),
       st.check.ok ? null : h('p', { class: 'small warn' }, `조건을 다 채우지 못했다 — ${st.check.problems.join(' / ')}`),
@@ -312,11 +312,12 @@ function strategyBoard(run, st) {
         h('ol', { style: `grid-template-columns: repeat(${st.phases.length}, minmax(0, 1fr))` }, st.phases.map((ph) => h('li', null, h('b', null, ph.when), h('p', null, ph.line), ph.pillars.length ? h('small', null, ph.pillars.map(partName).filter(Boolean).join(' · ')) : null)))) : null,
       (st.fixes.length || st.boosts.length) ? h('section', { class: 'pairs' },
         st.fixes.length ? h('div', null, h('h2', null, '푸는 것'), st.fixes.map((x) => h('div', { class: 'pair' }, h('span', null, x.pain), h('strong', null, x.answer), h('div', { class: 'evs' }, x.facts.map(fchip))))) : null,
-        st.boosts.length ? h('div', null, h('h2', null, '키우는 것'), st.boosts.map((x) => h('div', { class: 'pair' }, h('span', null, x.strength), h('strong', null, x.answer), h('div', { class: 'evs' }, x.facts.map(fchip))))) : null) : null,
+        st.boosts.length ? h('div', null, h('h2', null, '강화 요소'), st.boosts.map((x) => h('div', { class: 'pair' }, h('span', null, x.strength), h('strong', null, x.answer), h('div', { class: 'evs' }, x.facts.map(fchip))))) : null) : null,
       st.gaps.length ? h('section', { class: 'gaps' }, h('h2', null, '확인할 것'), h('ul', null, st.gaps.map((g) => h('li', null, g)))) : null),
   ];
 }
 
+const TYPE_LABEL = { 관찰: '현황', 제약: '제약 조건', 해석: '가설', 지렛대: '활용 자산' };
 /** 수렴의 판 — 노드가 낸 조각, 그 사이의 지지와 모순, 한꺼번에 수렴시킨 결과. 사람이 조각을 고정하거나 빼면 그 자리에서 다시 수렴한다(AI를 부르지 않는다) */
 function cohereBoard(run, st) {
   const c = run.course; const p = S.project; const used = new Set(st.direction.signals);
@@ -329,25 +330,25 @@ function cohereBoard(run, st) {
   const rest = c.signals.filter((x) => x.type !== '해석').sort((a, b) => b.act - a.act);
   const on = c.signals.filter((x) => x.act > 0).length;
   const row = (x) => h('li', { class: `${used.has(x.id) ? 'used' : ''}${x.act <= 0 ? ' off' : ''}`, onmouseenter: () => { view.tint(new Map([[x.lens, '#FFD200']])); view.trace([x.lens]); }, onmouseleave: () => traceStrategy() },
-    h('b', null, lensName(x.lens), h('small', null, `${x.type} · ${(x.scopes || [x.scope]).map((id) => (id === 'ALL' ? '전체' : (st.areas.find((a) => a.id === id)?.name || id))).join(' · ')}`)),
+    h('b', null, lensName(x.lens), h('small', null, `${TYPE_LABEL[x.type] || x.type} · ${(x.scopes || [x.scope]).map((id) => (id === 'ALL' ? '전체' : (st.areas.find((a) => a.id === id)?.name || id))).join(' · ')}`)),
     h('span', null, h('i', { class: 'act', title: `활성 ${x.act}` }, h('u', { style: `width:${Math.round(Math.max(0, x.act) * 100)}%` })), x.claim),
     h('span', { class: 'pins' },
-      h('button', { class: `link${pins[x.id] > 0 ? ' on' : ''}`, type: 'button', disabled: busy, title: '이 조각을 고정하고 나머지를 다시 수렴시킨다', onclick: () => pin(x.id, 1) }, '고정'),
-      h('button', { class: `link${pins[x.id] < 0 ? ' on' : ''}`, type: 'button', disabled: busy, title: '이 조각을 빼고 나머지를 다시 수렴시킨다', onclick: () => pin(x.id, -1) }, '제외')));
+      h('button', { class: `link${pins[x.id] > 0 ? ' on' : ''}`, type: 'button', disabled: busy, title: '이 포인트를 전제로 고정하고 다시 종합한다', onclick: () => pin(x.id, 1) }, '고정'),
+      h('button', { class: `link${pins[x.id] < 0 ? ' on' : ''}`, type: 'button', disabled: busy, title: '이 포인트를 제외하고 다시 종합한다', onclick: () => pin(x.id, -1) }, '제외')));
   const sel = (label, value, opts, onchange) => h('label', { class: 'knob' }, h('span', null, label), h('select', { disabled: busy, onchange: (e) => { onchange(+e.target.value); again(); } }, opts.map(([v, t]) => h('option', { value: String(v), selected: v === value }, t))));
   return h('details', { class: 'high', open: !!S.highOpen, ontoggle: (e) => { S.highOpen = e.target.open; } },
-    h('summary', null, h('span', null, `조각 ${c.signals.length}개 · 지지 ${st.net?.support ?? 0} · 모순 ${st.net?.contradict ?? 0} · 살아남은 조각 ${on}개`), h('small', null, `${st.reusedHigh ? '앞서 받은 조각을 썼다' : '이번에 받았다'} · 수렴 ${c.net.rounds}회${c.rel.agree ? ` · 두 번 매겨 일치한 관계 ${c.rel.agree.both}/${c.rel.edges.length}건` : ''}`)),
-    S.repin ? h('div', { class: 'banner' }, h('strong', null, '다시 수렴했다 — '), `제안의 구성이 아래처럼 바뀌었다. 방향 문장은 아직 앞의 것이다. `, h('button', { class: 'link', type: 'button', disabled: busy, onclick: makeStrategy }, '문장 다시 쓰기')) : null,
+    h('summary', null, h('span', null, `분석 포인트 ${c.signals.length}개 · 뒷받침 ${st.net?.support ?? 0}건 · 상충 ${st.net?.contradict ?? 0}건 · 채택 ${on}개 · 기각 ${c.signals.length - on}개`), h('small', null, `${st.reusedHigh ? '기존 분석 재사용' : '신규 분석'}${c.rel.agree ? ` · 교차 검토 일치 ${c.rel.agree.both}/${c.rel.edges.length}건` : ''}`)),
+    S.repin ? h('div', { class: 'banner' }, h('strong', null, '다시 종합했다 — '), `방향안 구성이 아래처럼 바뀌었다. 문안은 아직 이전 것이다. `, h('button', { class: 'link', type: 'button', disabled: busy, onclick: makeStrategy }, '문안 재작성')) : null,
     h('div', { class: 'knobs' },
-      sel('제안 수', p.settings.proposalCount || 3, [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5']], (v) => { p.settings.proposalCount = v; }),
-      sel('더프롬 기준의 무게', p.settings.cohere?.identityWeight ?? 1.5, [[1, '다른 노드와 같게'], [1.5, '기본'], [2, '더 무겁게']], (v) => { set().identityWeight = v; }),
-      sel('해석끼리의 경쟁', p.settings.cohere?.rivalry ?? 0.06, [[0.02, '느슨하게'], [0.06, '기본'], [0.1, '세게']], (v) => { set().rivalry = v; }),
-      sel('묶는 폭', p.settings.cohere?.grain ?? 0.05, [[0.02, '넓게 묶기'], [0.05, '기본'], [0.1, '잘게 나누기']], (v) => { set().grain = v; }),
-      sel('제약의 무게', p.settings.cohere?.constraint ?? 0.06, [[0.03, '가볍게'], [0.06, '기본'], [0.12, '무겁게']], (v) => { set().constraint = v; })),
-    h('ul', { class: 'props' }, c.proposals.map((x) => h('li', null, h('b', null, x.id), h('span', null, `해석 ${x.readings.length}개 · 받치는 근거 ${x.evidence.length}개 · 노드 ${x.lenses.length}개 · 부딪히는 조각 ${x.against.length}개 · 정합 ${x.score}${x.whole ? '' : ' · 한 영역의 읽기'}${x.live ? '' : ' · 수렴에서 눌림'}`)))),
-    h('h3', { class: 'sub' }, `해석 ${reads.length}개 — 과제를 무엇으로 볼 것인가`), h('ul', { class: 'highs' }, reads.map(row)),
-    h('details', { class: 'more' }, h('summary', null, `근거 ${rest.length}개 — 관찰 · 제약 · 지렛대`), h('ul', { class: 'highs' }, rest.map(row))),
-    h('p', { class: 'small' }, '노란 줄은 기준안이 기댄 조각, 흐린 줄은 수렴에서 눌린 조각이다. ', h('button', { class: 'link', type: 'button', disabled: busy, onclick: () => makeStrategy(true) }, '조각부터 다시 받기')));
+      sel('방향안 수', p.settings.proposalCount || 3, [[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5']], (v) => { p.settings.proposalCount = v; }),
+      sel('더프롬 관점 가중치', p.settings.cohere?.identityWeight ?? 1.5, [[1, '동일'], [1.5, '기본'], [2, '강화']], (v) => { set().identityWeight = v; }),
+      sel('가설 간 변별', p.settings.cohere?.rivalry ?? 0.06, [[0.02, '약하게'], [0.06, '기본'], [0.1, '강하게']], (v) => { set().rivalry = v; }),
+      sel('방향안 범위', p.settings.cohere?.grain ?? 0.05, [[0.02, '넓게'], [0.05, '기본'], [0.1, '좁게']], (v) => { set().grain = v; }),
+      sel('제약 조건 가중치', p.settings.cohere?.constraint ?? 0.06, [[0.03, '낮게'], [0.06, '기본'], [0.12, '높게']], (v) => { set().constraint = v; })),
+    h('ul', { class: 'props' }, c.proposals.map((x) => h('li', null, h('b', null, x.id), h('span', null, `가설 ${x.readings.length}개 · 뒷받침 근거 ${x.evidence.length}개 · 노드 ${x.lenses.length}개 · 상충 ${x.against.length}건 · 근거 강도 ${x.score}${x.whole ? '' : ' · 단일 영역 한정'}${x.live ? '' : ' · 기각된 가설'}`)))),
+    h('h3', { class: 'sub' }, `가설 ${reads.length}개 — 과제를 무엇으로 볼 것인가`), h('ul', { class: 'highs' }, reads.map(row)),
+    h('details', { class: 'more' }, h('summary', null, `근거 ${rest.length}개 — 현황 · 제약 조건 · 활용 자산`), h('ul', { class: 'highs' }, rest.map(row))),
+    h('p', { class: 'small' }, '노란 줄은 추천안의 근거, 흐린 줄은 기각된 포인트다. ', h('button', { class: 'link', type: 'button', disabled: busy, onclick: () => makeStrategy(true) }, '분석부터 다시 실행')));
 }
 /** 방향 높이의 뉴럴링크 — 노드마다 낸 통합 판단과 그 사이의 충돌. 방향이 어디서 나왔는지 보인다 */
 function highBoard(run, st) {
@@ -362,7 +363,7 @@ function highBoard(run, st) {
     h('summary', null, h('span', null, `과제 전체를 본 노드 판단 ${all.length}건 · 충돌 ${tens.length}개`), h('small', null, '앞선 방식으로 받은 판단이다')),
     h('ul', { class: 'highs' }, all.map((x) => h('li', { class: used.has(x.id) ? 'used' : '' }, h('b', null, lensName(x.lens)), h('span', null, x.claim)))),
     tens.length ? h('ul', { class: 'tens' }, tens.map((e) => h('li', { class: e.id === mine ? 'used' : '' }, h('b', null, `${lensName(sig.get(e.from).lens)} ↔ ${lensName(sig.get(e.to).lens)}`), h('span', null, e.why)))) : null,
-    h('p', { class: 'small' }, h('button', { class: 'link', type: 'button', disabled: !!S.strategizing || !!S.running, onclick: () => makeStrategy(true) }, '조각으로 다시 받기')));
+    h('p', { class: 'small' }, h('button', { class: 'link', type: 'button', disabled: !!S.strategizing || !!S.running, onclick: () => makeStrategy(true) }, '분석부터 다시 실행')));
 }
 
 /** 전략 한 장의 판 — 위에서 아래로: 방향 → 영역별 전략 → 전술(영역 × 단계) */
@@ -379,19 +380,19 @@ function courseBoard(run, st) {
   const areaName = (id) => (st.areas || []).find((a) => a.id === id)?.name || id;
   const layer = (no, name, note) => h('h2', null, h('span', null, h('b', { class: 'lno' }, no), name), note ? h('small', null, note) : null);
   const rival = (id) => {
-    if (id === 'BASE') return st.base ? h('li', { class: 'rival base' }, h('span', { class: 'tag' }, '기본'), h('div', null, h('p', null, st.base.line || st.base.name), h('small', null, '노드 없이 낸 방향'))) : null;
+    if (id === 'BASE') return st.base ? h('li', { class: 'rival base' }, h('span', { class: 'tag' }, '기본'), h('div', null, h('p', null, st.base.line || st.base.name), h('small', null, '대조안 — 노드 미적용'))) : null;
     const r = st.rivals.find((x) => x.id === id); const it = st.judge.items.find((x) => x.id === id) || {}; const won = id === d.id;
-    return h('li', pickable(id, `rival${won ? ' won' : ''}`), h('span', { class: 'tag' }, won ? (v6 ? '기준안' : '채택') : it.level && it.level !== '방향' ? it.level : v6 ? '제안' : '후보'),
+    return h('li', pickable(id, `rival${won ? ' won' : ''}`), h('span', { class: 'tag' }, won ? (v6 ? (st.picked ? '선택안' : '추천안') : '채택') : it.level && it.level !== '방향' ? it.level : v6 ? '대안' : '후보'),
       h('div', null, h('p', null, h('strong', null, r.name), ` ${r.line}`), v6 ? h('p', { class: 'std' }, r.standard) : null, h('small', null, won && !st.picked ? st.judge.why : [it.strong, it.weak ? `약점: ${it.weak}` : ''].filter(Boolean).join(' · ')),
-        v6 && r.proposal ? h('small', { class: 'meta' }, `해석 ${r.proposal.readings}개 · 받치는 근거 ${r.proposal.evidence}개 · 정합 ${r.proposal.score}${r.proposal.whole === false ? ' · 한 영역의 읽기' : ''}${r.proposal.live === 0 ? ' · 수렴에서 눌린 해석' : ''}${r.covers?.length < st.areas.length ? ` · 닿는 영역 ${r.covers.length}/${st.areas.length}` : ''}`) : null,
-        v6 && !won ? h('button', { class: 'link', type: 'button', disabled: !!S.strategizing || !!S.running, onclick: (e) => { e.stopPropagation(); makeStrategy(false, id); } }, '이 안을 기준안으로 — 영역별 전략 · 전술을 다시 쓴다') : null,
-        h('small', { class: 'meta' }, `${v3 && it.reaches?.length ? `걸리는 영역 ${it.reaches.length}/${st.areas.length} · ` : ''}${it.own ? `${it.own} · ` : ''}${it.control === '일부 불가' ? '통제 일부 불가 · ' : ''}노드 ${r.breadth.nodes}개${r.breadth.identity != null ? `(아이덴티티 ${r.breadth.identity})` : ''} · 팩트 ${r.facts.length}건`)));
+        v6 && r.proposal ? h('small', { class: 'meta' }, `가설 ${r.proposal.readings}개 · 뒷받침 근거 ${r.proposal.evidence}개 · 근거 강도 ${r.proposal.score}${r.proposal.whole === false ? ' · 단일 영역 한정' : ''}${r.proposal.live === 0 ? ' · 기각된 가설' : ''}${r.covers?.length < st.areas.length ? ` · 적용 영역 ${r.covers.length}/${st.areas.length}` : ''}`) : null,
+        v6 && !won ? h('button', { class: 'link', type: 'button', disabled: !!S.strategizing || !!S.running, onclick: (e) => { e.stopPropagation(); makeStrategy(false, id); } }, '이 안으로 선택 — 영역별 전략 · 전술 재작성') : null,
+        h('small', { class: 'meta' }, `${v3 && it.reaches?.length ? `적용 영역 ${it.reaches.length}/${st.areas.length} · ` : ''}${it.own ? `${it.own} · ` : ''}${it.control === '일부 불가' ? '통제 일부 불가 · ' : ''}노드 ${r.breadth.nodes}개${r.breadth.identity != null ? `(아이덴티티 ${r.breadth.identity})` : ''} · 팩트 ${r.facts.length}건`)));
   };
   const item = (x) => { const n = x.insight ? run.insights.find((i) => i.id === x.insight) : null; const short = n ? st.insights.find((i) => i.id === x.insight) : null;
     return h('span', { class: `tactic${n ? ' won' : ''}` }, x.axis ? h('i', { class: 'ax' }, axisNo(x.axis)) : null,
       n ? h('button', { class: 'ev n', type: 'button', title: `${short?.line || ''}\n${n.title}`, onclick: (e) => { e.stopPropagation(); insightModal(n.id); } }, x.move) : x.move,
       x.parts?.length ? h('small', null, x.parts.map((c) => categoryById(c)?.name).filter(Boolean).join(' · ')) : null,
-      x.lenses?.length ? h('small', { class: 'src', title: '이 전술이 나온 노드' }, `← ${x.lenses.map(lensName).join(' · ')}`) : null); };
+      x.lenses?.length ? h('small', { class: 'src', title: '이 전술의 근거 노드' }, `← ${x.lenses.map(lensName).join(' · ')}`) : null); };
   const off = st.insights.filter((x) => x.fit !== '맞음');
   return [
     h('header', { class: 'deck-head' }, h('span', { class: 'eyebrow' }, '전략 한 장'),
@@ -400,34 +401,34 @@ function courseBoard(run, st) {
         h('button', { class: 'btn sm', type: 'button', onclick: () => saveFile(`${fileName(S.project)}_한장.html`, strategyHtml(S.project)) }, '한 장 보고서'),
         h('button', { class: 'btn sm', type: 'button', 'aria-label': '전략 한 장 닫기', onclick: () => openDeck(false) }, '닫기'))),
     h('div', { class: 'deck-body' },
-      v6 ? null : h('div', { class: 'banner warn' }, h('strong', null, '앞선 방식으로 쓴 방향이다 — '), '지금은 노드가 결론 대신 조각을 내고, 조각을 한꺼번에 수렴시켜 서로 받치는 해석의 묶음을 제안으로 낸다. 이슈 분석은 다시 돌지 않는다. ', h('button', { class: 'link', type: 'button', disabled: !!S.strategizing || !!S.running, onclick: () => makeStrategy(true) }, S.strategizing || '조각부터 다시 만들기')),
-      h('section', { class: 'concept' }, layer(1, '방향', v6 ? `제안 ${st.rivals.length}개 가운데 기준안${st.picked ? ' · 사람이 골랐다' : ''}` : ''),
+      v6 ? null : h('div', { class: 'banner warn' }, h('strong', null, '이전 방식으로 작성된 방향이다 — '), '현재는 노드별 분석 포인트를 종합 검증해 방향안을 여러 개 도출한다. 이슈 분석은 다시 실행하지 않는다. ', h('button', { class: 'link', type: 'button', disabled: !!S.strategizing || !!S.running, onclick: () => makeStrategy(true) }, S.strategizing || '분석부터 다시 실행')),
+      h('section', { class: 'concept' }, layer(1, '방향', v6 ? `방향안 ${st.rivals.length}개 중 ${st.picked ? '선택안' : '추천안'}` : ''),
         h('h1', null, d.name), h('p', { class: 'line' }, d.line), h('p', { class: 'principle' }, d.standard),
-        d.lenses?.length ? h('div', { class: 'made' }, h('b', null, '만든 노드'), d.lenses.map((l) => h('button', { class: 'chip ghost', type: 'button', onclick: (e) => { e.stopPropagation(); selectNode(l, true); } }, lensName(l)))) : null,
-        d.spine ? h('p', { class: 'kv' }, h('b', null, '푼 충돌'), `${lensName(d.spine.a)} ↔ ${lensName(d.spine.b)}${d.how ? ` — ${d.how}` : ''}`) : d.how ? h('p', { class: 'kv' }, h('b', null, '맞물린 해석'), d.how) : null,
-        d.swap ? h('p', { class: 'kv' }, h('b', null, '고유한 이유'), d.swap) : null,
+        d.lenses?.length ? h('div', { class: 'made' }, h('b', null, '근거 노드'), d.lenses.map((l) => h('button', { class: 'chip ghost', type: 'button', onclick: (e) => { e.stopPropagation(); selectNode(l, true); } }, lensName(l)))) : null,
+        d.spine ? h('p', { class: 'kv' }, h('b', null, '푼 충돌'), `${lensName(d.spine.a)} ↔ ${lensName(d.spine.b)}${d.how ? ` — ${d.how}` : ''}`) : d.how ? h('p', { class: 'kv' }, h('b', null, '도출 논리'), d.how) : null,
+        d.swap ? h('p', { class: 'kv' }, h('b', null, '차별성 근거'), d.swap) : null,
         d.covers?.length ? h('ul', { class: 'covers' }, d.covers.map((c) => h('li', null, h('b', null, areaName(c.area)), h('span', null, c.line)))) : null,
         d.from || d.to ? h('div', { class: 'shift' }, h('span', null, d.from), h('i', null, '→'), h('strong', null, d.to)) : null,
-        d.keeps ? h('p', { class: 'kv' }, h('b', null, '키우는 것'), d.keeps) : null,
-        d.drops.length ? h('p', { class: 'kv' }, h('b', null, '하지 않는 것'), d.drops.join(' · ')) : null,
-        h('div', { class: 'evs' }, d.facts.map(fchip), h('span', { class: 'cnt' }, `${v6 ? '조각' : '판단'} ${d.signals.length}`))),
-      st.check.ok ? null : h('div', { class: 'banner warn' }, h('strong', null, '확인할 문제 — '), st.check.problems.join(' / ')),
-      st.rivals?.length ? h('section', { class: 'rivals' }, h('h2', null, v6 ? `제안 ${st.rivals.length}개와 기본 방향` : `겨룬 방향 ${st.rivals.length}개와 기본 방향`, h('small', null, v6 ? '하나로 모으지 않는다 · 순서는 시험 결과 · 누르면 그 제안의 근거가 켜진다' : '판정 순서 · 누르면 그 후보의 근거가 켜진다')),
+        d.keeps ? h('p', { class: 'kv' }, h('b', null, '강화 요소'), d.keeps) : null,
+        d.drops.length ? h('p', { class: 'kv' }, h('b', null, '제외 범위'), d.drops.join(' · ')) : null,
+        h('div', { class: 'evs' }, d.facts.map(fchip), h('span', { class: 'cnt' }, `${v6 ? '근거' : '판단'} ${d.signals.length}`))),
+      st.check.ok ? null : h('div', { class: 'banner warn' }, h('strong', null, '확인 필요 — '), st.check.problems.join(' / ')),
+      st.rivals?.length ? h('section', { class: 'rivals' }, h('h2', null, v6 ? `방향안 ${st.rivals.length}개와 기본 방향` : `겨룬 방향 ${st.rivals.length}개와 기본 방향`, h('small', null, v6 ? '검증 결과 순 · 누르면 해당 안의 근거 노드가 표시된다' : '판정 순서 · 누르면 그 후보의 근거가 켜진다')),
         h('ul', null, st.judge.order.map(rival)),
-        st.judge.risk ? h('p', { class: 'kv' }, h('b', null, '무너질 수 있는 지점'), st.judge.risk) : null) : null,
+        st.judge.risk ? h('p', { class: 'kv' }, h('b', null, '리스크'), st.judge.risk) : null) : null,
       highBoard(run, st),
       h('section', { class: 'covs' },
         cover('팩트', cv.facts, `인사이트만 ${cv.facts.byInsights}건`),
-        cover('판단', cv.signals, `새로 끌어온 것 ${cv.signals.fresh}건`),
+        cover('판단', cv.signals, `추가 반영 ${cv.signals.fresh}건`),
         cover('노드', cv.nodes, `새로 쓴 노드 ${cv.nodes.fresh}개`)),
-      v3 ? h('section', { class: 'axes' }, layer(2, '영역별 전략', st.areasAuto ? '영역은 미션에서 뽑았다 · 미션 탭에서 고친다' : '방향이 영역마다 되는 방침'),
+      v3 ? h('section', { class: 'axes' }, layer(2, '영역별 전략', st.areasAuto ? '영역은 미션에서 자동 도출 · 미션 탭에서 수정' : '방향의 영역별 적용 방침'),
         st.pillars.map((p) => h('article', pickable(p.part, 'pillar'), h('span', { class: 'part' }, p.label),
           h('div', null, h('h3', null, p.name || '전략 없음'), h('p', null, p.guide),
-            h('div', { class: 'evs' }, p.facts.map(fchip), h('span', { class: 'cnt' }, `판단 ${p.signals.length} · 전술 ${p.tactics.length}`), p.thin ? h('span', { class: 'cnt warn' }, '판단 근거 얇음') : null)))))
+            h('div', { class: 'evs' }, p.facts.map(fchip), h('span', { class: 'cnt' }, `판단 ${p.signals.length} · 전술 ${p.tactics.length}`), p.thin ? h('span', { class: 'cnt warn' }, '근거 부족') : null)))))
         : h('section', { class: 'axes' }, layer(2, '축', '방향을 운영에서 지키게 하는 원칙'),
           st.axes.map((a, i) => h('article', pickable(a.id, 'axis'), h('i', { class: 'ax' }, i + 1),
             h('div', null, h('h3', null, a.name), h('p', null, a.rule), h('div', { class: 'evs' }, a.facts.map(fchip), a.signals.length ? h('span', { class: 'cnt' }, `판단 ${a.signals.length}`) : null))))),
-      h('section', { class: 'matrix' }, layer(3, v3 ? '전술 — 영역 × 단계' : '파트 × 단계', v3 ? (cv.tactics ? `◆ 이긴 인사이트 · ← 나온 노드 · 전술에 쓰인 노드 ${cv.tactics.lenses}/${cv.tactics.lensTotal}개` : '◆는 경쟁에서 이긴 인사이트 · 전술 여럿 중 하나다') : '동그라미 숫자는 따르는 축 · ◆는 전술로 놓인 인사이트'),
+      h('section', { class: 'matrix' }, layer(3, v3 ? '전술 — 영역 × 단계' : '파트 × 단계', v3 ? (cv.tactics ? `◆ 채택 인사이트 · ← 근거 노드 · 전술에 쓰인 노드 ${cv.tactics.lenses}/${cv.tactics.lensTotal}개` : '◆는 경쟁에서 이긴 인사이트 · 전술 여럿 중 하나다') : '동그라미 숫자는 따르는 축 · ◆는 전술로 놓인 인사이트'),
         h('ol', { class: 'phasebar', style: `grid-template-columns: repeat(${st.phases.length}, minmax(0, 1fr))` }, st.phases.map((ph) => h('li', null, h('b', null, ph.when), h('p', null, ph.line)))),
         st.pillars.map((p) => h('article', pickable(p.part, 'pillar'),
           h('span', { class: 'part' }, p.label || p.name),
@@ -437,7 +438,7 @@ function courseBoard(run, st) {
         off.length ? h('p', { class: 'small' }, `방향에 맞지 않아 놓지 않은 인사이트: ${off.map((x) => x.name || x.id).join(', ')}`) : null),
       (st.fixes.length || st.boosts.length) ? h('section', { class: 'pairs' },
         st.fixes.length ? h('div', null, h('h2', null, '푸는 것'), st.fixes.map((x) => h('div', { class: 'pair' }, h('span', null, x.pain), h('strong', null, x.answer), h('div', { class: 'evs' }, x.facts.map(fchip))))) : null,
-        st.boosts.length ? h('div', null, h('h2', null, '키우는 것'), st.boosts.map((x) => h('div', { class: 'pair' }, h('span', null, x.strength), h('strong', null, x.answer), h('div', { class: 'evs' }, x.facts.map(fchip))))) : null) : null,
+        st.boosts.length ? h('div', null, h('h2', null, '강화 요소'), st.boosts.map((x) => h('div', { class: 'pair' }, h('span', null, x.strength), h('strong', null, x.answer), h('div', { class: 'evs' }, x.facts.map(fchip))))) : null) : null,
       st.gaps.length ? h('section', { class: 'gaps' }, h('h2', null, '확인할 것'), h('ul', null, st.gaps.map((g) => h('li', null, g)))) : null),
   ];
 }
@@ -848,7 +849,7 @@ function directionBoard(run) {
         x.need.length ? h('p', { class: 'small' }, `확인할 것: ${x.need.join(' / ')}`) : null,
         h('div', { class: 'row' }, h('span', { class: 'small' }, '근거'), x.from.map((id) => h('button', { type: 'button', class: 'chip pick', onclick: () => open(id) }, id))));
     })),
-    d.conflicts.length ? h('div', null, h('p', { class: 'small' }, '관점이 부딪히는 자리'), d.conflicts.map((c) => h('div', { class: 'tension' }, h('b', null, c.between.map(name).join(' ↔ ')), c.what, h('p', { class: 'small' }, c.resolve)))) : null,
+    d.conflicts.length ? h('div', null, h('p', { class: 'small' }, '관점이 상충하는 지점'), d.conflicts.map((c) => h('div', { class: 'tension' }, h('b', null, c.between.map(name).join(' ↔ ')), c.what, h('p', { class: 'small' }, c.resolve)))) : null,
     h('div', null, h('p', { class: 'small' }, '먼저 할 일'), h('ol', { class: 'chain' }, d.priority.map((x, n) => h('li', null, h('span', { class: 'step' }, n + 1), h('div', null, x.what, h('div', { class: 'meta' }, h('span', { class: 'chip ghost' }, name(x.owner)), x.from ? h('button', { type: 'button', class: 'chip pick', onclick: () => open(x.from) }, x.from) : null)))))),
     d.unusedInsights.length ? h('p', { class: 'small' }, `어느 관점에도 쓰이지 않은 인사이트: ${d.unusedInsights.join(', ')}`) : null);
 }

@@ -1016,7 +1016,7 @@ test('방향 — 모든 과제가 같은 길을 간다: 모든 노드가 과제 
   // 대상 낱말 검사 — 방향 문장이 한 영역의 대상에 붙었거나, 영역 줄이 남의 대상을 빌리면 기계가 잡는다. 지난 세 번의 실제 결과가 모두 여기서 걸린다
   assert.deepEqual(objectHits('혜택 한 건 기록 운영', areas).map((x) => [x.name, x.words]), [['앱 웹뷰 프로모션', ['혜택']]]);
   const idn2 = high.filter((x) => x.family === 'identity' && x.scope === 'ALL').slice(0, 2).map((x) => x.id);
-  const real = (name, line, standard, s3) => ({ name, line, standard, swap: '이유', drops: ['하지 않는 것'], covers: [{ area: 'S1', line: '혜택 표기를 맞춘다' }, { area: 'S2', line: '리포트 기준을 맞춘다' }, { area: 'S3', line: s3 }], signals: [...idn2, high.find((x) => x.family === 'tunnel' && x.scope === 'ALL').id], facts: ['F1', 'F2'] });
+  const real = (name, line, standard, s3) => ({ name, line, standard, swap: '이유', drops: ['제외 범위'], covers: [{ area: 'S1', line: '혜택 표기를 맞춘다' }, { area: 'S2', line: '리포트 기준을 맞춘다' }, { area: 'S3', line: s3 }], signals: [...idn2, high.find((x) => x.family === 'tunnel' && x.scope === 'ALL').id], facts: ['F1', 'F2'] });
   const caught = shapeRivals({ candidates: [
     real('혜택 값 하나에서 시작하는 운영', '혜택 값을 한 번 정해 다섯 파트가 같은 값으로 연결', '모든 결정은 확정된 혜택 값에서 나온다', 'ISMS 증적을 같은 기준으로 남긴다'),
     real('타겟 여정 기준 운영', '여정이 끊기는지로 세 영역 우선순위 판정', '요청 · 배포 · 점검이 부딪히면 여정을 덜 끊는 쪽을 먼저 한다', '감시 등급을 혜택 기간과 받는 곳에서 정함'),
@@ -1032,7 +1032,7 @@ test('방향 — 모든 과제가 같은 길을 간다: 모든 노드가 과제 
   const tn = high.find((x) => x.family === 'tunnel' && x.scope === 'ALL').id;
   const shaped = shapeRivals({ candidates: [{ name: '혜택 쿠폰 화면', line: '쿠폰 화면을 하나로', standard: '기준', covers: [{ area: 'S1', line: '혜택 표기를 맞춘다' }, { area: 'S9', line: '없는 영역' }], signals: [tn, 'NOPE'], facts: ['F1', 'F999'], drops: [] }] }, p, run, areas, []);
   assert.deepEqual([shaped.rivals[0].signals, shaped.rivals[0].facts, shaped.rivals[0].covers.map((c) => c.area), shaped.rivals[0].breadth], [[tn], ['F1'], ['S1'], { nodes: 1, identity: 0, tunnel: true }]);
-  assert.ok(shaped.rivals[0].flags.includes('닿지 않는 영역: 유지보수 운영, 보안 · 모니터링') && shaped.rivals[0].flags.some((f) => /장치 이름이 들어 있다: .*화면/.test(f)));
+  assert.ok(shaped.rivals[0].flags.includes('미적용 영역: 유지보수 운영, 보안 · 모니터링') && shaped.rivals[0].flags.some((f) => /장치 이름이 들어 있다: .*화면/.test(f)));
   for (const t of ['덜 쓴 후보: D1', '장치 이름을 쓴 후보: D1']) assert.ok(shaped.problems.some((x) => x.includes(t)), t);
 
   // 판정 다듬기 — 방향이고 고유하고 약속할 수 있는 후보가 먼저다. 실제 결정을 쓰지 못한 영역은 걸린 것으로 세지 않는다
@@ -1068,17 +1068,17 @@ test('방향 — 모든 과제가 같은 길을 간다: 모든 노드가 과제 
   // 관계를 한 번만 매겼으면 그것도 남긴다. 해석 조각이 하나도 없으면 멈춘다 — 지어내지 않는다
   let nth = 0;
   const once = await chart({ project: p, run: { ...run, strategy: null, course: null }, call: async (a) => { if (a.task.kind === 'courseRel' && nth++ === 1) throw new Error('끊김'); return (await mock.json(a)).json; } });
-  assert.ok(once.check.problems.some((x) => /관계를 한 번만 매겼다/.test(x)) && once.rivals.every((r) => r.proposal));
-  await assert.rejects(chart({ project: p, run: { ...run, strategy: null, course: null }, call: async (a) => { const j = (await mock.json(a)).json; return a.task.kind === 'courseLens' ? { ...j, atoms: j.atoms.map((x) => ({ ...x, type: '관찰' })) } : j; } }), /해석의 연합이 나오지 않았다/);
+  assert.ok(once.check.problems.some((x) => /관계 검토가 1회만 수행됐다/.test(x)) && once.rivals.every((r) => r.proposal));
+  await assert.rejects(chart({ project: p, run: { ...run, strategy: null, course: null }, call: async (a) => { const j = (await mock.json(a)).json; return a.task.kind === 'courseLens' ? { ...j, atoms: j.atoms.map((x) => ({ ...x, type: '관찰' })) } : j; } }), /방향안을 도출하지 못했다/);
 
   // 한 장 보고서 — 3층으로 나오고, 방향을 만든 노드와 맞물린 해석, 제안 여럿이 보이고, 모델이 쓴 글은 이스케이프한다
   const { strategyHtml, reportMarkdown } = await import('../js/engine/report.js');
   p.run = run; run.strategy = st; st.direction.name = '<b>x</b>';
   const html = strategyHtml(p);
   assert.ok(html.includes('&lt;b&gt;x&lt;/b&gt;') && !html.includes('<b>x</b>'));
-  for (const t of ['<b>1</b>방향', '전술에 쓰인 노드', '만든 노드', '맞물린 해석', '고유한 이유', '영역별 전략', '영역 × 단계', '제안 3개와 기본 방향', '기준안', '앱 웹뷰 프로모션', '개 수렴', 'A4 landscape']) assert.ok(html.includes(t), t);
+  for (const t of ['<b>1</b>방향', '전술에 쓰인 노드', '근거 노드', '도출 논리', '차별성 근거', '영역별 전략', '영역 × 단계', '방향안 3개와 기본 방향', '추천안', '앱 웹뷰 프로모션', '개 종합', 'A4 landscape']) assert.ok(html.includes(t), t);
   const md = reportMarkdown(p);
-  for (const t of ['### 1. 방향', '만든 노드:', '맞물린 해석:', '제안 3개 — 하나로 모으지 않는다', '한꺼번에 수렴시켰다', '해석(과제를 무엇으로 볼 것인가)', '### 2. 영역별 전략', '### 3. 전술 — 영역 × 단계', '(기준안)', '- 유지보수 운영:']) assert.ok(md.includes(t), t);
+  for (const t of ['### 1. 방향', '근거 노드:', '도출 논리:', '방향안 3개 — 추천안 기준으로', '종합 검증했다', '핵심 가설(과제를 무엇으로 볼 것인가)', '### 2. 영역별 전략', '### 3. 전술 — 영역 × 단계', '(추천안)', '- 유지보수 운영:']) assert.ok(md.includes(t), t);
   // 예전 모양(v2: 파트 × 단계)도 깨지지 않고 그려진다
   const v2 = { v: 2, direction: { id: 'D1', name: '방향', line: '한 줄', standard: '기준', from: '', to: '', keeps: '', drops: [], signals: [], facts: [] }, concept: { name: '방향', line: '한 줄' }, rivals: [], judge: { order: [], items: [] }, axes: [{ id: 'A1', name: '축', rule: '규칙', signals: [], facts: [] }], phases: [{ id: 'P1', when: '1월', line: '상태' }],
     pillars: [{ part: 'ops', label: '운영', name: '운영', guide: '안내', cells: [{ phase: 'P1', move: '옛 할 일', axis: 'A1' }], moves: [], facts: [], signals: [], insights: ['N1'] }], insights: [{ id: 'N1', name: '옛 전술', line: '', part: 'ops', phase: 'P1', fit: '맞음' }], fixes: [], boosts: [], gaps: [], coverage: st.coverage, check: { ok: true, problems: [] } };
