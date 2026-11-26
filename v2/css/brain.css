@@ -456,7 +456,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .stratcard .meta { font-size: 11px; color: var(--mute); margin-top: calc(var(--u) * .5); }
 .stratcard:hover .meta, .stratcard.on .meta { color: var(--text-2); }
 /* 전략 과제의 판 — 운영 방향 → 축 → 파트 × 단계 */
-.deck h2 .lno { display: inline-block; margin-right: var(--u); color: var(--yellow); }
+.sec > h2 .lno, .deck h2 .lno { display: inline-block; margin-right: var(--u); color: var(--yellow); }
 .deck .concept h2 { margin-bottom: var(--u); }
 .shift { margin-top: calc(var(--u) * 2); display: grid; grid-template-columns: minmax(0, 1fr) calc(var(--u) * 2) minmax(0, 1fr); gap: var(--u); align-items: start; font-size: var(--t-sub); line-height: 20px; }
 .shift span { color: var(--mute); } .shift i { color: var(--mute); font-style: normal; } .shift strong { font-weight: var(--w-strong); }

@@ -597,7 +597,7 @@ function factbookBoard(p) {
     toast(`팩트북에서 ${list.length}건을 읽었다`); e.target.value = ''; touch();
   };
   const note = S.researchNote;
-  return h('section', { class: 'sec' }, h('h2', null, '팩트북', h('small', null, '출처가 있는 실제 자료')),
+  return h('section', { class: 'sec' }, h('h2', null, h('span', null, h('b', { class: 'lno' }, 5), '팩트북'), h('small', null, '출처가 있는 실제 자료')),
     h('p', { class: 'lead sm' }, ok.length ? `팩트 ${ok.length}건${unchecked ? ` · 사람이 원문을 확인하지 않은 것 ${unchecked}건` : ''}${p.facts.length - ok.length ? ` · 출처 조건 미달로 제외 ${p.facts.length - ok.length}건` : ''}` : '팩트가 없다. 터널(시장 · 브랜드 · 타겟 · 사용 습관) 판단이 모두 추정으로 표시된다.'),
     h('p', { class: 'small' }, `받는 출처: ${SOURCE_TYPES.filter((t) => t.ai).map((t) => t.name).join(' · ')}. 언론 기사 · 블로그 · 출처 없는 자료는 받지 않는다.`),
     h('div', { class: 'row' },
@@ -676,31 +676,52 @@ function missionTab() {
   const out = [];
   if (p.example) out.push(h('div', { class: 'banner' }, '예시 프로젝트다. 판단·연결·인사이트는 구조를 보여 주려고 미리 써 둔 답이며, 목업 공급자에서만 나온다. 내 과제는 ', h('button', { class: 'link', type: 'button', onclick: newBlank }, '새 프로젝트'), '로 시작한다.'));
 
-  // 계정 — 로그인해서 쓸 때만
-  if (S.me) out.push(h('section', { class: 'sec' }, h('h2', null, '계정', h('small', null, ROLES[S.me.role])),
-    h('div', { class: 'row' }, h('strong', { class: 'grow' }, S.me.email),
-      isAdmin(S.me.role) ? h('button', { class: 'btn sm', type: 'button', id: 'btn-users', onclick: usersModal }, '사용자 관리') : null,
-      h('button', { class: 'btn sm', type: 'button', id: 'btn-logout', onclick: async () => { await S.cloud.signOut(); location.reload(); } }, '로그아웃'))));
   if (S.me && !canEdit(p)) out.push(h('div', { class: 'banner warn' }, h('strong', null, '읽기 전용 — '), `${p.ownerEmail || '다른 사람'}이 만든 프로젝트다. 여기서 고치거나 분석한 내용은 저장되지 않는다. `,
     h('button', { class: 'link', type: 'button', onclick: copyAsMine }, '내 프로젝트로 복사'), '하면 고칠 수 있다.'));
 
   const allText = () => [p.title, ...Object.values(b), ...p.issues.flatMap((i) => [i.title, i.detail])].join(' ');
-  out.push(h('section', { class: 'sec' }, h('h2', null, '공통 인풋', h('small', null, '모든 프로젝트 공통')),
-    field('프로젝트', bind(p, 'title', { graph: true, id: 'f-title' })),
-    h('div', { class: 'grid2' }, COMMON_INPUT.map((f) => field(`${f.label}${f.required ? ' · 필수' : ''}`, bind(b, f.id, { area: true, id: `f-${f.id}`, placeholder: f.hint }))))));
+  const step = (no, name, note) => h('h2', null, h('span', null, h('b', { class: 'lno' }, no), name), note ? h('small', null, note) : null);
+  const LABEL = { what: '목표 — 무엇을 만들거나 푸는가', purpose: '목적 — 끝나면 무엇이 되어야 하나', points: '핵심 포인트 — 한 줄에 하나씩', note: '제약 · 메모' };
+  const HUMAN = ['what', 'purpose', 'success', 'points', 'note'];
+  const inField = (f) => field(`${LABEL[f.id] || f.label}${f.required ? ' · 필수' : ''}`, bind(b, f.id, { area: true, id: `f-${f.id}`, placeholder: f.hint }));
 
+  // 1. 과제 정의 — 사람이 문장으로 쓴다. 방향안을 검증하는 고정 기준이 된다 (prompts-course.js goalsOf)
+  out.push(h('section', { class: 'sec' }, step(1, '과제 정의', '사람이 문장으로 쓴다'),
+    h('p', { class: 'small' }, '여기 쓴 문장이 방향안을 검증하는 고정 기준이다. 자료에서 자동으로 채우지 않는다.'),
+    field('프로젝트', bind(p, 'title', { graph: true, id: 'f-title' })),
+    HUMAN.map((id) => inField(COMMON_INPUT.find((f) => f.id === id)))));
+
+  // 2. 자료와 배경 — 자료에서 채운다
   // 분류는 여러 개 고를 수 있다 — 마케팅 + 운영처럼 걸치는 과제가 있다. 고른 분류마다 특화 인풋이 열린다
   const cats = categoriesOf(p);
   const guess = recommendCategory(allText());
   const toggleCat = (id) => { const list = cats.includes(id) ? cats.filter((x) => x !== id) : [...cats, id]; p.categories = list; p.category = list[0] || null; persist(); rerender(); };
   for (const id of cats) p.seed[id] = p.seed[id] || {};
-  out.push(h('section', { class: 'sec' }, h('h2', null, '분류와 특화 인풋', h('small', null, '여러 개 고를 수 있다')),
-    h('div', { class: 'row' }, CATEGORIES.map((c) => h('button', { type: 'button', class: `chip pick${cats.includes(c.id) ? ' y' : ''}`, 'aria-pressed': String(cats.includes(c.id)), title: c.role, onclick: () => toggleCat(c.id) }, c.name))),
+  const seedAll = cats.flatMap((id) => SEED_INPUT[id].map((f) => p.seed[id][f.id])); const seedDone = seedAll.filter((x) => String(x || '').trim()).length;
+  out.push(h('section', { class: 'sec' }, step(2, '자료와 배경', '자료에서 채운다'),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn', type: 'button', id: 'btn-skill-guide', onclick: skillGuideModal }, 'RFP로 자동 채우기'),
+      h('label', { class: 'btn', style: 'display:inline-flex;align-items:center' }, '프로젝트 파일 가져오기', h('input', { type: 'file', id: 'import-file', accept: '.json,application/json', class: 'sr', onchange: importFile }))),
+    h('div', { class: 'grid2' }, COMMON_INPUT.filter((f) => !HUMAN.includes(f.id)).map(inField)),
+    h('div', { class: 'field' }, h('span', null, '분류 — 여러 개 고를 수 있다. 전술을 맡을 파트가 된다'),
+      h('div', { class: 'row' }, CATEGORIES.map((c) => h('button', { type: 'button', class: `chip pick${cats.includes(c.id) ? ' y' : ''}`, 'aria-pressed': String(cats.includes(c.id)), title: c.role, onclick: () => toggleCat(c.id) }, c.name)))),
     !cats.length && guess ? h('p', { class: 'small' }, '입력한 글로 보면 ', h('button', { class: 'link', type: 'button', onclick: () => toggleCat(guess) }, categoryById(guess).name), ' 분류에 가깝다.') : null,
-    cats.map((id) => { const cat = categoryById(id); return [h('p', { class: 'small' }, h('strong', null, cat.name), ` — ${cat.role}`),
-      h('div', { class: 'grid2' }, SEED_INPUT[id].map((f) => field(`${f.label}${f.required ? ' · 필수' : ''}`, bind(p.seed[id], f.id, { area: true, id: `seed-${id}-${f.id}`, placeholder: f.hint }))))]; })));
+    cats.length ? fold('seed-inputs', '분류별 상세 인풋', `${seedDone}/${seedAll.length}칸 입력 · 선택`, cats.map((id) => { const cat = categoryById(id); return [h('p', { class: 'small' }, h('strong', null, cat.name), ` — ${cat.role}`),
+      h('div', { class: 'grid2' }, SEED_INPUT[id].map((f) => field(`${f.label}${f.required ? ' · 필수' : ''}`, bind(p.seed[id], f.id, { area: true, id: `seed-${id}-${f.id}`, placeholder: f.hint }))))]; })) : null));
 
-  out.push(h('section', { class: 'sec' }, h('h2', null, `이슈 ${p.issues.length}건`, h('small', null, '노드가 분석할 대상')),
+  {
+    p.areas = Array.isArray(p.areas) ? p.areas : [];
+    const touch = (a) => { delete a.auto; persist(); };
+    out.push(h('section', { class: 'sec' }, step(3, '과제의 영역', p.areas.length ? `${p.areas.length}개${p.areas.some((a) => a.auto) ? ' · 자동 도출' : ''}` : '비워 두면 자동 도출'),
+      h('p', { class: 'small' }, '과제가 맡는 업무 범위다. 방향안은 전 영역에 적용돼야 한다. 직무나 시기로 나누지 않는다. 셋째 칸은 그 영역에서만 다루는 대상 키워드다.'),
+      p.areas.map((a, i) => h('div', { class: 'arearow' }, h('span', { class: 'chip fill' }, `S${i + 1}`),
+        h('input', { type: 'text', id: `area-name-${i}`, value: a.name || '', placeholder: '영역 이름', oninput: (e) => { a.name = e.target.value; touch(a); } }),
+        h('input', { type: 'text', id: `area-note-${i}`, value: a.note || '', placeholder: '이 영역에 드는 일', oninput: (e) => { a.note = e.target.value; touch(a); } }),
+        h('input', { type: 'text', id: `area-objects-${i}`, value: Array.isArray(a.objects) ? a.objects.join(', ') : (a.objects || ''), placeholder: '이 영역만의 대상 키워드 (쉼표)', title: '이 영역에서만 다루는 대상. 방향이 특정 영역에 치우쳤는지를 이 키워드로 점검한다. 비워 두면 자동 도출', oninput: (e) => { a.objects = e.target.value; touch(a); } }),
+        h('button', { class: 'btn sm x', type: 'button', onclick: () => { p.areas.splice(i, 1); persist(); rerender(); } }, '빼기'))),
+      h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', id: 'btn-area-add', disabled: p.areas.length >= 5, onclick: () => { p.areas.push({ name: '', note: '' }); persist(); S.keepScroll = true; rerender(); } }, '영역 더하기'))));
+  }
+  out.push(h('section', { class: 'sec' }, step(4, `이슈 ${p.issues.length}건`, '과제 안의 문제 — 전술 단위로 분석한다'),
     ...p.issues.map((i) => h('div', { class: `card${i.root ? ' root' : ''}` },
       h('div', { class: 'head' }, h('span', { class: 'chip fill' }, i.id),
         h('label', { class: 'check' }, h('input', { type: 'checkbox', id: `root-${i.id}`, checked: i.root, onchange: (e) => { i.root = e.target.checked; persist(); refreshGraph(); rerender(); } }), '근본 이슈'),
@@ -720,30 +741,27 @@ function missionTab() {
   const v = validateProject(p);
   out.push(factbookBoard(p));
 
-  out.push(h('section', { class: 'sec' }, h('h2', null, '세팅 점검', h('small', null, `분석에 들어가는 이슈 ${v.ready.length}/${p.issues.length}건`)),
+  // 6. 기본 노드 — 더프롬의 기준은 프로젝트마다 고르지 않는다. 기본으로 켜져 있다
+  {
+    const off = (p.settings.muted || []).length; const isms = p.settings.ismCount ?? DEFAULTS.ismCount;
+    out.push(h('section', { class: 'sec' }, step(6, '기본 노드', '모든 프로젝트 공통'),
+      h('p', { class: 'note' }, `아이덴티티 ${IDENTITY.length}개 · 터널 ${LENSES.filter((l) => l.family === 'tunnel').length}개는 항상 참여한다. 사조는 ${LENSES.filter((l) => l.family === 'airplane').length}개 중 과제에 맞는 ${isms}개를 자동 선정한다.${off ? ` 끈 노드 ${off}개.` : ''}`),
+      h('div', { class: 'row' }, h('button', { class: 'btn sm', type: 'button', onclick: () => { S.tab = 'node'; renderPanel(); } }, '노드 탭에서 보기'))));
+  }
+
+  out.push(h('section', { class: 'sec' }, step(7, '점검', `분석 대상 이슈 ${v.ready.length}/${p.issues.length}건`),
     v.ok ? h('p', { class: 'note' }, '빠진 칸이 없다.')
       : h('ul', { class: 'bullets' }, v.problems.map((x) => h('li', null, h('strong', null, `${x.where} `), x.what))),
     v.ok ? null : h('p', { class: 'small' }, v.blocking ? '근본 이슈의 틀이 채워져야 사고를 시작할 수 있다.' : '빠진 칸이 있어도 시작할 수 있다. 틀을 채우지 못한 이슈는 분석에서 빠지고, 빈 인풋에 의존하는 디렉션은 "확인할 것"으로 남는다.')));
 
   const num = (key, label, min, max) => field(label, h('select', { id: `set-${key}`, onchange: (e) => { p.settings[key] = +e.target.value; persist(); } },
     Array.from({ length: max - min + 1 }, (_, n) => h('option', { value: min + n, selected: (p.settings[key] ?? DEFAULTS[key]) === min + n }, min + n))));
-  {
-    p.areas = Array.isArray(p.areas) ? p.areas : [];
-    const touch = (a) => { delete a.auto; persist(); };
-    out.push(h('section', { class: 'sec' }, h('h2', null, '과제의 영역', h('small', null, p.areas.length ? `${p.areas.length}개${p.areas.some((a) => a.auto) ? ' · 브리프에서 자동 도출' : ''}` : '비워 두면 브리프에서 자동 도출')),
-      h('p', { class: 'small' }, '이 과제가 맡는 일의 범위다. 방향은 전 영역에 적용돼야 하고, 한 영역에만 해당하면 그 영역의 전략으로 분류한다. 직무(기획 · 디자인 · 개발)나 시기로 나누지 않는다. 결과물이 하나인 과제는 하나만 적는다. 셋째 칸은 그 영역에서만 다루는 대상 키워드다(예: 혜택, 쿠폰, 캠페인) — 방향 문장에 한 영역의 키워드만 있으면 재작성한다.'),
-      p.areas.map((a, i) => h('div', { class: 'arearow' }, h('span', { class: 'chip fill' }, `S${i + 1}`),
-        h('input', { type: 'text', id: `area-name-${i}`, value: a.name || '', placeholder: '영역 이름', oninput: (e) => { a.name = e.target.value; touch(a); } }),
-        h('input', { type: 'text', id: `area-note-${i}`, value: a.note || '', placeholder: '이 영역에 드는 일', oninput: (e) => { a.note = e.target.value; touch(a); } }),
-        h('input', { type: 'text', id: `area-objects-${i}`, value: Array.isArray(a.objects) ? a.objects.join(', ') : (a.objects || ''), placeholder: '이 영역만의 대상 낱말 (쉼표)', title: '이 영역에서만 다루는 대상. 방향이 특정 영역에 치우쳤는지를 이 키워드로 점검한다. 비워 두면 자동 도출', oninput: (e) => { a.objects = e.target.value; touch(a); } }),
-        h('button', { class: 'btn sm x', type: 'button', onclick: () => { p.areas.splice(i, 1); persist(); rerender(); } }, '빼기'))),
-      h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', id: 'btn-area-add', disabled: p.areas.length >= 5, onclick: () => { p.areas.push({ name: '', note: '' }); persist(); S.keepScroll = true; rerender(); } }, '영역 더하기'))));
-  }
-  out.push(h('section', { class: 'sec' }, h('h2', null, '분석 설정'),
+  const set = [];
+  set.push(h('section', { class: 'sec' }, h('h2', null, '분석 설정'),
     h('div', { class: 'grid3' }, num('ismCount', '분석할 사조 수', 2, 6), num('insightCount', '통합 인사이트 수', 1, 5), num('signalsPerLens', '노드·이슈당 판단', 1, 3)),
-    h('p', { class: 'small' }, `호출 수 = 기본안 1 + 사조 고르기 1 + 방향 약 ${10 + (p.settings.ismCount ?? DEFAULTS.ismCount) + 6}(노드마다 1 + 영역 · 관계 검토 2 · 기본 방향 · 문안 · 검증) + 노드 ${10 + (p.settings.ismCount ?? DEFAULTS.ismCount)} + 연결 1 + 인사이트 ${p.settings.insightCount ?? DEFAULTS.insightCount} + 경쟁 약 25 + 더프롬 판정 1 + 디렉션 1 + 전략 · 전술 구체화 1~2 + 기획 틀 1 + 디자인 틀 2`),
+    h('p', { class: 'small' }, `전체 분석 1회에 약 ${2 * (10 + (p.settings.ismCount ?? DEFAULTS.ismCount)) + (p.settings.insightCount ?? DEFAULTS.insightCount) + 41}회 호출한다.`)
     ));
-  out.push(casesBoard());
+  set.push(casesBoard());
 
   const o = c.openai;
   const cfg = (obj, key, attrs) => h('input', { type: 'text', value: obj[key] || '', ...attrs, oninput: (e) => { obj[key] = e.target.value.trim(); persist(); } });
@@ -756,7 +774,7 @@ function missionTab() {
     const edit = (i, key, value) => { const list = layers.map((l) => ({ ...l })); list[i][key] = value; setLook({ kind: 'stack', name: look.name || PRESETS[look.kind]?.name || '내 형상', layers: list }); };
     const parts = fig ? figureParts(fig, look.parts) : null;
     const editPart = (id, key, value) => setLook({ kind: fig, parts: { ...(look.parts || {}), [id]: { ...(look.parts?.[id] || {}), [key]: value } } });
-    out.push(h('section', { class: 'sec' }, h('h2', null, '브레인 맵 모양', h('small', null, '이 프로젝트에만 적용')),
+    set.push(h('section', { class: 'sec' }, h('h2', null, '브레인 맵 모양', h('small', null, '이 프로젝트에만 적용')),
       field('형상', h('select', { id: 'set-look', onchange: (e) => setLook({ kind: e.target.value }) },
         h('option', { value: 'brain', selected: look.kind === 'brain' }, '뇌 — 기본'),
         Object.entries(PRESETS).map(([id, d]) => h('option', { value: id, selected: look.kind === id }, `${d.name} — 층 ${d.layers.length}개`)),
@@ -776,7 +794,7 @@ function missionTab() {
       ] : h('p', { class: 'small' }, '층이나 외곽선 형상으로 바꾸면 부분마다 색과 맡는 노드군을 정할 수 있다.')));
   }
 
-  out.push(h('section', { class: 'sec' }, h('h2', null, '모델'),
+  set.push(h('section', { class: 'sec' }, h('h2', null, '모델'),
     field('공급자', h('select', { id: 'set-provider', onchange: (e) => { c.provider = e.target.value; persist(); rerender(); } },
       h('option', { value: 'mock', selected: c.provider === 'mock' }, '목업 — API 없이 구조 확인'),
       h('option', { value: 'anthropic', selected: c.provider === 'anthropic' }, 'Claude API — 주 모델 Opus · 보조 모델 Sonnet'),
@@ -807,14 +825,18 @@ function missionTab() {
       h('div', { class: 'grid3' }, field('화가 · 통합', cfg(o.models, 'director', { id: 'set-m-director' })), field('브레인 · 연결', cfg(o.models, 'brain', { id: 'set-m-brain' })), field('조수 · 분석', cfg(o.models, 'sub', { id: 'set-m-sub' }))),
     ] : null));
 
-  out.push(h('section', { class: 'sec' }, h('h2', null, '파일'),
+  set.push(h('section', { class: 'sec' }, h('h2', null, '파일'),
     h('div', { class: 'row' },
       h('button', { class: 'btn', type: 'button', onclick: () => saveFile(`${fileName(p)}.json`, JSON.stringify(p, null, 1)) }, '프로젝트 내보내기'),
-      h('label', { class: 'btn', style: 'display:inline-flex;align-items:center' }, '프로젝트 가져오기', h('input', { type: 'file', id: 'import-file', accept: '.json,application/json', class: 'sr', onchange: importFile })),
-      h('button', { class: 'btn', type: 'button', id: 'btn-skill-guide', onclick: skillGuideModal }, 'RFP로 자동 채우기'),
       h('button', { class: 'btn', type: 'button', onclick: () => { const q = newProject(SAMPLE); S.projects[q.id] = q; switchProject(q.id); } }, '예시 다시 열기'),
       h('button', { class: `btn ${S.confirmDelete ? 'danger' : ''}`, type: 'button', onclick: removeProject }, S.confirmDelete ? '정말 지운다 — 되돌릴 수 없다' : '이 프로젝트 지우기')),
     h('p', { class: 'small' }, '프로젝트와 키는 이 브라우저에만 저장된다. 다른 PC로 옮길 때는 내보내기 파일을 쓴다.')));
+  out.push(fold('mission-settings', '설정', '분석 설정 · 판정 사례 · 브레인 맵 모양 · 모델 · 파일', set, 'big'));
+  // 계정 — 로그인해서 쓸 때만
+  if (S.me) out.push(h('section', { class: 'sec' }, h('h2', null, '계정', h('small', null, ROLES[S.me.role])),
+    h('div', { class: 'row' }, h('strong', { class: 'grow' }, S.me.email),
+      isAdmin(S.me.role) ? h('button', { class: 'btn sm', type: 'button', id: 'btn-users', onclick: usersModal }, '사용자 관리') : null,
+      h('button', { class: 'btn sm', type: 'button', id: 'btn-logout', onclick: async () => { await S.cloud.signOut(); location.reload(); } }, '로그아웃'))));
   return out;
 }
 
