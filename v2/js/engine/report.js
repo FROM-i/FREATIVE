@@ -26,9 +26,9 @@ export function reportMarkdown(project) {
       if (d.covers?.length) L.push(...d.covers.map((c) => `- ${area(c.area)}: ${c.line}`), '');
       L.push(d.from || d.to ? `지금 ${d.from} → 바뀌는 것 ${d.to}` : '', d.keeps ? `강화 요소: ${d.keeps}` : '', d.drops.length ? `제외 범위: ${d.drops.join(' / ')}` : '', '');
       if (st.rivals?.length) {
-        L.push(st.v >= 6 ? `방향안 ${st.rivals.length}개 — 추천안 기준으로 영역별 전략과 전술을 작성했다:` : '겨룬 방향:', '');
+        L.push(st.v >= 6 ? `방향안 ${st.rivals.length}개 — 추천안 기준으로 영역별 전략과 전술을 작성했다:` : '경쟁 방향안:', '');
         for (const id of st.judge.order) { const r = st.rivals.find((x) => x.id === id); const it = st.judge.items.find((x) => x.id === id); L.push(id === 'BASE' ? `- 기본 방향 — ${st.base?.line || ''}` : `- ${id}${id === d.id ? (st.v >= 6 ? (st.picked ? ' (선택안)' : ' (추천안)') : ' (채택)') : ''} ${r.name} — ${r.line}${r.proposal ? ` · 가설 ${r.proposal.readings}개 · 뒷받침 근거 ${r.proposal.evidence}개` : ''}${it?.level && it.level !== '방향' ? ` [${it.level}으로 판정]` : it?.own === '범용' ? ' [범용 문장으로 판정]' : ''}${it?.weak ? ` · 약점: ${it.weak}` : ''}`); }
-        if (st.judge.why) L.push('', `고른 이유: ${st.judge.why}`);
+        if (st.judge.why) L.push('', `선정 사유: ${st.judge.why}`);
         L.push('');
       }
       if (!st.check.ok) L.push(`> 확인 필요: ${st.check.problems.join(' / ')}`, '');
@@ -83,11 +83,11 @@ export function reportMarkdown(project) {
   }
   if (run.arena) {
     const c = run.arena.counts;
-    L.push('## 경쟁 기록', '', `후보 ${c.candidates}개(노드의 완성안 ${c.node} · 묶음 통합안 ${c.cluster} · 충돌 교배 ${c.cross}). 사유가 있어 탈락 ${c.screened}개, 나머지는 점수 없이 ${c.duels}번 겨뤘다. 결선에서 판정이 갈린 대결 ${c.splits}건. 기본안에 없는 해법인데 떨어진 후보 ${c.different}개. 고친 안이 채택된 것 ${c.revised}건.`, '');
-    if (c.groups != null) L.push(`결선 ${c.finalists}개를 다시 견주니 서로 다른 해법은 ${c.groups}개였다. 같은 해법이라 빠진 안 ${c.merged}개, 예비에서 올린 안 ${c.reserve}개.`, '');
+    L.push('## 경쟁 기록', '', `후보 ${c.candidates}개(노드의 완성안 ${c.node} · 그룹 통합안 ${c.cluster} · 충돌 교배 ${c.cross}). 사유가 있어 탈락 ${c.screened}개, 나머지는 점수 없이 ${c.duels}회 비교 평가했다. 결선에서 판정이 엇갈린 비교 ${c.splits}건. 기본안에 없는 해법인데 탈락한 후보 ${c.different}개. 보완안이 채택된 경우 ${c.revised}건.`, '');
+    if (c.groups != null) L.push(`결선 ${c.finalists}개를 재검토한 결과 서로 다른 해법은 ${c.groups}개였다. 중복 해법으로 제외된 안 ${c.merged}개, 예비에서 승격된 안 ${c.reserve}개.`, '');
     if (run.scope?.gap) L.push(`근본 이슈가 덮지 못하는 것: ${run.scope.gap}`, '');
     if (run.frames?.length) L.push('다시 정의한 문제', ...run.frames.map((f) => `- ${f.id} ${f.frame}${f.success ? ' [성공 기준을 겨눔]' : ''} — ${f.why}`), '');
-    L.push('| 후보 | 출처 | 기본안 대조 | 해법 묶음 | 결선 자리 | 조별 승 | 결선 승 | 결과 | 제목 |', '|---|---|---|---|---|---|---|---|---|', ...[...run.arena.candidates].sort((x, y) => (x.rank ?? 99) - (y.rank ?? 99) || (y.swiss ?? -1) - (x.swiss ?? -1)).map((k) => `| ${k.id} | ${k.from} | ${k.screen?.verdict || '-'} | ${k.family || '-'} | ${k.seat || '-'} | ${k.swiss ?? '-'} | ${k.wins ?? '-'} | ${k.status}${k.contested ? ' · 판정 갈림' : ''} | ${k.title} |`), '');
+    L.push('| 후보 | 출처 | 기본안 대조 | 해법 그룹 | 결선 자리 | 조별 승 | 결선 승 | 결과 | 제목 |', '|---|---|---|---|---|---|---|---|---|', ...[...run.arena.candidates].sort((x, y) => (x.rank ?? 99) - (y.rank ?? 99) || (y.swiss ?? -1) - (x.swiss ?? -1)).map((k) => `| ${k.id} | ${k.from} | ${k.screen?.verdict || '-'} | ${k.family || '-'} | ${k.seat || '-'} | ${k.swiss ?? '-'} | ${k.wins ?? '-'} | ${k.status}${k.contested ? ' · 판정 갈림' : ''} | ${k.title} |`), '');
   }
 
   if (run.baseline?.concepts?.length) {
@@ -105,9 +105,9 @@ export function reportMarkdown(project) {
     if (!c.ok) L.push(`> 검증 미통과: ${c.problems.join(' / ')}`, '');
     L.push(`- 컨셉 방향: ${n.concept}`, `- 보이는 표현: ${n.visual}`, `- 지킬 관성: ${n.keep}`, `- 바꿀 해석: ${n.change}`);
     L.push(`- 근본 이슈에 적용하면: ${n.substitute.who} — ${n.substitute.changes}`, `- 판정 질문의 답: ${n.verdict}`, `- 문(N7): ${n.gate}`);
-    if (n.stance?.bet) L.push(`- 기조: ${n.stance.bet}${n.stance.givesUp ? ` (포기한 것: ${n.stance.givesUp})` : ''}${n.kept ? ` — 고친 뒤 ${n.kept}` : ''}`, ...(n.costs || []).map((x) => `  - 감수한 대가: ${x.note}`), ...(n.refused || []).map((x) => `  - 받지 않은 공격: ${x.hit} — ${x.note}`));
+    if (n.stance?.bet) L.push(`- 기조: ${n.stance.bet}${n.stance.givesUp ? ` (포기한 것: ${n.stance.givesUp})` : ''}${n.kept ? ` — 고친 뒤 ${n.kept}` : ''}`, ...(n.costs || []).map((x) => `  - 감수한 대가: ${x.note}`), ...(n.refused || []).map((x) => `  - 수용하지 않은 반론: ${x.hit} — ${x.note}`));
     if (n.from) { const v = n.from; const ans = (o) => Object.entries(o).filter(([k, x]) => !['level', 'confidence'].includes(k) && x).map(([, x]) => x).join(' '); L.push(`- 더프롬 판정: ${v.verdict}${v.push ? ` — 더 밀 곳: ${v.push}` : ''}`, `- 차별화: ${v.differentiation.level || '판단 보류'} — ${ans(v.differentiation)}`, `- 실효성: ${v.effectiveness.level || '판단 보류'} (${v.effectiveness.confidence}) — ${ans(v.effectiveness)}`, `- 확인 항목: ${v.checks.map((c) => `${c.item} ${c.result}`).join(' · ')}`, ...(v.held.length ? [`- 판단을 미룬 것: ${v.held.join(' / ')}`] : [])); }
-    if (n.attacks?.length) L.push(`- 받은 공격 ${n.attacks.length}건: ${n.attacks.map((x) => `[${x.from}] ${x.hit}`).join(' / ')}`, ...(n.fixed?.length ? [`- 고친 것: ${n.fixed.map((f) => f.fix).join(' / ')}`] : []));
+    if (n.attacks?.length) L.push(`- 제기된 반론 ${n.attacks.length}건: ${n.attacks.map((x) => `[${x.from}] ${x.hit}`).join(' / ')}`, ...(n.fixed?.length ? [`- 보완 내용: ${n.fixed.map((f) => f.fix).join(' / ')}`] : []));
     if (n.facts?.length) L.push(`- 근거 팩트: ${n.facts.join(', ')}`);
     if (n.without?.baseline) L.push(`- 노드 없이 냈을 안: ${n.without.baseline}`, `- 이 안의 차이: ${n.without.difference}`);
     L.push('');
@@ -122,7 +122,7 @@ export function reportMarkdown(project) {
   L.push('## 연결', '');
   const k = run.link || {};
   L.push(`판단 ${k.signals}건 · 연결 ${k.edges}건 (노드군 사이 ${k.crossFamily}건, ${pct(k.crossFamily, k.edges)}%) · 충돌 ${k.byType?.tension || 0}건`, '');
-  L.push('| 노드군 | 낸 판단 | 인사이트에 쓰인 판단 |', '|---|---|---|');
+  L.push('| 노드군 | 도출 판단 | 인사이트에 쓰인 판단 |', '|---|---|---|');
   for (const f of Object.keys(FAMILIES)) { const b = u.byFamily[f] || { signals: 0, used: 0 }; L.push(`| ${FAMILIES[f].short} | ${b.signals}건 | ${b.used}건 (${pct(b.used, b.signals)}%) |`); }
   L.push('');
   if (u.unused.length) {
@@ -187,7 +187,7 @@ table { width: 100%; border-collapse: collapse; margin-bottom: 12px; } td { padd
 <div class="top"><span>${esc(project.title)}</span><span>THE FROM BRAIN · ${esc((run.at || '').slice(0, 10))} · AI의 판단은 예비 판정입니다</span></div>
 <h1><mark>${esc(st.concept.name)}</mark></h1>
 <p class="line">${esc(st.concept.line)}</p>${st.principle ? `<p class="principle">${esc(st.principle)}</p>` : ''}
-<div class="cov"><span><b>${cv.facts.used}</b>/${cv.facts.total} 팩트</span><span><b>${cv.signals.used}</b>/${cv.signals.total} 판단 (새로 끌어온 것 ${cv.signals.fresh})</span><span><b>${cv.nodes.used}</b>/${cv.nodes.total} 노드</span></div>
+<div class="cov"><span><b>${cv.facts.used}</b>/${cv.facts.total} 팩트</span><span><b>${cv.signals.used}</b>/${cv.signals.total} 판단 (추가 반영 ${cv.signals.fresh})</span><span><b>${cv.nodes.used}</b>/${cv.nodes.total} 노드</span></div>
 <div class="grid">
 <section><h2>축</h2>
 ${st.pillars.map((p) => `<div class="pillar"><span class="part">${esc(p.label || '축')}</span><div><h3>${esc(p.name)}</h3><p>${esc(p.guide)}</p>${p.moves.length ? `<ul>${p.moves.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>` : ''}<div>${ev(p.facts)} ${p.insights.map((id) => `<span class="ins">${esc(short(id))}</span>`).join(' ')}</div></div></div>`).join('\n')}
@@ -257,7 +257,7 @@ ${d.covers?.length ? `<table class="covers">${d.covers.map((c) => `<tr><td>${esc
 ${d.from || d.to ? `<div class="shift"><span>${esc(d.from)}</span><i>→</i><b>${esc(d.to)}</b></div>` : ''}
 ${d.keeps ? `<p class="kv"><b>강화 요소</b>${esc(d.keeps)}</p>` : ''}${d.drops.length ? `<p class="kv"><b>제외 범위</b>${esc(d.drops.join(' · '))}</p>` : ''}
 <div class="cov"><span><b>${cv.facts.used}</b>/${cv.facts.total} 팩트</span><span><b>${cv.signals.used}</b>/${cv.signals.total} 판단</span><span><b>${cv.nodes.used}</b>/${cv.nodes.total} 노드</span>${st.net ? `<span>분석 포인트 <b>${st.net.atoms}</b>개 종합 · 뒷받침 ${st.net.support} · 상충 ${st.net.contradict}</span>` : cv.high ? `<span>과제 전체를 본 노드 판단 <b>${cv.high.used}</b>/${cv.high.total} · 충돌 ${cv.high.tensions}</span>` : ''}${cv.tactics ? `<span>전술에 쓰인 노드 <b>${cv.tactics.lenses}</b>/${cv.tactics.lensTotal}</span>` : ''}</div></div>
-<div>${st.rivals?.length ? `<h2>${st.v >= 6 ? `방향안 ${st.rivals.length}개와 기본 방향` : `겨룬 방향 ${st.rivals.length}개와 기본 방향`}</h2><table class="rivals">${st.judge.order.map(rivalRow).join('')}</table>` : ''}
+<div>${st.rivals?.length ? `<h2>${st.v >= 6 ? `방향안 ${st.rivals.length}개와 기본 방향` : `경쟁 방향안 ${st.rivals.length}개와 기본 방향`}</h2><table class="rivals">${st.judge.order.map(rivalRow).join('')}</table>` : ''}
 ${st.check.ok ? '' : `<p class="warn">확인 필요 — ${esc(st.check.problems.join(' / '))}</p>`}</div>
 </div></section>
 ${v3 ? `<section class="layer"><div class="no"><b>2</b>영역별 전략</div><div class="axes" style="grid-template-columns: repeat(${Math.max(1, st.pillars.length)}, minmax(0, 1fr))">
@@ -277,6 +277,6 @@ ${off.length ? `<p class="note">방향에 맞지 않아 놓지 않은 인사이�
 <div>${st.gaps.length ? `<h2>확인할 것</h2><ul class="gaps">${st.gaps.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}</div>
 </div>
 <div class="foot">${usedFacts.map((id) => { const t = String(facts.get(id).text || ''); return `<p><b>${esc(id)}</b> ${esc(t.length > 58 ? `${t.slice(0, 56)}…` : t)}</p>`; }).join('')}</div>
-<p class="note">◆는 경쟁에서 이긴 인사이트를 전술로 놓은 자리입니다. 팩트의 전문과 출처는 팩트북과 전체 기록(.md)에 있습니다.${v3 ? ' 전술 뒤의 작은 글씨는 맡는 파트입니다.' : ' 동그라미 숫자는 그 할 일이 따르는 축입니다.'} 근거 번호(#F)는 팩트북의 번호이며, 사람이 확인하지 않은 팩트는 제출 전에 원문을 대조합니다.</p>
+<p class="note">◆는 경쟁 평가에서 채택된 인사이트를 전술로 배치한 자리입니다. 팩트의 전문과 출처는 팩트북과 전체 기록(.md)에 있습니다.${v3 ? ' 전술 뒤의 작은 글씨는 맡는 파트입니다.' : ' 동그라미 숫자는 그 할 일이 따르는 축입니다.'} 근거 번호(#F)는 팩트북의 번호이며, 사람이 확인하지 않은 팩트는 제출 전에 원문을 대조합니다.</p>
 </body></html>`;
 }
