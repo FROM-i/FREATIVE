@@ -17,7 +17,7 @@ import { reframePrompt } from '../../knowledge/prompts-arena.js';
 import { arena, shapeProposal, shapeFrames } from './arena.js';
 import { frames } from './frames.js';
 import { PERSPECTIVES } from '../../knowledge/tags.js';
-import { AIRPLANE, OPPOSITIONS, GATES, FAMILIES, IDENTITY } from '../../knowledge/nodes.js';
+import { AIRPLANE, OPPOSITIONS, SCHOOL_OPPOSITIONS, GATES, FAMILIES, IDENTITY } from '../../knowledge/nodes.js';
 import { activeLenses, signalPrefix, hints, lensName, validateProject, needsDevelopment } from '../graph/model.js';
 import { head, descend, chart, headingOf } from './course.js';
 import { propagate } from '../graph/propagate.js';
@@ -361,23 +361,35 @@ export async function think(project, provider, { onEvent = () => {}, signal, mod
     if (mode === 'full') {
       emit('stage', { stage: 'route' });
       const fixed = new Set([...(s.pinned || []), ...hints(project).map((h) => h.lens).filter((id) => id.startsWith('ISM-'))]);
-      const need = Math.max(0, s.ismCount - fixed.size);
+      // 디자인 사조와 전략 사조는 따로 센다 — 한 번에 모두 대 보고, 갈래마다 고른다
+      const isSt = (id) => AIRPLANE.find((a) => a.id === id)?.domain === 'strategy';
+      const fixedSt = [...fixed].filter(isSt).length;
+      const need = Math.max(0, s.ismCount - (fixed.size - fixedSt));
+      const needSt = Math.max(0, (s.schoolCount ?? 2) - fixedSt);
       let picks = [...fixed].map((id) => ({ id, why: '사람이 지목한 사조' }));
-      if (need > 0) {
-        const pool0 = AIRPLANE.filter((a) => !fixed.has(a.id) && !(s.muted || []).includes(a.id));
-        const p = routePrompt(project, pool0, OPPOSITIONS, need);
-        const json = await call({ role: 'judge', ...p, task: { kind: 'route', project, isms: pool0, count: need } });
+      if (need > 0 || needSt > 0) {
+        const pool0 = AIRPLANE.filter((a) => !fixed.has(a.id) && !(s.muted || []).includes(a.id) && (a.domain === 'strategy' ? needSt > 0 : need > 0));
+        const p = routePrompt(project, pool0, [...OPPOSITIONS, ...SCHOOL_OPPOSITIONS], need + needSt);
+        const json = await call({ role: 'judge', ...p, task: { kind: 'route', project, isms: pool0, count: need + needSt } });
         const valid = new Set(pool0.map((a) => a.id));
         // 훑은 결과로 고른다 — 사람이 고르지 않는다. (예전 형식의 picks도 받는다)
         run.probes = (Array.isArray(json.probes) ? json.probes : []).filter((x) => valid.has(x.id)).map((x) => ({ id: x.id, hit: text(x.hit), pressure: clamp(x.pressure, 0) }));
-        const got = run.probes.length ? selectByProbe(run.probes, need) : (Array.isArray(json.picks) ? json.picks : []).filter((x) => valid.has(x.id)).slice(0, need).map((x) => ({ id: x.id, why: text(x.why) }));
+        const old = (Array.isArray(json.picks) ? json.picks : []).filter((x) => valid.has(x.id)).map((x) => ({ id: x.id, why: text(x.why) }));
+        const got = run.probes.length
+          ? [...(need > 0 ? selectByProbe(run.probes.filter((x) => !isSt(x.id)), need) : []), ...(needSt > 0 ? selectByProbe(run.probes.filter((x) => isSt(x.id)), needSt) : [])]
+          : [...old.filter((x) => !isSt(x.id)).slice(0, need), ...old.filter((x) => isSt(x.id)).slice(0, needSt)];
         picks = [...picks, ...got.filter((g) => !picks.some((q) => q.id === g.id))];
       }
-      // 같은 편 사조만 고르지 않는다 — 대립 쌍이 없으면 반대편 하나를 더한다 (catalog A-99)
+      // 같은 편 사조만 고르지 않는다 — 대립 쌍이 없으면 반대편 하나를 더한다 (catalog A-99). 전략 사조도 둘 이상 고를 때 같은 규칙을 따른다
       const ids = new Set(picks.map((x) => x.id));
-      if (ids.size && !OPPOSITIONS.some((o) => ids.has(o.a) && ids.has(o.b))) {
+      if ([...ids].some((id) => !isSt(id)) && !OPPOSITIONS.some((o) => ids.has(o.a) && ids.has(o.b))) {
         const o = OPPOSITIONS.find((x) => ids.has(x.a) !== ids.has(x.b));
         if (o) picks.push({ id: ids.has(o.a) ? o.b : o.a, why: `반대 답을 내는 사조 — ${o.issue}` });
+      }
+      const st = picks.filter((x) => isSt(x.id));
+      if (st.length >= 2 && !SCHOOL_OPPOSITIONS.some((o) => ids.has(o.a) && ids.has(o.b))) {
+        const o = SCHOOL_OPPOSITIONS.find((x) => ids.has(x.a) !== ids.has(x.b));
+        if (o) { const out = st[st.length - 1]; picks = picks.filter((x) => x !== out); picks.push({ id: ids.has(o.a) ? o.b : o.a, why: `반대 답을 내는 전략 사조 — ${o.issue}` }); }
       }
       run.picks = picks;
       emit('picked');

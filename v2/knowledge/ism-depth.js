@@ -2,6 +2,8 @@
 // 사조를 "가져올 것 / 두고 올 것"으로 나누지 않고 읽기 위한 자료다.
 // 초안이다 (2026-11-25). 사내 검수 뒤 고정한다. 검수한 항목은 reviewed: true 로 바꾼다.
 
+import { SCHOOL_DEPTH } from './schools.js';
+
 export const ISM_DEPTH = {
   'ISM-ARTCRAFT': {
     era: '산업혁명기 영국. 기계 대량생산과 분업으로 만드는 사람과 물건이 분리됐고, 1851년 만국박람회에는 조악한 장식품이 넘쳤다.',
@@ -184,6 +186,8 @@ export const ISM_DEPTH = {
     after: '현대 한국 디자인의 여백과 색.',
   },
 };
+
+Object.assign(ISM_DEPTH, SCHOOL_DEPTH);   // 전략 사조의 깊이도 같은 자리에서 읽는다
 
 export const LAYERS = ['태도', '원리', '방법', '표현'];
 

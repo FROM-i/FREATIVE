@@ -126,7 +126,7 @@ export function courseLensPrompt(project, lens, areas, own = []) {
   const C = COURSE_CAPS; const goals = goalsOf(project);
   const ism = lens.family === 'airplane';
   const source = ism
-    ? `## 이 사조의 카드 원문\n${lens.card}\n\n카드의 "가져올 것 · 두고 올 것"은 지난 적용 메모다. 규칙으로 쓰지 않는다.`
+    ? `${lens.domain === 'strategy' ? '## 이 사조는 전략 사조다\n조형이 아니라 과제의 방향 · 우선순위 · 하지 않을 것을 읽는다. 클라이언트의 사업에서 이 과제가 무엇인지를 본다. 학파의 분석 틀이나 약어를 조각에 쓰지 않는다.\n\n' : ''}## 이 사조의 카드 원문\n${lens.card}\n\n카드의 "가져올 것 · 두고 올 것"은 지난 적용 메모다. 규칙으로 쓰지 않는다.`
     : `## 이 노드의 원문 (더프롬 방법론 CORE)\n${lens.text}\n\n판정 기준: ${lens.criteria}`;
   const many = areas.length > 1;
   return {
