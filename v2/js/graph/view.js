@@ -304,11 +304,11 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
       } else if (n.type === 'issue') { ctx.globalAlpha = 1; text(n.id, x, y - r - 9, `700 10.5px ${MONO}`, COLORS.holo, 'center'); }
       else if (n.type === 'insight') {
         const lx = x + r + (step >= 0 ? 24 : 9); const label = clip(n.name, 22);
-        ctx.font = `700 12.5px ${FONT}`; if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+        ctx.font = `400 12.5px ${FONT}`; if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
         ctx.globalAlpha = 0.78; ctx.fillStyle = COLORS.ground; ctx.fillRect(lx - 4, y - 10, ctx.measureText(label).width + 8, 20);
         ctx.globalAlpha = 1; text(label, lx, y, `700 12.5px ${FONT}`, COLORS.yellow, 'left');
       }
-      else if (n.type === 'project') { ctx.globalAlpha = 0.9; text('MISSION', x + r + 12, y - 7, `600 10px ${MONO}`, COLORS.holo, 'left', 1.5); ctx.globalAlpha = 0.6; text(clip(n.name, 22), x + r + 12, y + 8, `500 11px ${FONT}`, COLORS.holo, 'left'); }
+      else if (n.type === 'project') { ctx.globalAlpha = 0.9; text('MISSION', x + r + 12, y - 7, `400 10px ${MONO}`, COLORS.holo, 'left', 1.5); ctx.globalAlpha = 0.6; text(clip(n.name, 22), x + r + 12, y + 8, `500 11px ${FONT}`, COLORS.holo, 'left'); }
       else if (n.type === 'gate') { ctx.globalAlpha = 0.75; text('N7 · 문', x + r + 9, y, `500 10px ${MONO}`, COLORS.holo, 'left'); }
     }
 
@@ -319,7 +319,7 @@ export function createView(canvas, { onSelect = () => {}, onHover = () => {} } =
       const cnt = state.counts[family] || { lenses: 0, signals: 0 }; const id = `HUB-${family.toUpperCase()}`;
       const lit2 = !on || state.selected === id; const al = lobe.caption.align;
       ctx.globalAlpha = lit2 ? 0.95 : 0.35;
-      const w1 = text(lobe.label, x, y, `700 11px ${MONO}`, state.selected === id ? COLORS.pink : lobe.color ? `rgb(${lobe.color})` : COLORS.holo, al, 2.4);
+      const w1 = text(lobe.label, x, y, `400 11px ${MONO}`, state.selected === id ? COLORS.pink : lobe.color ? `rgb(${lobe.color})` : COLORS.holo, al, 2.4);
       ctx.globalAlpha = lit2 ? 0.55 : 0.2;
       text(lobe.sub, x, y + 16, `500 10.5px ${FONT}`, COLORS.holo, al);
       text(`${String(cnt.lenses).padStart(2, '0')} NODES  ${String(cnt.signals).padStart(2, '0')} SIGNALS`, x, y + 31, `500 9.5px ${MONO}`, COLORS.holo, al, 0.8);

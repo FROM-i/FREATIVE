@@ -32,7 +32,7 @@ test('사고 패스 — 발화 · 연결 · 수렴 · 통합이 한 번에 돈�
   const run = await think(p, createMock(), { onEvent: (e) => events.push(e.type === 'stage' ? e.stage : e.type) });
   const lenses = IDENTITY.length + TUNNEL.length + p.settings.ismCount;
   assert.equal(run.calls, 1 + 1 + 1 + lenses + 1 + p.settings.insightCount + run.arena.calls + 1 + 1 + 1 + (run.creative ? 2 : 0) + run.heading.calls + (run.strategy?.attempts || 0), '호출 수 = 기본안 1 + 문제 다시 정의 1 + 사조 고르기 1 + 방향 + 노드 수 + 연결 1 + 묶음 통합 + 경쟁 + 더프롬 판정 1 + 디렉션 1 + 내려 쓰기');
-  assert.equal(run.heading.calls, 1 + lenses + 1 + 1 + 1 + 1, '방향 = 영역 1 + 노드 수 + 연결 1 + 기본 방향 1 + 후보 1 + 판정 1');
+  assert.equal(run.heading.calls, 1 + lenses + 2 + 1 + 1 + 1, '방향 = 영역 1 + 노드 수(조각) + 관계 2 + 기본 방향 1 + 표현 1 + 시험 1');
   assert.deepEqual(events.filter((e) => ['route', 'courseLens', 'courseJudge', 'heading', 'activate', 'integrate', 'layers', 'done'].includes(e)), ['route', 'courseLens', 'courseJudge', 'heading', 'activate', 'integrate', 'layers', 'done'], '방향을 먼저 정하고 이슈를 본 뒤 내려 쓴다');
   assert.equal(new Set(run.signals.map((s) => s.lens)).size, lenses, '모든 노드가 발화했다');
   assert.deepEqual(events.filter((e) => ['route', 'activate', 'link', 'propagate', 'integrate', 'direct', 'done'].includes(e)), ['route', 'activate', 'link', 'propagate', 'integrate', 'direct', 'done']);
@@ -881,9 +881,9 @@ test('닿은 것 세기 — 노드군별로 쓰인 노드 수와, 인사이트�
 });
 
 test('방향 — 모든 과제가 같은 길을 간다: 모든 노드가 과제 전체를 보고 방향을 정하고, 그 아래에서 노드가 이슈마다 전술을 낸다', async () => {
-  const { chart, headingOf, areasOf, objectHits, overlap, redoList, OVERLAP, shapeHigh, shapeHighEdges, courseSpines, shapeRivals, shapeJudge, shapeLayers, courseNeed, cellItems } = await import('../js/engine/course.js');
+  const { chart, headingOf, areasOf, objectHits, overlap, OVERLAP, shapeAtoms, cohere, take, shapeRivals, shapeJudge, shapeLayers, courseNeed, cellItems } = await import('../js/engine/course.js');
   const { strategizeOnly } = await import('../js/engine/think.js');
-  const { courseObjectsPrompt, courseLensPrompt, courseLinkPrompt, coursePrompt, courseJudgePrompt, layersPrompt, courseScopePrompt, COURSE_CAPS } = await import('../knowledge/prompts-course.js');
+  const { courseObjectsPrompt, courseLensPrompt, courseRelPrompt, goalsOf, coursePrompt, courseJudgePrompt, layersPrompt, courseScopePrompt, COURSE_CAPS } = await import('../knowledge/prompts-course.js');
   const { lensName, activeLenses } = await import('../js/graph/model.js');
   const { tierOf } = await import('../knowledge/orchestration.js');
   const { activatePrompt, verdictPrompt } = await import('../knowledge/prompts.js');
@@ -892,7 +892,7 @@ test('방향 — 모든 과제가 같은 길을 간다: 모든 노드가 과제 
   const plain = newProject(SAMPLE);
   assert.deepEqual(plain.categories, ['marketing']);
   const run0 = await think(plain, createMock());
-  assert.ok(run0.heading?.direction?.line && run0.strategy?.v === 5 && run0.strategy.direction.id === run0.heading.direction.id);
+  assert.ok(run0.heading?.direction?.line && run0.strategy?.v === 6 && run0.strategy.direction.id === run0.heading.direction.id);
   const p = newProject(SAMPLE);
   p.categories = ['integrated', 'ops', 'planning', 'marketing', 'design']; p.category = 'integrated';
   // 영역 — 사람이 적은 것. 이름 있는 줄만 받는다. 결과물이 하나인 과제는 하나여도 된다. 프로젝트를 다시 읽어도 남는다
@@ -908,9 +908,9 @@ test('방향 — 모든 과제가 같은 길을 간다: 모든 노드가 과제 
   const run = await think(p, { name: 'mock', json: async (a) => { kinds.push(a.task.kind); (said[a.task.kind] ||= []).push(a.user); return mock.json(a); } });
   const lenses = activeLenses(p, run.picks);
   const tail = kinds.filter((k) => k.startsWith('course') || k === 'layers' || k === 'strategy');
-  assert.deepEqual(tail, ['courseScope', ...lenses.map(() => 'courseLens'), 'courseLink', 'courseBase', 'course', 'courseJudge', 'layers'], '인사이트에서 올려 쓰는 단계는 없다');
+  assert.deepEqual(tail, ['courseScope', ...lenses.map(() => 'courseLens'), 'courseRel', 'courseRel', 'courseBase', 'course', 'courseJudge', 'layers'], '인사이트에서 올려 쓰는 단계는 없다');
   assert.ok(kinds.indexOf('courseJudge') < kinds.indexOf('activate') && kinds.lastIndexOf('verdict') < kinds.indexOf('layers'), '방향 → 이슈 높이의 분석 → 내려 쓰기');
-  assert.ok(run.strategy.v === 5 && run.strategy.areasAuto && run.strategy.areas.length === 3 && !run.strategy.reusedHigh);
+  assert.ok(run.strategy.v === 6 && run.strategy.areasAuto && run.strategy.areas.length === 3 && !run.strategy.reusedHigh);
   // 방향을 정하는 호출은 이슈를 참고로만 받고, 방향이 정해진 뒤의 호출은 모두 같은 방향을 받는다
   const dn = run.heading.direction;
   for (const k of ['courseLens', 'courseBase', 'course', 'courseJudge']) assert.ok(said[k].every((u) => u.includes('방향은 이 가운데 하나에 붙지 않는다') && !u.includes('과제의 방향 — 이미 정해졌다')), k);
@@ -921,12 +921,14 @@ test('방향 — 모든 과제가 같은 길을 간다: 모든 노드가 과제 
   assert.match(activatePrompt({ ...p, heading: headingOf(run.heading) }, IDN[0], 1).user, /방향을 받아 적지도 않는다.*어디서 무너지는지.*방향과 부딪히는 판단을 숨기지 않는다/s);
   assert.ok(said.activate.every((u) => u.includes('판단의 수와 폭을 방향에 맞춰 줄이지 않는다')) && said.weave.every((u) => u.includes('방향을 다시 정하거나 넓게 고쳐 쓰지 않는다')));
   assert.ok(!activatePrompt(p, IDN[0], 1).user.includes('과제의 방향'));
-  // 방향 높이의 판단 — 노드마다 통합 1개와 영역마다 1개. 이슈 높이의 판단과 따로 둔다
+  // 조각 — 노드마다 여러 개. 결론이 아니라 관찰 · 제약 · 해석 · 지렛대다. 이슈 높이의 판단과 따로 둔다
   const hi = run.course;
-  assert.equal(hi.signals.filter((x) => x.scope === 'ALL').length, lenses.length);
-  assert.equal(hi.signals.length, lenses.length * 4);
-  assert.ok(hi.signals.every((x) => x.id.startsWith('C-') && x.lens && x.family && x.claim) && !run.signals.some((x) => x.id.startsWith('C-')));
-  assert.ok(hi.edges.some((e) => e.type === 'tension') && hi.edges.every((e) => e.why));
+  assert.equal(hi.signals.length, lenses.length * (4 + run.heading.areas.length));
+  assert.ok(hi.v === 6 && hi.signals.every((x) => x.id.startsWith('C-') && x.lens && x.family && x.claim && ['관찰', '제약', '해석', '지렛대'].includes(x.type) && typeof x.act === 'number') && !run.signals.some((x) => x.id.startsWith('C-')));
+  // 관계는 두 번 따로 매겨 합친다 — 둘 다 본 것과 한쪽만 본 것이 갈린다. 수렴은 AI를 부르지 않는다
+  assert.ok(hi.readers === 2 && hi.rel.agree.both > 0 && hi.rel.agree.single > 0 && hi.rel.edges.some((e) => e.kind === 'contradict') && hi.net.settled);
+  // 제안은 하나로 모으지 않는다 — 서로 받치는 해석의 연합마다 하나씩
+  assert.ok(hi.proposals.length === 3 && hi.proposals.every((x) => x.readings.length >= 2 && x.evidence.length && x.lenses.length >= 2) && new Set(hi.proposals.flatMap((x) => x.readings)).size === hi.proposals.flatMap((x) => x.readings).length);
   assert.equal(tierOf({ kind: 'courseLens', lens: { family: 'tunnel' } }), 'support'); assert.equal(tierOf({ kind: 'courseLens', lens: { family: 'identity' } }), 'lead');
 
   // 영역만 적고 대상 낱말을 적지 않았으면 낱말만 뽑는다 (호출 1회)
@@ -937,7 +939,7 @@ test('방향 — 모든 과제가 같은 길을 간다: 모든 노드가 과제 
   p.areas = AREAS; p.run = run; let only = [];
   const provider = { json: async (a) => { only.push(a.task.kind); return mock.json(a); } };
   let st = await strategizeOnly(p, provider);
-  assert.deepEqual(only, [...lenses.map(() => 'courseLens'), 'courseLink', 'courseBase', 'course', 'courseJudge', 'layers']);
+  assert.deepEqual(only, [...lenses.map(() => 'courseLens'), 'courseRel', 'courseRel', 'courseBase', 'course', 'courseJudge', 'layers']);
   // 나눌 것이 없는 과제는 영역 하나로 간다 — 같은 길이다
   const solo = await chart({ project: { ...p, areas: [] }, run: { ...run, strategy: null, course: null, heading: null }, call: async (a) => (a.task.kind === 'courseScope' ? { areas: [] } : (await mock.json(a)).json) });
   assert.deepEqual([solo.areas.map((a) => a.name), solo.pillars.length, solo.direction.covers.length], [['과제 전체'], 1, 1]);
@@ -950,19 +952,18 @@ test('방향 — 모든 과제가 같은 길을 간다: 모든 노드가 과제 
 
   const need0 = courseNeed(p, run);
   // 결과 — 방향, 영역별 전략, 전술(영역 × 단계)
-  assert.ok(st.v === 5 && st.check.ok && !st.areasAuto, st.check.problems.join(' / '));
+  assert.ok(st.v === 6 && st.check.ok && !st.areasAuto, st.check.problems.join(' / '));
   assert.deepEqual([st.concept.name, st.principle], [st.direction.name, st.direction.standard], '맨 위는 이긴 방향이다');
   assert.deepEqual(st.direction.covers.map((c) => c.area), ['S1', 'S2', 'S3'], '방향은 영역마다 무엇이 달라지는지 적는다');
-  // 방향은 방향 높이의 판단에서 나온다 — 충돌 하나를 맡고, 아이덴티티 노드가 뼈대이고, 터널이 받친다
+  // 방향은 조각에서 나온다 — 제안(해석의 연합) 하나를 문장으로 옮긴 것이고, 그 연합의 조각만 근거로 삼는다
   assert.ok(st.direction.signals.length && st.direction.signals.every((id) => id.startsWith('C-')), '이슈 높이의 판단을 올려 쓰지 않는다');
-  const spine = run.course.edges.find((e) => e.id === st.direction.spine.edge);
-  assert.ok(spine.type === 'tension' && st.direction.signals.includes(spine.from) && st.direction.signals.includes(spine.to), '출발한 충돌의 두 쪽을 모두 근거로 삼는다');
-  assert.ok(st.direction.lenses.filter((l) => l.startsWith('ID-')).length >= 2 && st.direction.lenses.some((l) => l.startsWith('TN-')) && st.direction.how && st.direction.swap);
-  assert.equal(new Set(st.rivals.map((r) => r.spine.edge)).size, st.rivals.length, '후보마다 출발하는 충돌이 다르다');
+  for (const r of st.rivals) { const pr = run.course.proposals.find((x) => x.id === r.proposal.id); const mine = new Set([...pr.readings, ...pr.evidence]); assert.ok(r.signals.every((id) => mine.has(id)) && r.proposal.readings === pr.readings.length, '제안의 근거는 그 연합의 조각이다'); }
+  assert.equal(new Set(st.rivals.map((r) => r.proposal.id)).size, st.rivals.length, '제안마다 다른 연합에서 나온다');
+  assert.ok(st.rivals.length === 3 && st.direction.how && st.direction.swap && st.net.atoms === run.course.signals.length && st.net.support > st.net.contradict && !st.picked);
   assert.ok(st.rivals.length >= 2 && st.rivals.some((r) => r.id === st.direction.id) && st.judge.order.includes('BASE') && st.judge.beatsBase);
   assert.ok(st.coverage.high.used > 0 && st.coverage.high.total === run.course.signals.length && st.coverage.signals.total === run.signals.filter((x) => !x.muted).length, '이슈 높이의 판단과 방향 높이의 판단을 따로 센다');
   assert.deepEqual(st.pillars.map((x) => x.label), AREAS.map((a) => a.name), '줄은 파트가 아니라 업무 영역이다');
-  assert.ok(st.pillars.every((x) => x.name && x.guide && !x.thin && x.signals.some((id) => id.startsWith(`C-`) && id.endsWith(x.part)) && x.tactics.length >= 4 && st.phases.every((ph) => cellItems(st, x, ph).length >= 1)), '영역 전략은 그 영역의 판단에서 출발하고, 그 아래 전술 여러 개가 단계별로 놓인다');
+  assert.ok(st.pillars.every((x) => x.name && x.guide && !x.thin && x.signals.some((id) => run.course.signals.find((c) => c.id === id)?.scopes.includes(x.part)) && x.tactics.length >= 4 && st.phases.every((ph) => cellItems(st, x, ph).length >= 1)), '영역 전략은 그 영역의 판단에서 출발하고, 그 아래 전술 여러 개가 단계별로 놓인다');
   assert.deepEqual([...new Set(st.pillars.flatMap((x) => x.tactics.flatMap((t) => t.parts)))].sort(), ['design', 'marketing', 'ops', 'planning'], '통합은 파트가 아니다. 나머지 파트가 전술을 맡는다');
   // 전술마다 어느 노드의 판단에서 나왔는지 남는다 — 여러 노드가 제 몫을 한다
   const tacs = st.pillars.flatMap((x) => x.tactics);
@@ -971,18 +972,22 @@ test('방향 — 모든 과제가 같은 길을 간다: 모든 노드가 과제 
   assert.equal(st.insights.length, run.insights.length);
   for (const x of st.insights) { const row = st.pillars.find((r) => r.part === x.part); assert.ok(x.fit === '맞음' && row.tactics.filter((t) => t.insight === x.id).length === 1 && row.tactics.some((t) => !t.insight)); }
 
-  // 프롬프트 — 노드는 방향 높이에서 자기 기준 하나로만 보고, 이슈에서 낸 판단은 배경으로만 받는다
-  const areas = areasOf(p); const need = courseNeed(p, run); const high = run.course.signals; const spines = courseSpines(run.course, 3);
+  // 프롬프트 — 노드는 결론을 내지 않고 조각을 낸다. 목표는 사람이 쓴 문장으로 고정이다. 이슈에서 낸 판단은 배경으로만 받는다
+  const areas = areasOf(p); const need = courseNeed(p, run); const high = run.course.signals; const props = run.course.proposals;
   const jamais = lenses.find((l) => l.id === 'ID-JAMAIS');
   const lensP = courseLensPrompt(p, jamais, areas, run.signals.filter((x) => x.lens === jamais.id));
-  for (const re of [/네 기준에서만 보이는 것\(only\)/, /브리프 · 판정 질문 · 이슈의 문장을 되받아 쓰지 않는다/, /이 영역만의 대상: 혜택, 쿠폰, 캠페인/, /노드 "자메뷰", 방향 높이/, /이 과제를 무엇을 기준으로 풀어야 하는가/, /이슈 하나에 붙지 않는다/, /다른 노드의 이름으로 바꿔 써도 성립하면 버린다/, /영역 하나를 빼도 문장이 그대로면 통합 판단이 아니다/, /통제 범위/, /S1: 앱 웹뷰 프로모션/]) assert.match(lensP.system, re);
-  assert.match(lensP.user, /배경이다. 넓게 고쳐 써서 올리지 않는다/); assert.match(lensP.user, /방향은 이 가운데 하나에 붙지 않는다/);
-  assert.match(courseLinkPrompt(p, high.filter((x) => x.scope === 'ALL'), lensName).system, /표현만 다른 것, 강조점만 다른 것은 충돌이 아니다/);
-  // 후보 — 충돌을 푸는 자리에서 쓰고, 아이덴티티가 뼈대이고, 바꿔치기 시험을 한다. 이슈 높이의 판단은 주지 않는다
-  const cp = coursePrompt(p, run, spines, st.base, lensName, need, areas, high);
-  for (const re of [/이슈 하나의 답을 방향으로 삼지 않는다/, /목적과 성공 기준에 어떻게 닿는가/, /강한 판단 하나를 골라 다시 쓰면 방향이 아니다/, /아이덴티티 노드의 판단이 뼈대다/, /바꿔치기 시험/, /약속할 수 있는 것만 기준으로 삼는다/, /한 영역의 대상.*을 주어로 삼은 문장은 아무리 넓게 써도 그 영역의 전략이다/, /영역마다 한 줄씩/]) assert.match(cp.system, re);
-  assert.match(cp.user, /출발 충돌/); assert.match(cp.user, /C-JAMAIS-ALL/);
-  assert.ok(!cp.user.includes(`[${run.signals[0].id}]`), '방향 후보에게는 이슈 높이의 판단을 주지 않는다 — 판단이 몰린 영역으로 끌려가지 않게');
+  for (const re of [/결론을 내지 않는다/, /조각의 종류/, /브리프 · 목표 · 이슈의 문장을 되받아 쓰지 않는다/, /이 영역만의 대상: 혜택, 쿠폰, 캠페인/, /노드 "자메뷰"/, /목표 — 사람이 쓴 문장이다. 고정이다/, /한 영역에 5개 넘게 몰지 않는다/]) assert.match(lensP.system, re);
+  assert.match(lensP.user, /배경이다. 옮겨 적지 않는다/); assert.match(lensP.user, /방향은 이 가운데 하나에 붙지 않는다/);
+  // 목표 · 목적 · 핵심 포인트는 사람이 문장으로 쓴다 — 한 줄에 하나씩
+  assert.deepEqual(goalsOf({ brief: { what: '무엇', purpose: '왜', points: '- 첫째 포인트\n2. 둘째 포인트', note: '제약' } }).map((g) => `${g.id} ${g.kind} ${g.text}`), ['G1 목표 무엇', 'G2 목적 왜', 'G3 핵심 포인트 첫째 포인트', 'G4 핵심 포인트 둘째 포인트', 'G5 제약 제약']);
+  const rp = courseRelPrompt(p, high, areas, lensName); const rp2 = courseRelPrompt(p, high, areas, lensName, true);
+  for (const re of [/결론을 내거나 좋은 조각을 고르는 일이 아니다/, /서로 다른 노드의 조각끼리만/, /말이 비슷하다는 이유만으로 잇지 않는다/, /goalConflicts/]) assert.match(rp.system, re);
+  assert.ok(rp.user.includes(high[0].id) && rp.user.indexOf(high[0].id) < rp.user.indexOf(high[high.length - 1].id) && rp2.user.indexOf(high[0].id) > rp2.user.indexOf(high[high.length - 1].id), '두 번째는 순서를 뒤집어 준다');
+  // 표현 — 결론을 새로 정하지 않는다. 연합마다 방향 하나, 비즈니스 이슈 문장으로 정제한다. 이슈 높이의 판단은 주지 않는다
+  const cp = coursePrompt(p, run, props, st.base, lensName, need, areas, high);
+  for (const re of [/결론을 새로 정하지 않는다/, /연합마다 방향 하나/, /하나로 합치려고 서로 닮게 쓰지 않는다/, /비즈니스 이슈 문장으로 다시 정제/, /약속할 수 있는 것만 기준으로 삼는다/, /대상 낱말 검사/]) assert.match(cp.system, re);
+  assert.match(cp.user, /제안 D1 — 해석/); assert.ok(cp.user.includes(`[${props[0].readings[0]}]`));
+  assert.ok(!cp.user.includes(`[${run.signals[0].id}]`), '방향을 쓰는 호출에는 이슈 높이의 판단을 주지 않는다 — 판단이 몰린 영역으로 끌려가지 않게');
   assert.match(cp.system, new RegExp(`\`name\` ${COURSE_CAPS.name}자`));
   // 판정 — 통과가 기본값이 아니다. 영역 · 고유 · 약속 시험
   const jp = courseJudgePrompt(p, st.rivals, st.base, areas, lensName);
@@ -994,18 +999,19 @@ test('방향 — 모든 과제가 같은 길을 간다: 모든 노드가 과제 
   assert.match(lp.user, /영역 전략의 출발점/); assert.match(lp.user, /이슈 높이의 판단 — 전술의 재료/); assert.ok(lp.user.includes(`[${run.signals[0].id}]`));
   assert.match(courseScopePrompt(p).system, /UI\/UX도 영역이 아니라 영역 안의 일이다/);
 
-  // 노드 판단 다듬기 — 통합 1개, 영역마다 1개까지. 없는 영역과 없는 팩트는 걷는다
-  const got = shapeHigh({ against: '통념', signals: [{ scope: 'all', claim: '통합', facts: ['F1', 'F999'] }, { scope: 'ALL', claim: '둘째 통합' }, { scope: 'S2', claim: '영역' }, { scope: 'S9', claim: '없는 영역' }, { scope: 'S3', claim: '' }] }, jamais, p, areas);
-  assert.deepEqual(got.map((x) => [x.id, x.scope, x.facts, x.against]), [['C-JAMAIS-ALL', 'ALL', ['F1'], '통념'], ['C-JAMAIS-S2', 'S2', [], '']]);
-  // 연결 다듬기 — 통합 판단끼리, 서로 다른 노드, 이유가 있는 것만
-  const A = high.filter((x) => x.scope === 'ALL');
-  const edges = shapeHighEdges({ edges: [{ from: A[0].id, to: A[1].id, type: 'tension', why: '이유' }, { from: A[1].id, to: A[0].id, type: 'tension', why: '같은 짝' }, { from: A[0].id, to: A[0].id, why: '자기 자신' }, { from: A[0].id, to: high.find((x) => x.scope !== 'ALL').id, why: '영역 판단' }, { from: A[2].id, to: A[3].id, type: 'tension', why: '' }, { from: A[2].id, to: A[3].id, why: '강화' }] }, high);
-  assert.deepEqual(edges.map((e) => [e.id, e.type]), [['CE1', 'tension'], ['CE2', 'reinforce']]);
-  // 출발 충돌 — 아이덴티티가 낀 충돌이 먼저이고, 같은 노드가 되풀이되지 않게 고른다
-  const sg = (id, lens, family) => ({ id, lens, family, scope: 'ALL', claim: id });
-  const picked = courseSpines({ signals: [sg('a', 'TN-MARKET', 'tunnel'), sg('b', 'TN-USAGE', 'tunnel'), sg('c', 'ID-JAMAIS', 'identity'), sg('d', 'ID-ONEU', 'identity'), sg('e', 'ID-FROM', 'identity')],
-    edges: [{ id: 'CE1', from: 'a', to: 'b', type: 'tension' }, { id: 'CE2', from: 'c', to: 'a', type: 'tension' }, { id: 'CE3', from: 'c', to: 'd', type: 'tension' }, { id: 'CE4', from: 'd', to: 'e', type: 'tension' }, { id: 'CE5', from: 'a', to: 'e', type: 'reinforce' }] }, 3);
-  assert.deepEqual(picked.map((x) => x.edge.id), ['CE3', 'CE4', 'CE2']);
+  // 조각 다듬기 — 없는 영역 · 없는 팩트 · 없는 목표는 걷고, 여러 영역에 걸리면 전체로 친다. 같은 글은 한 번만 받는다
+  const got = shapeAtoms({ only: '이 기준이라서', atoms: [{ type: '해석', layer: '해석', text: '통합', scope: ['all'], facts: ['F1', 'F999'], goals: ['G1', 'G99'] }, { type: '제약', layer: '구조', text: '영역', scope: 'S2' }, { type: '없는 종류', text: '두 영역', scope: ['S1', 'S3'] }, { type: '관찰', text: '없는 영역', scope: ['S9'] }, { type: '관찰', text: '통합' }, { text: '' }] }, jamais, p, areas);
+  assert.deepEqual(got.map((x) => [x.id, x.type, x.layer, x.scope, x.scopes, x.facts, x.goals]), [['C-JAMAIS-1', '해석', '해석', 'ALL', ['ALL'], ['F1'], ['G1']], ['C-JAMAIS-2', '제약', '구조', 'S2', ['S2'], [], []], ['C-JAMAIS-3', '관찰', '해석', 'ALL', ['S1', 'S3'], [], []], ['C-JAMAIS-4', '관찰', '해석', 'ALL', ['ALL'], [], []]]);
+  assert.equal(got[0].only, '이 기준이라서');
+  // 사람이 조각을 빼면 그 자리에서 다시 수렴한다 — AI를 부르지 않고, 뺀 조각이 받치던 제안의 정합이 내려간다
+  const copy = JSON.parse(JSON.stringify(run.course)); const top = copy.proposals[0];
+  cohere(copy, { count: 30, pins: Object.fromEntries(top.evidence.map((id) => [id, -1])) });
+  assert.ok(copy.signals.filter((x) => top.evidence.includes(x.id)).every((x) => x.act === -1) && copy.proposals.find((x) => x.readings.includes(top.readings[0])).score < top.score && copy.net.pins);
+  // 다른 제안을 기준안으로 — 방향 단계를 다시 돌지 않고 그 아래만 다시 쓴다 (호출 1회)
+  const other2 = st.rivals.find((r) => r.id !== st.direction.id).id; only = [];
+  const moved = await strategizeOnly(p, provider, { adopt: other2 });
+  assert.deepEqual([only, moved.direction.id, moved.picked, moved.rivals.length], [['layers'], other2, true, 3]);
+  only = []; st = await strategizeOnly(p, provider); assert.ok(!st.picked && only.length === 4);
 
   // 대상 낱말 검사 — 방향 문장이 한 영역의 대상에 붙었거나, 영역 줄이 남의 대상을 빌리면 기계가 잡는다. 지난 세 번의 실제 결과가 모두 여기서 걸린다
   assert.deepEqual(objectHits('혜택 한 건 기록 운영', areas).map((x) => [x.name, x.words]), [['앱 웹뷰 프로모션', ['혜택']]]);
@@ -1015,33 +1021,19 @@ test('방향 — 모든 과제가 같은 길을 간다: 모든 노드가 과제 
     real('혜택 값 하나에서 시작하는 운영', '혜택 값을 한 번 정해 다섯 파트가 같은 값으로 연결', '모든 결정은 확정된 혜택 값에서 나온다', 'ISMS 증적을 같은 기준으로 남긴다'),
     real('타겟 여정 기준 운영', '여정이 끊기는지로 세 영역 우선순위 판정', '요청 · 배포 · 점검이 부딪히면 여정을 덜 끊는 쪽을 먼저 한다', '감시 등급을 혜택 기간과 받는 곳에서 정함'),
     real('건별 판단 기록 운영', '일 한 건마다 기획자 판단을 붙여 다음 해 기준으로 이어 씀', '모든 파트 결정은 기록된 판단에서 낸다', '장애 대응 기록을 ISMS 증적으로 겸한다'),
-  ] }, p, run, areas, spines);
+  ] }, p, run, areas, []);
   assert.deepEqual(caught.rivals.map((r) => r.flags.filter((f) => /^한 영역의 대상|^빌린 대상/.test(f))), [['한 영역의 대상이 방향의 주어다: 앱 웹뷰 프로모션의 "혜택"'], ['빌린 대상: 보안 · 모니터링 줄에 앱 웹뷰 프로모션의 "혜택"'], []]);
   assert.ok(caught.problems.some((x) => x.startsWith('한 영역의 대상에 붙은 후보: D1(') && x.includes('D2(')));
-  // 노드 판단이 겹치는가 — 실제 실행에서 거의 같은 문장이던 쌍은 걸리고 다른 문장은 걸리지 않는다
+  // 두 글이 같은 말인가 — 노드가 서로 다르게 읽었는지의 지표로 쓴다. 실제 실행에서 거의 같은 문장이던 쌍은 걸리고 다른 문장은 걸리지 않는다
   const same = ['공지에서 본 것을 앱에서 받아 주문에 쓰기까지 타겟 여정이 끊기지 않는지를 모든 결정의 기준으로 삼는다', '판단 기준을 공지 · 배너에서 본 것을 앱에서 받아 주문에 쓰기까지 막히지 않는가 하나로 둔다'];
   const other = 'RFP가 정한 건별 발주 · 월간 리포트 · ISMS 증적 양식은 그대로 쓰고, 각 결과를 다음 건이 이어 받는 기준으로 삼는다';   // 두 영역의 낱말이 함께 있으면 한 영역에 붙은 것이 아니다
   assert.ok(overlap(same[0], same[1]) >= OVERLAP && overlap(same[0], other) < OVERLAP && overlap('', other) === 0);
-  const hs = (lens, claim) => ({ id: `C-${lens}-ALL`, lens, family: 'identity', scope: 'ALL', claim });
-  const again = redoList([hs('ID-JAMAIS', other), hs('ID-ONEU', same[0]), hs('ID-FROM', same[1]), hs('ID-YELLOW', '쿠폰 한 장을 한 해의 기준 단위로 삼는다')], areas);
-  assert.deepEqual(again.map((x) => [x.signal.lens, /거의 같은 말/.test(x.why), /한 영역\(앱 웹뷰 프로모션\)의 대상 "쿠폰"/.test(x.why)]), [['ID-FROM', true, false], ['ID-YELLOW', false, true]]);
-  // 겹친 노드는 한 번 다시 받는다 — 다른 노드의 판단을 보여 주고, 달라진 것만 바꾼다
-  const asked = []; let turn = 0;
-  const twin = await chart({ project: p, run: { ...run, strategy: null, course: null }, fresh: true, call: async (a) => {
-    if (a.task.kind !== 'courseLens') return (await mock.json(a)).json;
-    const base = (await mock.json(a)).json;
-    if (a.task.redo) { asked.push([a.task.lens.id, a.user.includes('다시 낸다 — 앞서 낸 통합 판단은 쓰지 못한다') && a.user.includes('다른 노드가 이미 낸 통합 판단')]); return a.task.lens.id === 'ID-ONEU' ? base : { ...base, signals: base.signals.map((x) => (x.scope === 'ALL' ? { ...x, claim: same[1] } : x)) }; }
-    return ['ID-ONEU', 'ID-FROM'].includes(a.task.lens.id) ? { ...base, signals: base.signals.map((x) => (x.scope === 'ALL' ? { ...x, claim: same[turn++ % 2] } : x)) } : base;
-  } });
-  const twinRun = twin && asked;
-  assert.deepEqual(twinRun, [[asked[0][0], true]]); assert.ok(['ID-ONEU', 'ID-FROM'].includes(asked[0][0]));
-
   // 후보 다듬기 — 달라지는 것을 쓰지 않은 영역, 장치 이름, 아이덴티티가 빠진 근거를 문제로 적는다
   const tn = high.find((x) => x.family === 'tunnel' && x.scope === 'ALL').id;
-  const shaped = shapeRivals({ candidates: [{ name: '혜택 쿠폰 화면', line: '쿠폰 화면을 하나로', standard: '기준', covers: [{ area: 'S1', line: '혜택 표기를 맞춘다' }, { area: 'S9', line: '없는 영역' }], signals: [tn, 'NOPE'], facts: ['F1', 'F999'], drops: [] }] }, p, run, areas, spines);
+  const shaped = shapeRivals({ candidates: [{ name: '혜택 쿠폰 화면', line: '쿠폰 화면을 하나로', standard: '기준', covers: [{ area: 'S1', line: '혜택 표기를 맞춘다' }, { area: 'S9', line: '없는 영역' }], signals: [tn, 'NOPE'], facts: ['F1', 'F999'], drops: [] }] }, p, run, areas, []);
   assert.deepEqual([shaped.rivals[0].signals, shaped.rivals[0].facts, shaped.rivals[0].covers.map((c) => c.area), shaped.rivals[0].breadth], [[tn], ['F1'], ['S1'], { nodes: 1, identity: 0, tunnel: true }]);
-  assert.ok(shaped.rivals[0].flags.includes('달라지는 것을 쓰지 않은 영역: 유지보수 운영, 보안 · 모니터링') && shaped.rivals[0].flags.some((f) => /장치 이름이 들어 있다: .*화면/.test(f)));
-  for (const t of ['후보가 1개뿐', '영역 전부에 걸리지 않은 후보: D1', '더프롬의 기준에서 나오지 않은 후보: D1', '장치 이름을 쓴 후보: D1']) assert.ok(shaped.problems.some((x) => x.includes(t)), t);
+  assert.ok(shaped.rivals[0].flags.includes('닿지 않는 영역: 유지보수 운영, 보안 · 모니터링') && shaped.rivals[0].flags.some((f) => /장치 이름이 들어 있다: .*화면/.test(f)));
+  for (const t of ['덜 쓴 후보: D1', '장치 이름을 쓴 후보: D1']) assert.ok(shaped.problems.some((x) => x.includes(t)), t);
 
   // 판정 다듬기 — 방향이고 고유하고 약속할 수 있는 후보가 먼저다. 실제 결정을 쓰지 못한 영역은 걸린 것으로 세지 않는다
   const r3 = st.rivals; const full = [{ area: 'S1', case: '결정' }, { area: 'S2', case: '결정' }, { area: 'S3', case: '결정' }];
@@ -1070,24 +1062,66 @@ test('방향 — 모든 과제가 같은 길을 간다: 모든 노드가 과제 
   // 판정이 이긴 방향을 범용 · 통제 불가 · 영역 전략으로 보거나 기본 방향을 더 낫게 보면 숨기지 않고 문제로 남긴다
   const judged = (items, order = ['BASE', 'D1', 'D2', 'D3']) => chart({ project: p, run: { ...run, strategy: null }, call: async (a) => (a.task.kind === 'courseJudge' ? { order, items } : (await mock.json(a)).json) });
   const lost = await judged([{ id: 'D1', level: '영역 전략', reaches: [{ area: 'S1', case: '결정' }] }, { id: 'D2', level: '전술' }, { id: 'D3', level: '영역 전략' }]);
-  assert.ok(!lost.check.ok && /이긴 방향을 영역 전략으로 봤다/.test(lost.check.problems[0]) && lost.check.problems.includes('판정이 기본 방향을 더 낫게 봤다'));
+  assert.ok(!lost.check.ok && /이 안을 영역 전략으로 봤다/.test(lost.check.problems[0]) && lost.check.problems.includes('판정이 기본 방향을 더 낫게 봤다'));
   const bland = await judged([1, 2, 3].map((n) => ({ id: `D${n}`, level: '방향', reaches: full, own: '범용', control: '일부 불가', brief: '일부' })), ['D1', 'D2', 'D3', 'BASE']);
-  assert.deepEqual(bland.check.problems.slice(0, 3), ['판정이 이긴 방향을 범용 문장으로 봤다 — 다른 회사도 그대로 쓸 수 있다', '판정이 이긴 방향을 브리프의 일부만 본 것으로 봤다 — 목적 · 성공 기준 전체에 닿지 않는다', '기준의 판정 대상에 우리가 통제할 수 없는 구간이 들어 있다']);
-  // 통합 판단 사이에 충돌이 없으면 그것도 남긴다
-  const flat = await chart({ project: p, run: { ...run, strategy: null, course: null }, call: async (a) => (a.task.kind === 'courseLink' ? { edges: [] } : (await mock.json(a)).json) });
-  assert.ok(flat.check.problems.some((x) => /충돌을 찾지 못했다/.test(x)) && flat.rivals.every((r) => r.spine === null));
+  assert.deepEqual(bland.check.problems.slice(0, 3), ['판정이 이 안을 범용 문장으로 봤다 — 다른 회사도 그대로 쓸 수 있다', '판정이 이 안을 브리프의 일부만 본 것으로 봤다 — 목적 · 성공 기준 전체에 닿지 않는다', '기준의 판정 대상에 우리가 통제할 수 없는 구간이 들어 있다']);
+  // 관계를 한 번만 매겼으면 그것도 남긴다. 해석 조각이 하나도 없으면 멈춘다 — 지어내지 않는다
+  let nth = 0;
+  const once = await chart({ project: p, run: { ...run, strategy: null, course: null }, call: async (a) => { if (a.task.kind === 'courseRel' && nth++ === 1) throw new Error('끊김'); return (await mock.json(a)).json; } });
+  assert.ok(once.check.problems.some((x) => /관계를 한 번만 매겼다/.test(x)) && once.rivals.every((r) => r.proposal));
+  await assert.rejects(chart({ project: p, run: { ...run, strategy: null, course: null }, call: async (a) => { const j = (await mock.json(a)).json; return a.task.kind === 'courseLens' ? { ...j, atoms: j.atoms.map((x) => ({ ...x, type: '관찰' })) } : j; } }), /해석의 연합이 나오지 않았다/);
 
-  // 한 장 보고서 — 3층으로 나오고, 방향을 만든 노드와 푼 충돌이 보이고, 모델이 쓴 글은 이스케이프한다
+  // 한 장 보고서 — 3층으로 나오고, 방향을 만든 노드와 맞물린 해석, 제안 여럿이 보이고, 모델이 쓴 글은 이스케이프한다
   const { strategyHtml, reportMarkdown } = await import('../js/engine/report.js');
   p.run = run; run.strategy = st; st.direction.name = '<b>x</b>';
   const html = strategyHtml(p);
   assert.ok(html.includes('&lt;b&gt;x&lt;/b&gt;') && !html.includes('<b>x</b>'));
-  for (const t of ['<b>1</b>방향', '전술에 쓰인 노드', '만든 노드', '푼 충돌', '고유한 이유', '영역별 전략', '영역 × 단계', '겨룬 방향', '앱 웹뷰 프로모션', '과제 전체를 본 노드 판단', 'A4 landscape']) assert.ok(html.includes(t), t);
+  for (const t of ['<b>1</b>방향', '전술에 쓰인 노드', '만든 노드', '맞물린 해석', '고유한 이유', '영역별 전략', '영역 × 단계', '제안 3개와 기본 방향', '기준안', '앱 웹뷰 프로모션', '개 수렴', 'A4 landscape']) assert.ok(html.includes(t), t);
   const md = reportMarkdown(p);
-  for (const t of ['### 1. 방향', '만든 노드:', '과제 전체를 본 노드 판단(통합):', '통합 판단 사이의 충돌:', '### 2. 영역별 전략', '### 3. 전술 — 영역 × 단계', '(채택)', '- 유지보수 운영:']) assert.ok(md.includes(t), t);
+  for (const t of ['### 1. 방향', '만든 노드:', '맞물린 해석:', '제안 3개 — 하나로 모으지 않는다', '한꺼번에 수렴시켰다', '해석(과제를 무엇으로 볼 것인가)', '### 2. 영역별 전략', '### 3. 전술 — 영역 × 단계', '(기준안)', '- 유지보수 운영:']) assert.ok(md.includes(t), t);
   // 예전 모양(v2: 파트 × 단계)도 깨지지 않고 그려진다
   const v2 = { v: 2, direction: { id: 'D1', name: '방향', line: '한 줄', standard: '기준', from: '', to: '', keeps: '', drops: [], signals: [], facts: [] }, concept: { name: '방향', line: '한 줄' }, rivals: [], judge: { order: [], items: [] }, axes: [{ id: 'A1', name: '축', rule: '규칙', signals: [], facts: [] }], phases: [{ id: 'P1', when: '1월', line: '상태' }],
     pillars: [{ part: 'ops', label: '운영', name: '운영', guide: '안내', cells: [{ phase: 'P1', move: '옛 할 일', axis: 'A1' }], moves: [], facts: [], signals: [], insights: ['N1'] }], insights: [{ id: 'N1', name: '옛 전술', line: '', part: 'ops', phase: 'P1', fit: '맞음' }], fixes: [], boosts: [], gaps: [], coverage: st.coverage, check: { ok: true, problems: [] } };
   assert.deepEqual(cellItems(v2, v2.pillars[0], v2.phases[0]).map((x) => x.move), ['옛 할 일', '옛 전술']);
   run.strategy = v2; assert.ok(strategyHtml(p).includes('옛 할 일') && reportMarkdown(p).includes('### 2. 축과 단계'));
+});
+
+test('동시 정합 — 조각을 한꺼번에 수렴시킨다: 근거가 받친 해석이 서고, 약속을 깨는 해석은 눌리고, 받치지 않는 전체 해석끼리는 겨룬다', async () => {
+  const { COHERE, mergeRelations, buildNet, settle, harmony, proposals } = await import('../js/graph/cohere.js');
+  const at = (id, lens, family, type, extra = {}) => ({ id, lens, family, type, layer: type === '제약' ? '구조' : '해석', scope: 'ALL', scopes: ['ALL'], facts: [], goals: [], claim: id, ...extra });
+  const atoms = [
+    at('R1', 'ID-A', 'identity', '해석'), at('R2', 'TN-B', 'tunnel', '해석'), at('R3', 'AP-C', 'airplane', '해석'), at('R4', 'TN-D', 'tunnel', '해석'),
+    at('E1', 'TN-B', 'tunnel', '관찰', { facts: ['F1', 'F2'], goals: ['G1'] }), at('E2', 'AP-C', 'airplane', '제약', { facts: ['F3'] }), at('E3', 'ID-A', 'identity', '지렛대', { goals: ['G2'] }), at('E4', 'TN-D', 'tunnel', '관찰'),
+  ];
+  // 두 번 매긴 관계를 합친다 — 둘 다 본 것은 온전히, 한쪽만 본 것은 절반, 종류가 엇갈린 것과 같은 노드끼리의 관계는 뺀다
+  const one = { edges: [{ a: 'R1', b: 'R2', kind: 'support', s: 3 }, { a: 'E1', b: 'R1', kind: 'support', s: 2 }, { a: 'E2', b: 'R1', kind: 'support', s: 3 }, { a: 'E3', b: 'R2', kind: 'support', s: 2 }, { a: 'R1', b: 'R3', kind: 'contradict', s: 3 }, { a: 'E4', b: 'R3', kind: 'support', s: 2 }, { a: 'R2', b: 'R4', kind: 'support', s: 2 }, { a: 'E1', b: 'R2', kind: 'support', s: 3 }, { a: 'X9', b: 'R1', kind: 'support', s: 2 }], goalConflicts: ['R4'] };
+  const two = { edges: [{ a: 'R2', b: 'R1', kind: 'support', s: 1 }, { a: 'E1', b: 'R1', kind: 'support', s: 2 }, { a: 'E2', b: 'R1', kind: 'support', s: 3 }, { a: 'R1', b: 'R3', kind: 'contradict', s: 3 }, { a: 'R2', b: 'R4', kind: 'contradict', s: 2 }], goalConflicts: [] };
+  const rel = mergeRelations([one, two], atoms);
+  const edge = (a, b) => rel.edges.find((e) => (e.a === a && e.b === b) || (e.a === b && e.b === a));
+  assert.deepEqual([edge('R1', 'R2').s, edge('R1', 'R2').n, edge('E3', 'R2').s, edge('R2', 'R4'), edge('E1', 'R2'), rel.agree], [2, 2, 1, undefined, undefined, { both: 4, single: 2, clash: 1 }]);
+  assert.deepEqual(rel.breaks, ['R4'], '약속을 깨는 조각은 한쪽만 봐도 남긴다');
+  // 수렴 — 같은 조각과 관계면 언제나 같은 결과다. 근거가 받친 해석(R1 · R2)이 서고, 그것과 부딪히는 해석(R3)과 약속을 깨는 해석(R4)은 눌린다
+  const net = buildNet(atoms, rel); const r = settle(net); const act = (id) => r.act[net.idx.get(id)];
+  assert.ok(r.settled && r.rounds < COHERE.rounds);
+  assert.deepEqual([...settle(buildNet(atoms, rel)).act], [...r.act]);
+  assert.ok(act('R1') > 0.3 && act('R2') > 0.3 && act('R3') < 0 && act('R4') < 0 && act('E2') > act('E4'), `${['R1', 'R2', 'R3', 'R4'].map((id) => act(id).toFixed(2))}`);
+  assert.ok(harmony(net, r.act) > harmony(net, new Float64Array(atoms.length).fill(COHERE.start)), '수렴한 상태가 처음보다 정합도가 높다');
+  // 받치지 않는 전체 해석끼리는 서로 누른다 — 받치는 사이(R1 · R2)에는 없다
+  const i = (id) => net.idx.get(id);
+  assert.ok(net.W[i('R3')][i('R4')] === -COHERE.rivalry && net.W[i('R1')][i('R2')] > 0);
+  // 더프롬의 기준과 이어진 지지는 더 무겁다 — 무게를 사람이 바꿀 수 있다
+  assert.ok(buildNet(atoms, rel, { identityWeight: 2 }).W[i('R1')][i('R2')] > net.W[i('R1')][i('R2')]);
+  // 사람이 조각을 고정하면 그대로 두고 나머지가 다시 맞춰진다 — R3을 고정하면 R1이 내려간다
+  const pinned = settle(net, new Map([['R3', 1], ['E2', -1]]));
+  assert.ok(pinned.act[i('R3')] === 1 && pinned.act[i('E2')] === -1 && pinned.act[i('R1')] < act('R1'));
+  // 제안 — 서로를 살리는 해석의 묶음. 하나로 모으지 않는다. 하나를 뺐을 때 같이 내려가는 해석이 한 편이고, 직접 모순되는 해석은 한 묶음에 들지 않는다
+  const props = proposals(net, rel, r.act, { count: 5 });
+  const of = (id) => props.find((x) => x.readings.includes(id));
+  assert.ok(of('R1') === of('R2') && of('R3') !== of('R1') && of('R4') !== of('R1'), props.map((x) => x.readings.join('+')).join(' / '));
+  // 살아남은 묶음이 먼저이고, 눌린 해석만으로 된 묶음은 뒤다. 근거와 부딪힘은 상대의 활성으로 센다 — 눌린 조각(R3)과 부딪히는 것은 흠이 아니다
+  assert.deepEqual([props[0].readings, props[0].evidence, props[0].live, props[0].whole], [['R1', 'R2'], ['E2', 'E1', 'E3'], 2, true]);
+  assert.ok(props[0].score > 0 && props[0].against.includes('R3') && props.slice(1).every((x) => !x.live) && of('R4').broken.includes('R4') && props[0].facts.join() === 'F1,F2,F3' && props[0].goals.join() === 'G1,G2' && props[0].families.length === 2);
+  assert.equal(proposals(net, rel, r.act, { count: 1 }).length, 1);
+  // 잘게 나누는 정도를 사람이 바꿀 수 있다 — 아주 크게 주면 해석 하나가 제안 하나다
+  assert.ok(proposals(net, rel, r.act, { count: 9, grain: 5 }).every((x) => x.readings.length === 1));
 });
