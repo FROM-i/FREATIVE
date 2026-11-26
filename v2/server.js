@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { forward } from './api/llm.js';
 import { forward as forwardClaude } from './api/claude.js';
+import { forward as forwardResearch } from './api/research.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(root, '..');
@@ -19,8 +20,13 @@ createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     if (url.pathname === '/api/claude') {
-      let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 4e6) throw Object.assign(new Error('요청이 너무 크다'), { status: 413 }); }
+      let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 3e7) throw Object.assign(new Error('요청이 너무 크다'), { status: 413 }); }
       const out = await forwardClaude({ method: req.method, code: req.headers['x-brain-code'], token: (req.headers.authorization || '').replace(/^Bearer /, ''), payload: raw ? JSON.parse(raw) : {} });
+      res.writeHead(out.status, { 'Content-Type': 'application/json' }); res.end(out.body); return;
+    }
+    if (url.pathname === '/api/research') {
+      let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 1e6) throw Object.assign(new Error('요청이 너무 크다'), { status: 413 }); }
+      const out = await forwardResearch({ method: req.method, code: req.headers['x-brain-code'], token: (req.headers.authorization || '').replace(/^Bearer /, ''), payload: raw ? JSON.parse(raw) : {} });
       res.writeHead(out.status, { 'Content-Type': 'application/json' }); res.end(out.body); return;
     }
     if (url.pathname === '/api/llm') {

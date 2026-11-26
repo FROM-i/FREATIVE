@@ -16,9 +16,7 @@
       <span class="ver">FREATIVE 2.0 alpha</span>
     </div>
     <div class="proj">
-      <label class="sr" for="project-select">프로젝트</label>
-      <select id="project-select"></select>
-      <button type="button" class="btn" id="btn-new">새 프로젝트</button>
+      <button type="button" class="btn" id="btn-rail" aria-pressed="true" title="프로젝트 목록 열기 · 닫기">프로젝트</button>
     </div>
     <div class="run">
       <span id="run-status" class="status" role="status" aria-live="polite"></span>
@@ -27,6 +25,7 @@
   </header>
 
   <main class="stage">
+    <aside class="rail" id="rail" aria-label="프로젝트 목록"></aside>
     <section class="universe" aria-label="Brain 브레인 맵">
       <canvas id="universe" tabindex="0" aria-label="뇌 형상 위에 노드와 연결을 그린 그래프. 방향키로 이동, +와 -로 확대·축소, 0으로 전체 보기."></canvas>
       <div class="hud stats" id="stats"></div>

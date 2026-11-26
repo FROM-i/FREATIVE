@@ -236,7 +236,15 @@ function layers({ project, run, areas, need, high = [] }) {
     gaps: ['[목업] 확인할 것'],
   };
 }
-const HANDLERS = { courseScope, courseObjects, courseLens, courseRel, courseBase, course, courseJudge, layers, weave, plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, distinct, stance, hold, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
+// 자료 읽기 — 글이면 줄마다 항목 하나, 정리는 틀만 낸다
+const intakeRead = ({ file, sample = '' }) => { const lines = String(sample).split('\n').map((x) => x.trim()).filter((x) => x.length > 3).slice(0, 12);
+  return { summary: `[목업] ${file} 요약`, doc: '자료', items: (lines.length ? lines : ['[목업] 첨부 자료의 항목']).map((t, i) => ({ type: i % 2 ? '요구' : '현황', text: t.slice(0, 120), quote: t.slice(0, 30), where: `${i + 1}줄` })) }; };
+const intake = ({ reads }) => { const all = reads.flatMap((r) => r.items);
+  return { background: { target: '[목업] 자료에서 읽은 타겟', product: '[목업] 제품', channel: '[목업] 채널', note: '' }, draft: { what: '[목업] 목표 초안', purpose: '[목업] 목적 초안', success: '' }, categories: ['planning', 'design'],
+    areas: [{ name: '[목업] 영역 1', note: '[목업]', objects: ['대상가', '대상나'] }, { name: '[목업] 영역 2', note: '[목업]', objects: ['대상다'] }],
+    issues: [{ title: '[목업] 근본 이슈', detail: '[목업]', root: true, test: '[목업] 판정 질문', from: all.slice(0, 1).map((x) => x.id) }, { title: '[목업] 이슈 둘', detail: '[목업]', root: false, from: all.slice(1, 2).map((x) => x.id) }],
+    facts: all.slice(0, 6).map((x) => ({ kind: 'notice', text: x.text, from: x.id })), gaps: ['[목업] 확인할 것'] }; };
+const HANDLERS = { intakeRead, intake, courseScope, courseObjects, courseLens, courseRel, courseBase, course, courseJudge, layers, weave, plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, distinct, stance, hold, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
 
 export function createMock({ delay = 0 } = {}) {
   return {

@@ -5,7 +5,7 @@
   "installCommand": "",
   "outputDirectory": ".",
   "cleanUrls": true,
-  "functions": { "api/claude.js": { "maxDuration": 300 }, "api/llm.js": { "maxDuration": 300 } },
+  "functions": { "api/claude.js": { "maxDuration": 300 }, "api/llm.js": { "maxDuration": 300 }, "api/research.js": { "maxDuration": 120 } },
   "headers": [
     { "source": "/(.*)", "headers": [
       { "key": "X-Content-Type-Options", "value": "nosniff" },

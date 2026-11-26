@@ -19,6 +19,9 @@ export function newProject(seed = {}) {
     brief: { what: '', purpose: '', success: '', points: '', target: '', product: '', channel: '', note: '', ...(seed.brief || {}) },   // 공통 인풋
     seed: { ...(seed.seed || {}) },                        // 분류별 인풋 — { [분류]: { [칸]: 값 } }
     areas: (Array.isArray(seed.areas) ? seed.areas : []).map((a) => ({ ...a })),   // 업무 영역 — 전략 과제에서 방향인지 가르는 시험대 (engine/course.js)
+    materials: (seed.materials || []).map((m) => ({ ...m })),   // 올려서 분석한 자료의 목록 — 원본은 두지 않는다 (engine/intake.js)
+    intake: seed.intake || null,                           // 자료에서 읽은 과제 정의 초안과 확인할 것
+    research: seed.research || null,                       // 딥리서치 에이전트 조사 — 세션과 상태 (providers/research.js)
     pins: { ...(seed.pins || {}) },                        // 사람이 고정(1)하거나 뺀(-1) 조각 — 수렴이 이것을 그대로 두고 다시 맞춘다 (graph/cohere.js)
     facts: (seed.facts || []).map((f) => ({ ...f })),      // 팩트북 — 출처가 있는 실제 자료 (knowledge/facts.js)
     issues: (seed.issues || []).map((i, n) => ({ id: i.id || `I${n + 1}`, title: '', detail: '', test: '', root: false, tags: [], ...i })),
@@ -51,9 +54,8 @@ export function issueTags(project, issue) {
 export function validateProject(project) {
   const problems = [];
   const miss = (where, what) => problems.push({ where, what });
-  for (const f of COMMON_INPUT) if (f.required && !String(project.brief[f.id] || '').trim()) miss('공통 인풋', `"${f.label}"이 비어 있다`);
+  for (const f of COMMON_INPUT) if (f.required && !String(project.brief[f.id] || '').trim()) miss('과제 정의', `"${f.label}"이 비어 있다`);
   if (!categoriesOf(project).length) miss('분류', '분류를 고르지 않았다');
-  else for (const cid of categoriesOf(project)) for (const f of SEED_INPUT[cid]) if (f.required && !String(project.seed?.[cid]?.[f.id] || '').trim()) miss(`${categoryById(cid).name} 인풋`, `"${f.label}"이 비어 있다`);
   const ready = [];
   for (const i of project.issues) {
     const where = `이슈 ${i.id}`;
