@@ -1,19 +1,21 @@
 // 방향 — 모든 과제가 같은 길을 간다. 과제의 종류에 따라 길이 달라지지 않는다.
 //   head()    이슈를 보기 전에 방향을 정한다
 //     ⓪ 영역 — 과제가 맡는 일의 범위. 미션에 없으면 브리프에서 뽑는다
-//     ① 방향 높이의 노드 판단 — 모든 노드가 과제 전체를 보고 통합 판단 1개와 영역마다 판단 1개를 낸다
-//     ② 연결 — 통합 판단끼리 이어 충돌을 찾는다
-//     ③ 기본 방향 — 노드 없이 낸 방향. 견주는 기준
-//     ④ 방향 후보 3개 — 충돌을 푸는 자리에서 쓴다. 아이덴티티 판단이 뼈대다
-//     ⑤ 방향 판정 — 영역 · 고유 · 약속 · 브리프 시험. 통과가 기본값이 아니다
+//     ① 구성 — 모든 노드가 과제 전체를 읽고 조각(관찰 · 제약 · 해석 · 지렛대)을 낸다. 결론이 아니다
+//     ② 관계 — 조각 사이의 지지와 모순을 두 번 따로 매겨 합친다
+//     ③ 수렴 — 조각을 한꺼번에 수렴시킨다(graph/cohere.js, AI를 부르지 않는다). 서로 받치는 해석의 연합이 제안이다. 하나로 모으지 않는다
+//     ④ 기본 방향 — 노드 없이 낸 방향. 견주는 기준
+//     ⑤ 표현 — 제안마다 방향 문장으로 옮긴다. 결론을 새로 정하지 않는다
+//     ⑥ 방향 판정 — 영역 · 고유 · 약속 · 브리프 시험. 순서를 매길 뿐 제안은 모두 남는다
 //   (그 뒤 think()가 이슈 높이의 노드 판단 · 연결 · 경쟁 · 판정을 돈다. 모든 호출이 정해진 방향을 받는다)
 //   descend() 방향 아래로 내려 쓴다
-//     ⑥ 영역별 전략(영역 높이의 판단에서) → 전술 여러 개(이슈 높이의 판단과 인사이트에서). 전술마다 나온 노드를 남긴다
+//     ⑦ 영역별 전략(영역의 조각에서) → 전술 여러 개(이슈 높이의 판단과 인사이트에서). 전술마다 나온 노드를 남긴다
 //   chart()   이미 있는 분석 위에서 head와 descend만 돈다. 이슈 높이의 분석은 다시 돌리지 않는다.
-import { courseScopePrompt, courseObjectsPrompt, courseBasePrompt, courseLensPrompt, courseLinkPrompt, coursePrompt, courseJudgePrompt, layersPrompt, COURSE_CAPS, DEVICE_WORDS } from '../../knowledge/prompts-course.js';
+import { courseScopePrompt, courseObjectsPrompt, courseBasePrompt, courseLensPrompt, courseRelPrompt, coursePrompt, courseJudgePrompt, layersPrompt, goalsOf, COURSE_CAPS, DEVICE_WORDS } from '../../knowledge/prompts-course.js';
 import { validFacts } from '../../knowledge/facts.js';
 import { categoriesOf, categoryById } from '../../knowledge/tags.js';
 import { lensName, activeLenses, signalPrefix } from '../graph/model.js';
+import { mergeRelations, buildNet, settle, harmony, proposals } from '../graph/cohere.js';
 
 const text = (v) => (typeof v === 'string' ? v.trim() : '');
 const cap = (v, n) => { const s = text(v); return s.length > n + 6 ? `${s.slice(0, n + 5)}…` : s; };
@@ -59,12 +61,12 @@ function ctx(project, run) {
 /** 채워야 하는 근거의 넓이 — 방향 높이에서 판단을 낸 노드 수에 맞춘다 */
 export function courseNeed(project, run) {
   const live = run.signals.filter((s) => !s.muted);
-  const high = (run.course?.signals || []).filter((s) => s.scope === 'ALL');
+  const high = run.course?.signals || [];
   const lenses = uniq(high.map((s) => s.lens)).length;
   const facts = validFacts(project).facts.length;
   const usedByInsights = new Set((run.insights || []).flatMap((i) => i.check?.used || []));
   return {
-    nodes: Math.max(2, Math.min(5, Math.ceil(lenses * 0.4))),
+    nodes: Math.max(2, Math.min(4, Math.ceil(lenses * 0.3))),
     identity: Math.min(2, uniq(high.filter((s) => s.family === 'identity').map((s) => s.lens)).length),
     tunnel: high.some((s) => s.family === 'tunnel'),
     facts: Math.min(5, facts),
@@ -80,62 +82,41 @@ async function pool(items, limit, worker) {
   const run = async () => { while (next < items.length) { const i = next++; await worker(items[i], i); } };
   await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, run));
 }
-const STANCES = ['keep', 'change', 'limit', 'open'];
-/** 노드 하나가 방향 높이에서 낸 판단을 다듬는다 — 통합 1개, 영역마다 1개까지 */
-export function shapeHigh(raw, lens, project, areas) {
-  const C = COURSE_CAPS; const facts = new Set(validFacts(project).facts.map((f) => f.id));
-  const scopes = new Set(['ALL', ...areas.map((a) => a.id)]); const seen = new Set(); const out = [];
-  for (const x of arr(raw?.signals)) {
-    const scope = /^(all|통합|전체)$/i.test(text(x.scope)) ? 'ALL' : areaId(x.scope, areas); const claim = cap(x.claim, C.claim);
-    if (!scopes.has(scope) || seen.has(scope) || !claim) continue;
-    seen.add(scope);
-    out.push({ id: `C-${signalPrefix(lens.id)}-${scope}`, lens: lens.id, family: lens.family, scope, claim, ...(scope === 'ALL' && text(raw?.only) ? { only: cap(raw.only, 90) } : {}), basis: cap(x.basis, 90), stance: STANCES.includes(text(x.stance)) ? text(x.stance) : 'change', facts: uniq(arr(x.facts).map((f) => text(f).replace(/^\[|\]$/g, '')).filter((f) => facts.has(f))), against: scope === 'ALL' ? cap(raw?.against, 90) : '' });
-  }
-  return out;
-}
-export function shapeHighEdges(raw, signals) {
-  const all = new Map(signals.filter((s) => s.scope === 'ALL').map((s) => [s.id, s])); const seen = new Set(); const out = [];
-  for (const e of arr(raw?.edges)) {
-    const from = text(e.from).replace(/^\[|\]$/g, ''); const to = text(e.to).replace(/^\[|\]$/g, ''); const key = [from, to].sort().join('|');
-    if (!all.has(from) || !all.has(to) || all.get(from).lens === all.get(to).lens || seen.has(key) || !text(e.why)) continue;
-    seen.add(key);
-    out.push({ id: `CE${out.length + 1}`, from, to, type: text(e.type) === 'tension' ? 'tension' : 'reinforce', why: cap(e.why, 46) });
-  }
-  return out;
-}
-/** 후보가 출발할 충돌 — 아이덴티티 판단이 낀 충돌을 먼저, 같은 노드가 되풀이되지 않게 고른다 */
-export function courseSpines(course, count = 3) {
-  const sig = new Map((course?.signals || []).map((s) => [s.id, s]));
-  const rest = (course?.edges || []).filter((e) => e.type === 'tension').map((e, i) => ({ edge: e, a: sig.get(e.from), b: sig.get(e.to), i })).filter((x) => x.a && x.b);
-  const idn = (x) => (x.a.family === 'identity' ? 1 : 0) + (x.b.family === 'identity' ? 1 : 0);
-  const out = []; const seen = new Map();
-  while (out.length < count && rest.length) {
-    const pen = (x) => (seen.get(x.a.lens) || 0) + (seen.get(x.b.lens) || 0);
-    rest.sort((x, y) => (idn(y) * 2 - pen(y)) - (idn(x) * 2 - pen(x)) || x.i - y.i);   // 아이덴티티가 낀 충돌이 되풀이보다 먼저다
-    const x = rest.shift(); out.push({ edge: x.edge, a: x.a, b: x.b });
-    for (const l of [x.a.lens, x.b.lens]) seen.set(l, (seen.get(l) || 0) + 1);
+const TYPES = ['관찰', '제약', '해석', '지렛대'];
+/** 노드 하나가 낸 조각을 다듬는다 — 한 가지 내용의 짧은 글, 종류 · 층 · 범위, 기댄 팩트와 닿는 목표 */
+export function shapeAtoms(raw, lens, project, areas) {
+  const C = COURSE_CAPS; const facts = new Set(validFacts(project).facts.map((f) => f.id)); const goals = new Set(goalsOf(project).map((g) => g.id));
+  const ids = (list, ok) => uniq(arr(list).map((f) => text(f).replace(/^\[|\]$/g, '')).filter((f) => ok.has(f)));
+  const out = []; const seen = new Set();
+  for (const x of arr(raw?.atoms)) {
+    const claim = cap(x?.text ?? x?.claim, C.claim - 40); if (!claim || seen.has(claim)) continue; seen.add(claim);
+    let scopes = uniq(arr(Array.isArray(x.scope) ? x.scope : [x.scope]).map((v) => (/^(all|통합|전체)$/i.test(text(v)) ? 'ALL' : areaId(v, areas))).filter(Boolean));
+    if (!scopes.length || areas.length < 2) scopes = ['ALL'];
+    const type = TYPES.includes(text(x.type)) ? text(x.type) : '관찰';
+    out.push({ id: `C-${signalPrefix(lens.id)}-${out.length + 1}`, lens: lens.id, family: lens.family, type, layer: text(x.layer) === '구조' ? '구조' : '해석', claim,
+      scope: scopes.includes('ALL') || scopes.length > 1 ? 'ALL' : scopes[0], scopes, facts: ids(x.facts, facts), goals: ids(x.goals, goals), ...(out.length === 0 && text(raw?.only) ? { only: cap(raw.only, 90) } : {}) });
+    if (out.length >= 10) break;
   }
   return out;
 }
 const areasKey = (areas) => areas.map((a) => a.name).join('|');
 const grams = (t) => { const x = String(t || '').replace(/[^가-힣a-zA-Z0-9]/g, ''); const g = new Set(); for (let i = 0; i < x.length - 1; i++) g.add(x.slice(i, i + 2)); return g; };
-/** 두 판단이 얼마나 같은 말인가 (0~1) — 두 글자 조각이 겹치는 비율. 실제 실행에서 거의 같은 문장은 0.3~0.5, 다른 문장은 0.2 아래였다 */
+/** 두 글이 얼마나 같은 말인가 (0~1) — 두 글자 조각이 겹치는 비율. 실제 실행에서 거의 같은 문장은 0.3~0.5, 다른 문장은 0.2 아래였다 */
 export function overlap(a, b) { const A = grams(a); const B = grams(b); if (!A.size || !B.size) return 0; let n = 0; for (const x of A) if (B.has(x)) n++; return n / Math.min(A.size, B.size); }
 export const OVERLAP = 0.3;
-/** 통합 판단 가운데 다시 받아야 하는 것 — 앞선 노드와 같은 말이거나, 한 영역의 대상에만 붙은 것 */
-export function redoList(signals, areas) {
-  const all = signals.filter((x) => x.scope === 'ALL'); const kept = []; const out = [];
-  for (const x of all) {
-    const pin = pinned(x.claim, areas);
-    const twin = kept.map((k) => ({ k, v: overlap(x.claim, k.claim) })).sort((p, q) => q.v - p.v)[0];
-    if (pin) out.push({ signal: x, why: `한 영역(${pin.name})의 대상 "${pin.words.join(', ')}"에 붙어 있다. 과제 전체를 묶는 판단이 아니다. 그 낱말 없이, 영역 전부에 걸리는 기준으로 다시 낸다.` });
-    else if (twin && twin.v >= OVERLAP) out.push({ signal: x, why: `다른 노드(${lensName(twin.k.lens)})의 판단과 거의 같은 말이다. 노드 이름을 바꿔도 성립한다. 네 기준에서만 보이는 것으로 다시 낸다.` });
-    else kept.push(x);
-  }
-  return out;
+
+/** 수렴 — 조각과 관계로 네트워크를 짓고 한꺼번에 수렴시킨다. 사람이 고정하거나 뺀 조각(pins)이 있으면 그대로 둔 채 나머지가 다시 맞춰진다. AI를 부르지 않는다 */
+export function cohere(course, { pins = {}, count = 3, weights = {} } = {}) {
+  const atoms = course.signals; const net = buildNet(atoms, course.rel, weights);
+  const clamp = new Map(Object.entries(pins).filter(([id]) => net.idx.has(id)).map(([id, v]) => [id, v > 0 ? 1 : -1]));
+  const r = settle(net, clamp);
+  atoms.forEach((a, i) => { a.act = +r.act[i].toFixed(3); });
+  course.net = { rounds: r.rounds, settled: r.settled, harmony: +harmony(net, r.act).toFixed(2), on: atoms.filter((a) => a.act > 0.3).length, off: atoms.filter((a) => a.act < 0).length, pins };
+  course.proposals = proposals(net, course.rel, r.act, { count, clamp, ...(weights.grain ? { grain: weights.grain } : {}) });
+  return course;
 }
 
-/** ① ② 방향 높이에서 뉴럴링크를 한 번 더 돈다 — 노드마다 통합 판단과 영역 판단, 그리고 통합 판단끼리의 연결 */
+/** ① ② ③ 구성 · 관계 · 수렴 */
 export async function survey({ project, run, call, emit = () => {}, areas }) {
   emit('stage', { stage: 'courseLens' });
   const lenses = activeLenses(project, run.picks || []);
@@ -143,42 +124,26 @@ export async function survey({ project, run, call, emit = () => {}, areas }) {
   await pool(lenses, project.settings?.concurrency || 4, async (lens) => {
     try {
       const own = run.signals.filter((s) => s.lens === lens.id && !s.muted);
-      const raw = await call({ role: 'sub', ...courseLensPrompt(project, lens, areas, own), task: { kind: 'courseLens', project, lens, areas } });
-      const got = shapeHigh(raw, lens, project, areas);
-      if (!got.some((x) => x.scope === 'ALL')) failed.push({ lens: lens.id, error: '통합 판단을 내지 않았다' });
+      const got = shapeAtoms(await call({ role: 'sub', ...courseLensPrompt(project, lens, areas, own), task: { kind: 'courseLens', project, lens, areas } }), lens, project, areas);
+      if (got.length < 3) failed.push({ lens: lens.id, error: `조각을 ${got.length}개만 냈다` });
       signals.push(...got);
     } catch (e) { if (/취소/.test(e.message)) throw e; failed.push({ lens: lens.id, error: e.message }); }
   });
   const order = new Map(lenses.map((l, i) => [l.id, i]));
-  const sort = () => signals.sort((a, b) => order.get(a.lens) - order.get(b.lens) || (a.scope === 'ALL' ? -1 : b.scope === 'ALL' ? 1 : a.scope.localeCompare(b.scope)));
-  sort();
-  // 같은 말을 한 노드와 한 영역의 대상에 붙은 노드는 한 번 다시 받는다 — 다른 노드가 낸 판단을 보여 주고 제 기준에서만 보이는 것을 내게 한다
-  const redo = redoList(signals, areas); let changed = 0;
-  if (redo.length) {
-    emit('stage', { stage: 'courseRedo' });
-    const firstAll = signals.filter((x) => x.scope === 'ALL');
-    await pool(redo, project.settings?.concurrency || 4, async ({ signal: old, why }) => {
-      const lens = lenses.find((l) => l.id === old.lens);
-      try {
-        const own = run.signals.filter((s) => s.lens === lens.id && !s.muted);
-        const others = firstAll.filter((x) => x.lens !== lens.id).map((x) => `${lensName(x.lens)} — ${x.claim}`);
-        const raw = await call({ role: 'sub', ...courseLensPrompt(project, lens, areas, own, { mine: old.claim, why, others }), task: { kind: 'courseLens', project, lens, areas, redo: true } });
-        const got = shapeHigh(raw, lens, project, areas); const next = got.find((x) => x.scope === 'ALL');
-        if (!next) return;
-        // 다시 낸 것이 여전히 한 영역에 붙었거나 앞서 낸 것과 같은 말이면 앞의 것을 그대로 둔다
-        if (pinned(next.claim, areas) || overlap(next.claim, old.claim) >= 0.6) return;
-        for (let i = signals.length - 1; i >= 0; i--) if (signals[i].lens === lens.id) signals.splice(i, 1);
-        signals.push(...got.map((x) => (x.scope === 'ALL' ? { ...x, redone: true } : x))); changed++;
-      } catch (e) { if (/취소/.test(e.message)) throw e; }
-    });
-    sort();
-  }
-  const still = redoList(signals, areas);
-  const all = signals.filter((s) => s.scope === 'ALL');
-  if (all.length < 3) throw new Error(`방향 높이에서 통합 판단을 낸 노드가 ${all.length}개뿐이다${failed[0] ? ` — ${failed[0].error}` : ''}`);
-  emit('stage', { stage: 'courseLink' });
-  const edges = shapeHighEdges(await call({ role: 'sub', ...courseLinkPrompt(project, all, lensName), task: { kind: 'courseLink', project, signals: all } }), signals);
-  run.course = { key: areasKey(areas), at: new Date().toISOString(), signals, edges, failed, redo: { asked: redo.length, changed, still: still.length } };
+  signals.sort((a, b) => order.get(a.lens) - order.get(b.lens) || (a.id < b.id ? -1 : 1));
+  if (uniq(signals.map((s) => s.lens)).length < 3) throw new Error(`조각을 낸 노드가 ${uniq(signals.map((s) => s.lens)).length}개뿐이다${failed[0] ? ` — ${failed[0].error}` : ''}`);
+  // 관계는 두 번 따로 매긴다(순서를 뒤집어서) — 한 사람의 취향이 결론이 되지 않게. 둘 다 본 관계는 온전히, 한쪽만 본 관계는 절반으로 센다
+  emit('stage', { stage: 'courseRel' });
+  const reads = await Promise.all([false, true].map(async (reverse) => { try { return await call({ role: 'sub', ...courseRelPrompt(project, signals, areas, lensName, reverse), task: { kind: 'courseRel', project, atoms: signals, areas, reverse } }); } catch (e) { if (/취소/.test(e.message)) throw e; return null; } }));
+  const got = reads.filter(Boolean);
+  if (!got.length) throw new Error('조각 사이의 관계를 매기지 못했다');
+  const rel = mergeRelations(got, signals);
+  // 같은 말을 한 조각이 얼마나 되는가 — 노드가 병렬로 다르게 읽었는지의 지표
+  let pairs = 0; let dup = 0;
+  for (let i = 0; i < signals.length; i++) for (let k = i + 1; k < signals.length; k++) if (signals[i].lens !== signals[k].lens) { pairs++; if (overlap(signals[i].claim, signals[k].claim) >= OVERLAP) dup++; }
+  run.course = { v: 6, key: areasKey(areas), at: new Date().toISOString(), signals, rel, failed, readers: got.length, dup: { pairs, dup } };
+  emit('stage', { stage: 'cohere' });
+  cohere(run.course, { count: project.settings?.proposalCount || 3, pins: project.pins || {}, weights: project.settings?.cohere || {} });
   return run.course;
 }
 
@@ -189,26 +154,28 @@ export function shapeBase(raw) {
 }
 
 /** 방향 후보를 다듬는다 — 없는 id를 걷고, 글자 수를 묶고, 영역마다 달라지는 것을 썼는지와 어느 노드가 기준을 만들었는지 본다 */
-export function shapeRivals(raw, project, run, areas, spines = []) {
+export function shapeRivals(raw, project, run, areas, props = []) {
   const C = COURSE_CAPS; const { sig, fid, sid } = ctx(project, run);
   const need = courseNeed(project, run);
   const rivals = arr(raw?.candidates).map((c, i) => {
-    const signals = sid(c.signals); const facts = fid(c.facts);
+    const pr = props[i]; const mine = pr ? new Set([...pr.readings, ...pr.evidence]) : null;
+    // 근거는 그 연합의 조각이어야 한다. 다른 연합의 조각은 걷는다. 적지 않았으면 연합의 해석을 근거로 친다
+    let signals = sid(c.signals).filter((id) => !mine || mine.has(id)); if (!signals.length && pr) signals = pr.readings.slice(0, 8);
+    const facts = fid(c.facts);
     const fams = (f) => uniq(signals.filter((id) => sig.get(id).family === f).map((id) => sig.get(id).lens));
     const lenses = uniq([...fams('identity'), ...fams('airplane'), ...fams('tunnel')]);
     const covers = areas.map((a) => ({ area: a.id, line: cap(arr(c.covers).find((x) => areaId(x.area, areas) === a.id)?.line, C.cover) })).filter((x) => x.line);
-    const sp = spines[i];
     const r = {
       id: `D${i + 1}`, name: cap(c.name, C.name), line: cap(c.line, C.line), standard: cap(c.standard, C.standard), covers,
       how: cap(c.how, C.swap), swap: cap(c.swap, C.swap),
       from: cap(c.from, C.from), to: cap(c.to, C.to), keeps: cap(c.keeps, C.keeps), drops: arr(c.drops).map((d) => cap(d, C.drop)).filter(Boolean).slice(0, 2),
       answer: cap(c.answer, C.answer), signals, facts, lenses,
-      spine: sp ? { edge: sp.edge.id, a: sp.a.lens, b: sp.b.lens, why: sp.edge.why } : null,
+      proposal: pr ? { id: pr.id, readings: pr.readings.length, evidence: pr.evidence.length, score: pr.score, whole: pr.whole, live: pr.live, against: pr.against.slice(0, 5), scopes: pr.scopes, goals: pr.goals, nodes: pr.lenses.length, families: pr.families.length } : null,
       breadth: { nodes: lenses.length, identity: fams('identity').length, tunnel: fams('tunnel').length > 0 },
       flags: [],
     };
     const miss = areas.filter((a) => !covers.some((x) => x.area === a.id));
-    if (miss.length) r.flags.push(`달라지는 것을 쓰지 않은 영역: ${miss.map((a) => a.name).join(', ')}`);
+    if (miss.length) r.flags.push(`닿지 않는 영역: ${miss.map((a) => a.name).join(', ')}`);   // 제안은 여럿이 함께 남는다 — 범위가 좁은 제안도 제안이다. 표시만 한다
     const hit = DEVICE_WORDS.filter((w) => `${r.name} ${r.line}`.includes(w));
     if (hit.length) r.flags.push(`장치 이름이 들어 있다: ${hit.join(', ')}`);
     // 대상 낱말 검사 — 방향 문장이 한 영역의 대상에 붙었는가, 영역 줄이 남의 대상을 빌렸는가
@@ -216,24 +183,18 @@ export function shapeRivals(raw, project, run, areas, spines = []) {
     if (pin) r.flags.push(`한 영역의 대상이 방향의 주어다: ${pin.name}의 "${pin.words.join(', ')}"`);
     const lent = covers.map((c) => ({ c, b: borrowed(c.line, c.area, areas) })).filter((x) => x.b);
     if (lent.length) r.flags.push(`빌린 대상: ${lent.map((x) => `${areas.find((a) => a.id === x.c.area).name} 줄에 ${x.b.name}의 "${x.b.words.join(', ')}"`).join(' / ')}`);
-    if (r.breadth.identity < need.identity) r.flags.push(`아이덴티티 판단을 ${r.breadth.identity}개 노드에서만 받았다`);
+    if (r.breadth.identity < 1) r.flags.push('아이덴티티 노드의 조각이 없다');
     if (!r.swap) r.flags.push('경쟁사가 그대로 쓸 수 없는 이유를 쓰지 않았다');
     if (!r.drops.length) r.flags.push('하지 않는 것을 쓰지 않았다');
-    if (lenses.length < need.nodes) r.flags.push(`노드 ${lenses.length}개의 판단만 썼다`);
-    if (need.tunnel && !r.breadth.tunnel) r.flags.push('터널 판단이 없다 — 이 클라이언트에 맞는지를 받치지 않았다');
-    if (facts.length < need.facts) r.flags.push(`팩트 ${facts.length}건만 썼다`);
+    if (facts.length < Math.min(2, need.facts)) r.flags.push(`팩트 ${facts.length}건만 썼다`);
     return r;
   }).filter((r) => r.name && r.line && r.standard).slice(0, 3);
   const problems = [];
-  if (rivals.length < 2) problems.push(`방향 후보가 ${rivals.length}개뿐이다. 서로 다른 기준의 후보를 2개 이상 쓴다`);
+  if (rivals.length < Math.min(1, props.length)) problems.push('방향을 쓰지 못했다. 제안마다 방향 하나씩 쓴다');
   const pick = (re) => rivals.filter((r) => r.flags.some((f) => re.test(f)));
   const list = (rs, re) => rs.map((r) => `${r.id}(${r.flags.filter((f) => re.test(f)).join(', ')})`).join(' / ');
-  const gap = pick(/^달라지는 것/);
-  if (gap.length) problems.push(`영역 전부에 걸리지 않은 후보: ${list(gap, /^달라지는 것/)}. 영역마다 달라지는 것을 한 줄씩 쓴다. 쓸 수 없으면 방향이 아니다`);
-  const idn = pick(/^아이덴티티|^경쟁사가/);
-  if (idn.length) problems.push(`더프롬의 기준에서 나오지 않은 후보: ${list(idn, /^아이덴티티|^경쟁사가/)}. 아이덴티티 판단 ${need.identity}개 이상을 뼈대로 삼고 바꿔치기 시험을 쓴다`);
-  const thin = pick(/^노드|^팩트|^터널/);
-  if (thin.length) problems.push(`근거가 좁은 후보: ${list(thin, /^노드|^팩트|^터널/)}. 후보마다 노드 ${need.nodes}개 이상의 판단과 팩트 ${need.facts}개 이상을 쓴다`);
+  const thin = pick(/^팩트|^경쟁사가/);
+  if (thin.length) problems.push(`덜 쓴 후보: ${list(thin, /^팩트|^경쟁사가/)}. 기댄 팩트의 id와 다른 회사가 그대로 쓸 수 없는 이유를 적는다`);
   const device = pick(/^장치/);
   if (device.length) problems.push(`방향 문장에 장치 이름을 쓴 후보: ${device.map((r) => r.id).join(', ')}. 장치를 지우고 기준으로 다시 쓴다`);
   const stuck = pick(/^한 영역의 대상|^빌린 대상/);
@@ -315,7 +276,7 @@ export function shapeLayers(raw, project, run, direction, areas, extra = {}) {
     facts: { used: factUsed.length, total: facts.size, byInsights: uniq((run.insights || []).flatMap((i) => i.facts || [])).filter((f) => facts.has(f)).length },
     signals: { used: sigUsed.length, total: base.size, fresh: sigUsed.filter((id) => !usedByInsights.has(id)).length, byInsights: usedByInsights.size },
     nodes: { used: lensesUsed.length, total: lensesAll.length, fresh: lensesUsed.filter((l) => !lensesByInsights.includes(l)).length, byInsights: lensesByInsights.length },
-    high: { used: cited.filter((id) => !base.has(id)).length, total: high.length, tensions: (run.course?.edges || []).filter((e) => e.type === 'tension').length },
+    high: { used: cited.filter((id) => !base.has(id)).length, total: high.length, tensions: (run.course?.rel?.edges || run.course?.edges || []).filter((e) => e.kind === 'contradict' || e.type === 'tension').length },
   };
   const all = tacs;
   const tacLenses = uniq(all.flatMap((t) => t.lenses));
@@ -387,12 +348,14 @@ export async function head({ project, run, call, emit = () => {}, fresh = false 
   }
 
   // ① ② 방향 높이의 노드 판단과 연결 — 영역이 그대로면 있는 것을 쓴다
-  // 겹침을 걸러 내기 전에 받은 판단(redo 기록이 없는 것)은 다시 받는다
-  const reused = !fresh && run.course?.key === areasKey(areas) && !!run.course.redo && run.course.signals?.some((x) => x.scope === 'ALL');
+  // 조각으로 받기 전의 판단(v6 이전)은 다시 받는다
+  const reused = !fresh && run.course?.v === 6 && run.course.key === areasKey(areas) && run.course.signals?.length > 0;
   if (!reused) await survey({ project, run, call, emit, areas });
+  else cohere(run.course, { count: project.settings?.proposalCount || 3, pins: project.pins || {}, weights: project.settings?.cohere || {} });   // 사람이 조각을 고정하거나 뺐으면 다시 수렴시킨다
   const high = run.course.signals;
   const need = courseNeed(project, run);
-  const spines = courseSpines(run.course, 3);
+  const props = run.course.proposals;
+  if (!props.length) throw new Error('수렴에서 해석의 연합이 나오지 않았다 — 노드가 해석 조각을 내지 않았다');
 
   emit('stage', { stage: 'courseBase' });
   const base = shapeBase(await call({ role: 'sub', ...courseBasePrompt(project, areas), task: { kind: 'courseBase', project, areas } }));
@@ -400,8 +363,8 @@ export async function head({ project, run, call, emit = () => {}, fresh = false 
   emit('stage', { stage: 'course' });
   let best = null; let note = '';
   for (let attempt = 0; attempt < 2; attempt++) {
-    const raw = await call({ role: 'director', ...coursePrompt(project, run, spines, base, lensName, need, areas, high, note), task: { kind: 'course', project, run, spines, need, areas, high, attempt } });
-    const shaped = shapeRivals(raw, project, run, areas, spines);
+    const raw = await call({ role: 'director', ...coursePrompt(project, run, props, base, lensName, need, areas, high, note), task: { kind: 'course', project, run, props, need, areas, high, attempt } });
+    const shaped = shapeRivals(raw, project, run, areas, props);
     if (!best || shaped.rivals.length > best.rivals.length || (shaped.rivals.length === best.rivals.length && shaped.problems.length < best.problems.length)) best = shaped;
     if (!shaped.problems.length) break;
     note = `앞서 쓴 후보는 조건을 채우지 못했다: ${shaped.problems.join(' / ')}. 글자 수 제한은 그대로다.`;
@@ -411,23 +374,32 @@ export async function head({ project, run, call, emit = () => {}, fresh = false 
 
   emit('stage', { stage: 'courseJudge' });
   const judge = shapeJudge(await call({ role: 'judge', ...courseJudgePrompt(project, rivals, base, areas, lensName), task: { kind: 'courseJudge', project, rivals, base, areas } }), rivals, areas);
-  const won = rivals.find((r) => r.id === judge.winner) || rivals[0];
-  const direction = { id: won.id, name: won.name, line: won.line, standard: won.standard, covers: won.covers, how: won.how, swap: won.swap, lenses: won.lenses, spine: won.spine, from: won.from, to: won.to, keeps: won.keeps, drops: won.drops, answer: won.answer, signals: won.signals, facts: won.facts };
-  // 방향 자체에 대한 경고 — 사람이 봐야 하는 것이다. 숨기지 않는다
-  const warn = [];
-  const item = judge.items.find((x) => x.id === won.id);
-  if (item && item.level !== '방향') warn.push(`판정이 이긴 방향을 ${item.level}${item.level === '전술' ? '로' : '으로'} 봤다 — 후보 가운데 영역 전부에 걸리는 방향이 없었다`);
-  if (item?.own === '범용') warn.push('판정이 이긴 방향을 범용 문장으로 봤다 — 다른 회사도 그대로 쓸 수 있다');
-  if (item?.brief === '일부') warn.push('판정이 이긴 방향을 브리프의 일부만 본 것으로 봤다 — 목적 · 성공 기준 전체에 닿지 않는다');
-  if (item?.control === '일부 불가') warn.push('기준의 판정 대상에 우리가 통제할 수 없는 구간이 들어 있다');
-  if (base && !judge.beatsBase) warn.push('판정이 기본 방향을 더 낫게 봤다');
-  if (item?.vsBase === '같음') warn.push('기본 방향과 기준이 같다고 판정받았다');
-  for (const f of won.flags.filter((x) => /^장치|^달라지는 것|^아이덴티티|^한 영역의 대상|^빌린 대상/.test(x))) warn.push(f);
-  if (run.course.redo?.still) warn.push(`과제 전체를 본 노드 판단 가운데 ${run.course.redo.still}건은 다시 받고도 다른 노드와 같은 말이거나 한 영역의 대상에 붙어 있다`);
-  if (!spines.length) warn.push('통합 판단 사이에서 충돌을 찾지 못했다 — 방향이 충돌을 푼 것이 아니다');
-  run.heading = { areas, auto, base, rivals, judge, direction, warn, reused, calls: (run.calls || 0) - calls0 };
+  run.heading = { areas, auto, base, rivals, judge, reused, calls: (run.calls || 0) - calls0 };
+  take(run, judge.winner);
   emit('heading');
   return run.heading;
+}
+
+/** 제안 가운데 하나를 기준안으로 삼는다 — 영역별 전략과 전술은 이 안 아래로 쓴다. 제안은 모두 남는다. AI를 부르지 않는다 */
+export function take(run, id) {
+  const h = run.heading; const { rivals, judge, base } = h;
+  const won = rivals.find((r) => r.id === id) || rivals.find((r) => r.id === judge.winner) || rivals[0];
+  h.direction = { id: won.id, name: won.name, line: won.line, standard: won.standard, covers: won.covers, how: won.how, swap: won.swap, lenses: won.lenses, proposal: won.proposal, from: won.from, to: won.to, keeps: won.keeps, drops: won.drops, answer: won.answer, signals: won.signals, facts: won.facts };
+  h.picked = won.id !== judge.winner;   // 사람이 판정과 다른 안을 골랐다
+  // 기준안에 대한 경고 — 사람이 봐야 하는 것이다. 숨기지 않는다
+  const warn = [];
+  const item = judge.items.find((x) => x.id === won.id);
+  if (item && item.level !== '방향') warn.push(`판정이 이 안을 ${item.level}${item.level === '전술' ? '로' : '으로'} 봤다 — 영역 전부에 걸리지 않는다`);
+  if (item?.own === '범용') warn.push('판정이 이 안을 범용 문장으로 봤다 — 다른 회사도 그대로 쓸 수 있다');
+  if (item?.brief === '일부') warn.push('판정이 이 안을 브리프의 일부만 본 것으로 봤다 — 목적 · 성공 기준 전체에 닿지 않는다');
+  if (item?.control === '일부 불가') warn.push('기준의 판정 대상에 우리가 통제할 수 없는 구간이 들어 있다');
+  if (base && !h.picked && !judge.beatsBase) warn.push('판정이 기본 방향을 더 낫게 봤다');
+  if (item?.vsBase === '같음') warn.push('기본 방향과 기준이 같다고 판정받았다');
+  for (const f of won.flags.filter((x) => /^장치|^닿지 않는 영역|^아이덴티티|^한 영역의 대상|^빌린 대상/.test(x))) warn.push(f);
+  if (run.course?.readers < 2) warn.push('조각 사이의 관계를 한 번만 매겼다 — 한 사람의 판단에 기댄 수렴이다');
+  if (run.course?.net && !run.course.net.settled) warn.push('수렴이 끝까지 가라앉지 않았다');
+  h.warn = warn;
+  return h;
 }
 
 /** 방향 아래로 내려 쓴다 — 영역별 전략과 전술. 결과는 run.strategy(v5)에 담는다. */
@@ -446,7 +418,8 @@ export async function descend({ project, run, call, emit = () => {} }) {
     if (shaped.check.ok) break;
     note = `앞서 쓴 것은 조건을 채우지 못했다: ${shaped.check.problems.join(' / ')}. 모자란 것을 채워 다시 쓴다. 글자 수 제한은 그대로다.`;
   }
-  st.v = 5; st.reusedHigh = h.reused;
+  st.v = 6; st.reusedHigh = h.reused; st.picked = !!h.picked;
+  if (run.course?.net) st.net = { ...run.course.net, atoms: high.length, edges: run.course.rel.edges.length, support: run.course.rel.edges.filter((e) => e.kind === 'support').length, contradict: run.course.rel.edges.filter((e) => e.kind === 'contradict').length, agree: run.course.rel.agree, proposals: run.course.proposals.length };
   const thin = st.pillars.filter((p) => p.thin);
   if (thin.length) st.thin = thin.map((p) => p.label);
   st.check = { ok: st.check.ok && !h.warn.length, problems: [...h.warn, ...st.check.problems] };
@@ -456,7 +429,9 @@ export async function descend({ project, run, call, emit = () => {} }) {
 }
 
 /** 이미 있는 분석 위에서 방향을 다시 정하고 내려 쓴다. 이슈 높이의 분석은 다시 돌리지 않는다. */
-export async function chart({ project, run, call, emit = () => {}, fresh = false }) {
-  await head({ project, run, call, emit, fresh });
+export async function chart({ project, run, call, emit = () => {}, fresh = false, adopt = '' }) {
+  // 다른 제안을 기준안으로 — 방향은 그대로 두고 그 아래만 다시 쓴다
+  if (adopt && run.heading?.rivals?.some((r) => r.id === adopt)) take(run, adopt);
+  else await head({ project, run, call, emit, fresh });
   return descend({ project, run, call, emit });
 }

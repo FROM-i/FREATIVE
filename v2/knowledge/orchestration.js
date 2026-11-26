@@ -25,8 +25,8 @@ export const KIND_TIER = {
   verdict: 'lead',     // 더프롬 판정
   strategy: 'lead',    // 전략 한 장 — 인사이트 위의 층. 전체 판단과 팩트를 다시 훑어 과제를 관통하는 전략으로 올린다
   courseScope: 'lead', // 업무 영역 — 방향인지 가르는 시험대. 틀리면 층이 전부 틀린다
-  courseLens: 'lead', // 방향 높이의 노드 판단 (터널 노드만 support — 아래 tierOf)
-  courseLink: 'lead', // 통합 판단끼리의 충돌 — 방향 후보의 출발점이 된다
+  courseLens: 'lead', // 노드의 조각 (터널 노드만 support — 아래 tierOf)
+  courseRel: 'lead',  // 조각 사이의 지지와 모순 — 수렴의 재료다. 두 번 따로 매긴다
   courseObjects: 'lead', // 영역마다의 대상 낱말 — 방향이 한 영역에 붙었는지를 낱말로 대조한다
   courseBase: 'lead', // 기본 방향 — 견주는 기준은 가장 좋은 모델로 낸다
   course: 'lead',     // 운영 방향 후보 — 전략 과제의 맨 위 층

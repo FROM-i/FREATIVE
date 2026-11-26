@@ -110,27 +110,31 @@ ${areaList(areas)}
   };
 }
 
-const groupBy = (list, key) => { const m = new Map(); for (const x of list) { const k = key(x); if (!m.has(k)) m.set(k, []); m.get(k).push(x); } return m; };
-/** 방향 높이의 판단을 노드별로 적는다 */
-const highGroups = (signals, lensName, famName) => [...groupBy(signals, (x) => x.lens)].map(([lens, list]) => `### ${lensName(lens)} (${famName(list[0].family)})\n${list.map((x) => `- [${x.id}] ${x.claim}${x.facts?.length ? ` · ${x.facts.join(' ')}` : ''}`).join('\n')}`).join('\n');
 const FAM = { identity: '아이덴티티 — 더프롬의 기준', airplane: '사조', tunnel: '터널 — 팩트에 묶인 판단' };
 const famName = (f) => FAM[f] || f;
+const inArea = (x, id) => (x.scopes || [x.scope]).includes(id);
+/** 사람이 쓴 목표 · 목적 · 핵심 포인트 — 고정된 문장이다. 조각이 여기에 닿는지를 본다 */
+export function goalsOf(project) {
+  const b = project?.brief || {}; const lines = (t) => String(t || '').split('\n').map((x) => x.replace(/^[\s\-·•*\d.)]+/, '').trim()).filter(Boolean);
+  return [['목표', b.what], ['목적', b.purpose], ['성공 기준', b.success], ...lines(b.points).map((t) => ['핵심 포인트', t]), ['제약', b.note]].filter(([, t]) => String(t || '').trim()).slice(0, 9).map(([k, t], i) => ({ id: `G${i + 1}`, kind: k, text: String(t).trim() }));
+}
+const goalList = (goals) => goals.map((g) => `- ${g.id} ${g.kind}: ${cut(g.text, 260)}`).join('\n');
+const atomLine = (x, lensName) => `${x.id} | ${lensName(x.lens)} | ${x.type}/${x.layer} | ${(x.scopes || [x.scope]).join(',')} | ${x.claim}`;
 
-/** 노드가 방향 높이에서 본다 — 통합 판단 하나와 영역마다 판단 하나. 이슈 높이에서 낸 판단은 배경으로만 받는다. */
-export function courseLensPrompt(project, lens, areas, own = [], redo = null) {
-  const C = COURSE_CAPS;
+/** 구성 — 노드 하나가 과제를 읽고 "조각"을 낸다. 결론이 아니다. 결론은 여러 노드의 조각이 맞물려서 나온다. */
+export function courseLensPrompt(project, lens, areas, own = []) {
+  const C = COURSE_CAPS; const goals = goalsOf(project);
   const ism = lens.family === 'airplane';
   const source = ism
     ? `## 이 사조의 카드 원문\n${lens.card}\n\n카드의 "가져올 것 · 두고 올 것"은 지난 적용 메모다. 규칙으로 쓰지 않는다.`
     : `## 이 노드의 원문 (더프롬 방법론 CORE)\n${lens.text}\n\n판정 기준: ${lens.criteria}`;
+  const many = areas.length > 1;
   return {
     system: `${common(project)}
 
-## 너의 역할 — 노드 "${lens.name}", 방향 높이
-너는 더프롬 브레인의 노드 하나다. 이슈 하나하나를 보기 전에 **과제 전체**를 본다.
-**이 과제를 무엇을 기준으로 풀어야 하는가, 그리고 영역마다 전략은 무엇이어야 하는가**를 네 기준 하나로만 본다. 다른 노드가 할 일을 대신하지 않는다.
-브리프의 무엇을 · 목적 · 성공 기준 · 대상 · 제약을 함께 본다. 이슈 하나에 붙지 않는다 — 이슈는 과제 안의 문제들일 뿐이다.
-화면 · 기능 · 표현 장치를 내지 않는다. 그것은 아래 층(전술)의 일이다.
+## 너의 역할 — 노드 "${lens.name}"
+너는 더프롬 브레인의 노드 하나다. 다른 노드가 무엇을 내는지는 모른다. 네 기준 하나로만 과제 전체를 읽는다.
+**결론을 내지 않는다.** 방향 · 해법 · 제안 문장을 쓰지 않는다("~을 기준으로 삼는다", "~을 도입한다" 금지). 네 기준으로 읽었을 때 보이는 **조각**을 낸다. 결론은 나중에 여러 노드의 조각이 맞물려서 나온다.
 
 ${source}
 
@@ -140,116 +144,116 @@ ${source}
 ## 영역
 ${areaList(areas)}
 
-## 생각하는 순서 — 건너뛰지 않는다
-1. 원문을 읽는다. 이 기준이 왜 있는지, 무엇을 막으려는 것인지를 먼저 이해한다.
-2. **네 기준에서만 보이는 것(only).** 다른 노드는 보지 못하고 네 기준이라서 보이는 것 한 문장. 판단은 여기서 출발한다. 이것을 쓸 수 없으면 아직 네 기준으로 본 것이 아니다.
-3. **통념(against).** 이런 과제를 업계가 통상 어떻게 푸는가. 네 기준으로 보면 그 방식의 무엇이 틀렸거나 비어 있는가. 한 문장.
-4. **통합(ALL).** 네 기준으로 보면 이 과제 전체를 묶는 기준은 무엇이어야 하는가. 브리프의 목적과 성공 기준에 닿아야 한다. 판단 하나.
-   - 한 영역의 대상(그 영역에서만 다루는 것)을 다른 영역에 옮겨 붙이지 않는다. 영역 하나를 빼도 문장이 그대로면 통합 판단이 아니다. 이슈 하나의 답을 넓게 쓴 것도 통합 판단이 아니다.
-   - 누구에게나 맞는 말을 쓰지 않는다. 네 기준이 아니면 나오지 않는 판단이어야 한다 — 다른 노드의 이름으로 바꿔 써도 성립하면 버린다.
-   - **브리프 · 판정 질문 · 이슈의 문장을 되받아 쓰지 않는다.** 과제가 쓴 말("N개 파트와 몇 월", "한 해를 관통" 같은 표현)을 옮겨 적으면 모든 노드의 판단이 같아진다. 과제는 재료이고 판단은 네 말이다.
-   - 통합 판단에 한 영역만의 대상 낱말을 주어로 쓰지 않는다. 영역마다의 대상은 영역 판단에서 쓴다.
-5. **영역별.** 영역마다, 네 기준이 그 영역에 요구하는 방침을 판단 하나로 낸다. 그 영역의 과업 전체(미션과 팩트북에 적힌 요구)를 본다. 낼 것이 없는 영역은 건너뛴다.
-6. **통제 범위.** 우리가 정할 수 없는 구간(미션 · 팩트북에 남이 관리한다고 적힌 것)은 판단의 대상이 아니라 조건으로 둔다.
+## 목표 — 사람이 쓴 문장이다. 고정이다
+${goalList(goals)}
+
+## 조각의 종류 (\`type\`)
+- \`관찰\` — 네 기준으로 자료를 읽었을 때 보이는 것. 팩트를 옮겨 적지 않는다. 네 기준이어서 보이는 뜻을 쓴다.
+- \`제약\` — 무엇을 하든 깨면 안 되는 것, 넘으면 안 되는 선. 우리가 통제할 수 없는 범위도 제약이다.
+- \`해석\` — 이 과제(또는 그 일부)를 **무엇으로 볼 것인가**. 통념과 다르게 읽는 법. 해법이 아니라 보는 틀이다.
+- \`지렛대\` — 이미 있어서 쓸 수 있는 것(자산 · 기회 · 반복되는 것).
+조각의 층(\`layer\`): \`구조\`(그대로 두고 지킬 것에 관한 조각) · \`해석\`(새로 읽거나 바꿀 것에 관한 조각).
 
 ## 규칙
-- 판단은 "그래서 무엇을 기준으로 삼거나, 지키거나, 바꾸는가"까지 쓴다. 관찰만 쓰지 않는다. \`claim\` ${C.claim}자 이내.
-- \`scope\`: 통합 판단은 "ALL", 영역 판단은 영역 id. 통합 판단 1개는 반드시 낸다. 영역마다 최대 1개.
-- \`stance\`: keep(지킬 관성) · change(바꿀 해석) · limit(넘지 않을 경계) · open(비어 있는 자리)
-${lens.family === 'tunnel' ? '- 너는 터널의 레이어다. 팩트북에서 출발한다. 판단이 기대는 팩트의 id를 `facts`에 적는다.' : '- 판단이 팩트북의 사실에 기대면 그 id를 `facts`에 적는다. 주어진 id만 쓴다.'}
+- **8개**를 낸다. 해석 2개 이상, 제약 1개 이상, 지렛대 1개 이상.
+- ${many ? `영역을 모두 본다. 영역마다 1개 이상, 과제 전체에 걸리는 조각(\`scope\`: ["ALL"]) 2개 이상. 한 영역에 5개 넘게 몰지 않는다.` : '과제 전체에 걸리는 조각은 `scope`: ["ALL"]로 적는다.'}
+- 조각 하나는 **한 가지 내용만**, ${C.claim - 50}자 이내, 평서문.
+- 네 기준이 아니면 나오지 않는 조각이어야 한다. 다른 노드 이름으로 바꿔도 성립하면 버린다. \`only\`에 "다른 노드는 못 보고 이 기준이라서 보이는 것"을 먼저 쓰고 거기서 출발한다.
+- **브리프 · 목표 · 이슈의 문장을 되받아 쓰지 않는다.** 과제는 재료이고 조각은 네 말이다.
+- 팩트북에 기댄 조각은 \`facts\`에 그 id를 적는다. 팩트북에 없는 사실을 사실처럼 쓰지 않는다. \`goals\`에는 이 조각이 닿는 목표의 id를 적는다.
 
 ## 출력 (JSON만)
-{"only":"네 기준에서만 보이는 것","against":"네 기준으로 본 통념의 틀린 점","signals":[{"scope":"ALL","claim":"판단 한 문장","basis":"원문의 어느 대목에서 나왔나 한 문장","stance":"keep|change|limit|open","facts":["F1"]}]}`,
+{"only":"이 기준이라서 보이는 것 한 문장","atoms":[{"type":"관찰","layer":"구조","text":"","scope":["${many ? areas[0].id : 'ALL'}"],"facts":["F1"],"goals":["G1"]}]}`,
     user: `${missionBlock(project, lens.id, { high: true })}
-${own.length ? `\n## 네가 이슈 높이에서 낸 판단 — 배경이다. 넓게 고쳐 써서 올리지 않는다\n${own.map((x) => `- ${cut(x.claim, 120)}`).join('\n')}\n` : ''}
-${redo ? `\n## 다시 낸다 — 앞서 낸 통합 판단은 쓰지 못한다\n앞서 낸 것: ${redo.mine}\n${redo.why}\n${redo.others.length ? `\n다른 노드가 이미 낸 통합 판단 — 같은 말을 되풀이하지 않는다. 이 판단들이 보지 못한 것을 네 기준으로 낸다:\n${redo.others.map((x) => `- ${x}`).join('\n')}\n` : ''}` : ''}
-노드 "${lens.name}"의 방향 높이 판단을 JSON으로 낸다.`,
+${own.length ? `\n## 네가 이슈마다 낸 판단 — 배경이다. 옮겨 적지 않는다\n${own.map((x) => `- ${cut(x.claim, 120)}`).join('\n')}\n` : ''}
+노드 "${lens.name}"의 조각을 JSON으로 낸다.`,
   };
 }
 
-/** 통합 판단끼리 잇는다 — 충돌이 방향 후보의 출발점이 된다 */
-export function courseLinkPrompt(project, signals, lensName) {
+/** 관계 — 조각 사이의 지지와 모순을 매긴다. 결론을 내거나 좋은 조각을 고르지 않는다. 두 사람이 따로 매기고 합친다. */
+export function courseRelPrompt(project, atoms, areas, lensName, reverse = false) {
+  const goals = goalsOf(project); const list = reverse ? [...atoms].reverse() : atoms;
   return {
     system: `${common(project)}
 
-## 너의 역할 — 통합 판단을 잇는다
-노드마다 "이 과제 전체를 무엇을 기준으로 풀 것인가"를 따로 판단했다. 그 판단끼리의 관계를 찾는다.
-- **충돌(tension)**: 둘을 동시에 그대로 따를 수 없다. 한쪽을 따르면 다른 쪽이 깎인다. 표현만 다른 것, 강조점만 다른 것은 충돌이 아니다.
-- **강화(reinforce)**: 한쪽이 서면 다른 쪽이 더 잘 선다.
-- 서로 다른 노드의 판단끼리만 잇는다. 이유(\`why\`)를 쓸 수 없는 연결은 내지 않는다. 40자 이내.
-- 충돌을 먼저 찾는다. 충돌 3~6개, 강화는 최대 6개.
+## 너의 역할 — 조각 사이의 관계
+노드 여러 개가 한 과제를 각자 읽고 낸 조각(관찰 · 제약 · 해석 · 지렛대)이 있다. 조각끼리의 관계를 매긴다. 결론을 내거나 좋은 조각을 고르는 일이 아니다. **관계만** 본다.
+
+## 매길 것
+1. \`edges\` — 조각 쌍의 관계. **서로 다른 노드의 조각끼리만** 잇는다.
+   - \`support\`: 한쪽이 맞으면 다른 쪽이 더 설득력을 얻는다(전제 · 근거 · 같은 쪽을 다른 각도에서 받침). 말이 비슷하다는 이유만으로 잇지 않는다.
+   - \`contradict\`: 둘을 동시에 그대로 받아들일 수 없다. 한쪽을 따르면 다른 쪽이 깎인다(우선순위가 부딪힘, 보는 틀이 서로 배타적, 한쪽이 지키라는 것을 다른 쪽이 바꾸라 함).
+   - \`s\`(세기): 1 약함 · 2 보통 · 3 강함.
+   - 조각마다 훑으면서 뚜렷한 관계만 적는다. 조각 하나당 support 0~4개, contradict 0~2개가 보통이다. 모순을 찾는 데 공을 들인다 — 해석끼리, 그리고 해석과 제약 사이에서 주로 나온다. 억지로 만들지는 않는다. 같은 쌍은 한 번만 적는다.
+2. \`goalConflicts\` — 목표를 깨는 조각의 id. 특히 우리가 통제할 수 없는 범위(남이 관리하는 구간)의 결과를 전제로 하는 조각, 사람이 쓴 목표 · 제약과 어긋나는 조각.
+
+## 영역
+${areaList(areas)}
+
+## 목표 — 사람이 쓴 문장
+${goalList(goals)}
 
 ## 출력 (JSON만)
-{"edges":[{"from":"판단 id","to":"판단 id","type":"tension","why":""}]}`,
-    user: `## 과제
-${j({ 프로젝트: project.title, 무엇: project.brief?.what })}
+{"edges":[{"a":"조각 id","b":"조각 id","kind":"support","s":2}],"goalConflicts":["조각 id"]}`,
+    user: `${missionBlock(project, null, { high: true })}
 
-## 통합 판단
-${signals.map((x) => `- [${x.id}] ${lensName(x.lens)} — ${x.claim}`).join('\n')}
+## 조각 ${list.length}개 — id | 노드 | 종류/층 | 범위 | 글
+${list.map((x) => atomLine(x, lensName)).join('\n')}
 
-연결을 JSON으로 낸다.`,
+관계를 JSON으로 낸다.`,
   };
 }
 
-/** 방향 후보 3개 — 노드가 방향 높이에서 낸 판단의 충돌을 푸는 자리에서 쓴다. */
-export function coursePrompt(project, run, spines, base, lensName, need, areas, high, note = '') {
-  const C = COURSE_CAPS;
-  const n = 3;
-  const ids = Array.from({ length: n }, (_, i) => `D${i + 1}`);
-  const all = high.filter((x) => x.scope === 'ALL');
-  const byArea = areas.map((a) => `### ${a.id} ${a.name}\n${high.filter((x) => x.scope === a.id).map((x) => `- [${x.id}] ${lensName(x.lens)} — ${x.claim}`).join('\n') || '(판단 없음 — 미션과 팩트북에서 읽는다)'}`).join('\n');
+/** 표현 — 수렴에서 나온 제안(서로 받치는 해석의 연합)을 방향 문장으로 옮긴다. 결론을 새로 정하지 않는다. */
+export function coursePrompt(project, run, props, base, lensName, need, areas, high, note = '') {
+  const C = COURSE_CAPS; const by = new Map(high.map((x) => [x.id, x]));
+  const ids = props.map((_, i) => `D${i + 1}`);
+  const line = (id) => { const x = by.get(id); return x ? `[${x.id}] ${lensName(x.lens)} · ${x.type} · ${(x.scopes || [x.scope]).join(',')} — ${x.claim}${x.facts?.length ? ` · ${x.facts.join(' ')}` : ''}` : ''; };
   return {
     system: `${common(project)}
 
-## 너의 역할 — 더프롬의 방향
-장치 하나를 고르는 일이 아니다. 이 과제 전체를 **무엇을 기준으로 풀 것인가**를 정한다.
-방향은 "무엇을 만드는가"가 아니라 "무엇을 기준으로 삼는가"다. 과제 안의 여러 결정이 같은 쪽을 고르게 한다.
-브리프의 무엇을 · 목적 · 성공 기준 · 대상 · 제약을 함께 본다. 이슈 하나의 답을 방향으로 삼지 않는다.
+## 너의 역할 — 제안을 방향 문장으로 옮긴다
+노드들이 낸 조각을 한꺼번에 수렴시킨 결과, 서로 받치는 해석의 연합이 ${props.length}개 나왔다. 연합 하나가 제안 하나다. **연합마다 방향 하나**를 쓴다(${ids.join(' · ')}).
+- **결론을 새로 정하지 않는다.** 그 연합의 해석과 근거가 가리키는 것만 쓴다. 연합에 없는 내용을 보태지 않는다. 다른 연합의 내용을 섞지 않는다.
+- 방향은 "무엇을 만드는가"가 아니라 "무엇을 기준으로 삼는가"다. 과제 안의 여러 결정이 같은 쪽을 고르게 한다.
+- 제안은 여러 개가 함께 남는다. 하나로 합치려고 서로 닮게 쓰지 않는다. 연합의 크기가 작으면 작은 대로, 겨냥하는 범위가 좁으면 좁은 대로 쓴다.
 
 ${levelBlock(areas)}
 
-## 방향은 충돌을 푸는 자리에서 나온다
-- 아래 "통합 판단"은 노드마다 방향 높이에서 따로 본 것이다. 강한 판단 하나를 골라 다시 쓰면 방향이 아니다. **서로 부딪히는 판단을 둘 다 살리는 기준**을 세운다.
-- 후보마다 출발하는 충돌이 다르다. "출발 충돌"을 순서대로 하나씩 맡는다. 한쪽을 고르거나 반씩 섞지 않는다. 어떻게 푸는지 \`how\`에 쓴다.
-- **아이덴티티 노드의 판단이 뼈대다.** 후보마다 아이덴티티 판단 ${need.identity}개 이상이 기준을 만든 근거여야 한다. 터널 판단은 그 기준이 이 클라이언트에 맞는지를 받친다.
-- **바꿔치기 시험(\`swap\`)**: 다른 회사가 이 문장을 그대로 쓸 수 있는가. 쓸 수 있으면 방향이 아니라 구호다. 쓸 수 없는 이유를 쓴다.
-- 이긴 인사이트 ${run.insights?.length || 0}건은 **전술**이다. 넓게 고쳐 써서 방향으로 올리지 않는다.
-
-## 방향 후보 ${n}개 (${ids.join(' · ')})
-- 후보마다 **기준이 다르다** — 무엇을 과제 전체의 공통으로 두는가가 다르다. 표현만 다르면 같은 후보다.
-- \`covers\`: **영역마다 한 줄씩**, 이 방향이면 그 영역에서 무엇이 달라지는가. 그 영역의 과업에 맞는 말로 쓴다 — 다른 영역의 대상을 옮겨 붙인 줄은 걸린 것이 아니다.
-- **약속할 수 있는 것만 기준으로 삼는다.** 우리가 정할 수 없는 구간(남이 관리)은 기준의 판정 대상이 아니다.
-- 근거: 서로 다른 노드 ${need.nodes}개 이상의 통합 · 영역 판단, 팩트 ${need.facts}개 이상. 주어진 id만 쓴다.
-- \`answer\`: 이 방향이 브리프의 목적과 성공 기준에 어떻게 닿는가. 이슈 하나가 아니라 과제 전체로 답한다.
+## 쓰는 법
+- **두 번 쓴다.** 먼저 연합이 말하는 것을 그대로 옮기고, 그것을 **비즈니스 이슈 문장으로 다시 정제**해서 낸다: 무엇이 문제인지, 무엇을 바꾸는지, 어떤 사업 성과(수주 · 전환 · 리텐션 · 비용 · 리스크 · 일정 · 품질)에 닿는지가 보여야 한다. 개념 설명이나 감상으로 끝난 문장은 다시 쓴다.
+- \`covers\`: 영역마다 한 줄씩, 이 방향이면 그 영역에서 무엇이 달라지는가. 연합의 조각에서 가져온다. 연합이 닿지 않는 영역은 억지로 채우지 않고 비운다.
+- \`how\`: 어떤 해석들이 맞물려 이 방향이 됐는가. \`swap\`: 다른 회사가 이 문장을 그대로 쓸 수 없는 이유.
 - \`from\` → \`to\`: 이 업계가 당연하게 여기는 관행 → 이 방향이 그것을 다르게 읽은 것. 팩트로 확인되는 것만 쓴다.
-- \`keeps\`: 이미 잘하고 있어 그대로 두고 더 키우는 것. 팩트에 없으면 비운다.
-- \`drops\`: 이 방향을 고르면 하지 않는 것 1~2개.
-- 기본 방향과 기준이 같으면 후보가 아니다.
+- \`keeps\`: 이미 잘하고 있어 그대로 두고 더 키우는 것. \`drops\`: 이 방향을 고르면 하지 않는 것 1~2개.
+- \`answer\`: 이 방향이 사람이 쓴 목표 · 목적에 어떻게 닿는가.
+- \`signals\`: 이 방향을 만든 조각의 id(그 연합의 것만). \`facts\`: 기댄 팩트의 id. 주어진 id만 쓴다.
+- **약속할 수 있는 것만 기준으로 삼는다.** 우리가 정할 수 없는 구간은 기준의 판정 대상이 아니다.
 
 ## 글자 수 — 넘기지 않는다
 \`name\` ${C.name}자(명사로 끝낸다) · \`line\` ${C.line}자 · \`standard\` ${C.standard}자 · \`covers\`의 \`line\` ${C.cover}자 · \`how\` ${C.swap}자 · \`swap\` ${C.swap}자 · \`from\`/\`to\` ${C.from}자 · \`keeps\` ${C.keeps}자 · \`drops\` 각 ${C.drop}자 · \`answer\` ${C.answer}자 이내.
-설명 · 이유 · 수식어를 붙이지 않는다. 수치는 팩트 id로 대신한다.
 
 ## 출력 (JSON만)
-{"candidates":[{"id":"D1","name":"","line":"방향 한 줄","standard":"과제 안의 결정을 가르는 기준 한 문장","how":"출발 충돌을 푸는 방법","swap":"경쟁사가 그대로 쓸 수 없는 이유","covers":[{"area":"${areas[0].id}","line":"이 영역에서 달라지는 것"}],"from":"","to":"","keeps":"","drops":[""],"answer":"","signals":["판단 id"],"facts":["F1"]}]}`,
+{"candidates":[{"id":"D1","name":"","line":"방향 한 줄","standard":"과제 안의 결정을 가르는 기준 한 문장","how":"","swap":"","covers":[{"area":"${areas[0].id}","line":""}],"from":"","to":"","keeps":"","drops":[""],"answer":"","signals":["조각 id"],"facts":["F1"]}]}`,
     user: `${missionBlock(project, null, { high: true })}
 
-## 출발 충돌 — ${ids.join(' · ')}가 순서대로 맡는다
-${spines.length ? j(spines.slice(0, n).map((sp, i) => ({ 후보: ids[i], 한쪽: `[${sp.a.id}] ${lensName(sp.a.lens)} — ${sp.a.claim}`, 다른_쪽: `[${sp.b.id}] ${lensName(sp.b.lens)} — ${sp.b.claim}`, 부딪히는_이유: sp.edge.why || '' }))) : '(찾은 충돌이 없다 — 후보마다 서로 다른 아이덴티티 판단에서 출발한다)'}${spines.length && spines.length < n ? `\n충돌이 ${spines.length}개뿐이다. 나머지 후보는 아직 쓰이지 않은 아이덴티티 판단에서 출발한다.` : ''}
+## 목표 — 사람이 쓴 문장
+${goalList(goalsOf(project))}
 
-## 통합 판단 ${all.length}건 — 노드가 과제 전체를 보고 낸 것
-${highGroups(all, lensName, famName)}
-
-## 영역별 판단
-${byArea}
+${props.map((p, i) => `## 제안 ${ids[i]} — 해석 ${p.readings.length}개 · 받치는 근거 ${p.evidence.length}개 · 노드 ${p.lenses.length}개
+### 해석 (수렴에서 활성이 높은 순)
+${p.readings.slice(0, 12).map(line).join('\n')}
+### 받치는 근거
+${p.evidence.slice(0, 14).map(line).join('\n') || '(없음)'}
+${p.against.length ? `### 이 제안과 부딪히는 조각 — 하지 않는 것(drops)을 쓸 때 본다\n${p.against.slice(0, 5).map(line).join('\n')}` : ''}`).join('\n\n')}
 
 ## 이긴 인사이트 — 전술이다. 방향으로 올리지 않는다
 ${j(tacticList(run))}
 
-## 기본 방향 — 이 기준으로 돌아가지 않는다
+## 기본 방향 — 견주는 기준
 ${j(base ? { 이름: base.name, 한_줄: base.line, 기준: base.standard } : {})}
 ${note ? `\n## 다시 쓰는 이유\n${note}\n` : ''}
-방향 후보 ${n}개를 JSON으로 낸다.`,
+제안마다 방향 하나씩, ${props.length}개를 JSON으로 낸다.`,
   };
 }
 
@@ -298,7 +302,7 @@ ${j(base ? { 이름: base.name, 한_줄: base.line, 기준: base.standard } : {}
 export function layersPrompt(project, run, direction, judge, lensName, need, areas, high, note = '') {
   const C = COURSE_CAPS;
   const parts = partsOf(project);
-  const byArea = areas.map((a) => `### ${a.id} ${a.name}\n${high.filter((x) => x.scope === a.id).map((x) => `- [${x.id}] ${lensName(x.lens)} — ${x.claim}${x.facts?.length ? ` · ${x.facts.join(' ')}` : ''}`).join('\n') || '(판단 없음 — 미션과 팩트북에서 읽는다)'}`).join('\n');
+  const byArea = areas.map((a) => `### ${a.id} ${a.name}\n${high.filter((x) => inArea(x, a.id) && (x.act == null || x.act > 0)).map((x) => `- [${x.id}] ${lensName(x.lens)} · ${x.type || '판단'} — ${x.claim}${x.facts?.length ? ` · ${x.facts.join(' ')}` : ''}`).join('\n') || '(조각 없음 — 미션과 팩트북에서 읽는다)'}`).join('\n');
   return {
     system: `${common(project)}
 
@@ -311,7 +315,7 @@ ${areaList(areas)}
 ## 2층 — 영역별 전략
 - 영역마다 **전략 하나**를 쓴다(\`name\`, \`line\`). 방향이 그 영역에서 어떤 방침이 되는가다.
 - 영역 전략의 이름과 한 줄에 **장치 이름**(화면 · 칸 · 쿠폰 · 버튼 등)을 쓰지 않는다. 그것은 전술이다. 다른 영역의 대상 낱말에 기대지도 않는다 — 그 영역의 과업에서 나온 말로 쓴다.
-- **방향 문장에 영역 이름만 바꿔 붙이지 않는다.** 영역 전략은 그 영역의 과업 전체(미션과 팩트북에 적힌 요구)를 덮어야 한다. 아래 "영역별 판단"은 노드가 그 영역을 따로 본 것이다. 거기서 출발한다.
+- **방향 문장에 영역 이름만 바꿔 붙이지 않는다.** 영역 전략은 그 영역의 과업 전체(미션과 팩트북에 적힌 요구)를 덮어야 한다. 아래 "영역별 조각"은 노드들이 그 영역을 읽고 낸 것 가운데 수렴에서 살아남은 것이다. 거기서 출발한다.
 - 미션의 성공 기준 · 평가 항목마다 어느 영역 전략이 답하는지 스스로 확인한다. 답하지 못한 항목은 \`gaps\`에 적는다.
 - 영역 전략은 전술 하나가 아니다. 그 아래에 서로 다른 전술이 여러 개 달릴 수 있어야 한다. 이긴 인사이트 하나를 이름만 바꿔 영역 전략으로 올리지 않는다.
 - 영역마다 근거 판단 2개 이상(영역별 판단 또는 이슈 높이의 판단), 팩트 2개 이상.
@@ -345,7 +349,7 @@ ${j({ 이름: direction.name, 한_줄: direction.line, 기준: direction.standar
 ## 판정이 남긴 것
 ${j({ 가져올_것: (judge?.borrow || []).map((b) => b.what), 무너질_수_있는_지점: judge?.risk || '' })}
 
-## 영역별 판단 — 노드가 영역 높이에서 낸 것. 영역 전략의 출발점
+## 영역별 조각 — 수렴에서 살아남은 것. 영역 전략의 출발점
 ${byArea}
 
 ## 이긴 인사이트 — 전술 하나로 놓는다

@@ -22,18 +22,20 @@ export function reportMarkdown(project) {
     if (st.v >= 2) {
       const d = st.direction; const v3 = st.v >= 3; const area = (id) => (st.areas || []).find((a) => a.id === id)?.name || id;
       L.push('## 전략 한 장', '', '### 1. 방향', '', `**${d.name}** — ${d.line}`, '', `기준: ${d.standard}`, '');
-      if (d.lenses?.length) L.push(`만든 노드: ${d.lenses.map(lensName).join(' · ')}`, d.spine ? `푼 충돌: ${lensName(d.spine.a)} ↔ ${lensName(d.spine.b)}${d.how ? ` — ${d.how}` : ''}` : '', d.swap ? `경쟁사가 못 쓰는 이유: ${d.swap}` : '', '');
+      if (d.lenses?.length) L.push(`만든 노드: ${d.lenses.map(lensName).join(' · ')}`, d.spine ? `푼 충돌: ${lensName(d.spine.a)} ↔ ${lensName(d.spine.b)}${d.how ? ` — ${d.how}` : ''}` : d.proposal && d.how ? `맞물린 해석: ${d.how}` : '', d.swap ? `경쟁사가 못 쓰는 이유: ${d.swap}` : '', '');
       if (d.covers?.length) L.push(...d.covers.map((c) => `- ${area(c.area)}: ${c.line}`), '');
       L.push(d.from || d.to ? `지금 ${d.from} → 바뀌는 것 ${d.to}` : '', d.keeps ? `키우는 것: ${d.keeps}` : '', d.drops.length ? `하지 않는 것: ${d.drops.join(' / ')}` : '', '');
       if (st.rivals?.length) {
-        L.push('겨룬 방향:', '');
-        for (const id of st.judge.order) { const r = st.rivals.find((x) => x.id === id); const it = st.judge.items.find((x) => x.id === id); L.push(id === 'BASE' ? `- 기본 방향 — ${st.base?.line || ''}` : `- ${id}${id === d.id ? ' (채택)' : ''} ${r.name} — ${r.line}${it?.level && it.level !== '방향' ? ` [${it.level}으로 판정]` : it?.own === '범용' ? ' [범용 문장으로 판정]' : ''}${it?.weak ? ` · 약점: ${it.weak}` : ''}`); }
+        L.push(st.v >= 6 ? `제안 ${st.rivals.length}개 — 하나로 모으지 않는다. 기준안 아래로 영역별 전략과 전술을 썼다:` : '겨룬 방향:', '');
+        for (const id of st.judge.order) { const r = st.rivals.find((x) => x.id === id); const it = st.judge.items.find((x) => x.id === id); L.push(id === 'BASE' ? `- 기본 방향 — ${st.base?.line || ''}` : `- ${id}${id === d.id ? (st.v >= 6 ? ' (기준안)' : ' (채택)') : ''} ${r.name} — ${r.line}${r.proposal ? ` · 해석 ${r.proposal.readings}개 · 받치는 근거 ${r.proposal.evidence}개` : ''}${it?.level && it.level !== '방향' ? ` [${it.level}으로 판정]` : it?.own === '범용' ? ' [범용 문장으로 판정]' : ''}${it?.weak ? ` · 약점: ${it.weak}` : ''}`); }
         if (st.judge.why) L.push('', `고른 이유: ${st.judge.why}`);
         L.push('');
       }
       if (!st.check.ok) L.push(`> 확인할 문제: ${st.check.problems.join(' / ')}`, '');
       const hi = run.course;
-      if (hi?.signals?.length && st.v >= 4) { const hs = new Map(hi.signals.map((x) => [x.id, x])); L.push('과제 전체를 본 노드 판단(통합):', '', ...hi.signals.filter((x) => x.scope === 'ALL').map((x) => `- ${d.signals.includes(x.id) ? '**' : ''}${lensName(x.lens)}${d.signals.includes(x.id) ? '**' : ''} — ${x.claim}`), '', '통합 판단 사이의 충돌:', '', ...hi.edges.filter((e) => e.type === 'tension').map((e) => `- ${lensName(hs.get(e.from).lens)} ↔ ${lensName(hs.get(e.to).lens)}: ${e.why}`), ''); }
+      if (hi?.signals?.length && st.v >= 6) { const n = st.net || {}; const reads = hi.signals.filter((x) => x.type === '해석').sort((a, b) => b.act - a.act);
+        L.push(`조각 ${hi.signals.length}개를 한꺼번에 수렴시켰다 — 지지 ${n.support ?? 0}건 · 모순 ${n.contradict ?? 0}건 · 살아남은 조각 ${hi.signals.filter((x) => x.act > 0).length}개 · 눌린 조각 ${hi.signals.filter((x) => x.act <= 0).length}개.`, '', '해석(과제를 무엇으로 볼 것인가) — 활성이 높은 순:', '', ...reads.slice(0, 12).map((x) => `- ${d.signals.includes(x.id) ? '**' : ''}${lensName(x.lens)}${d.signals.includes(x.id) ? '**' : ''} (${x.act > 0 ? '+' : ''}${x.act.toFixed(2)}) — ${x.claim}`), ''); }
+      else if (hi?.signals?.length && st.v >= 4 && hi.edges) { const hs = new Map(hi.signals.map((x) => [x.id, x])); L.push('과제 전체를 본 노드 판단(통합):', '', ...hi.signals.filter((x) => x.scope === 'ALL').map((x) => `- ${d.signals.includes(x.id) ? '**' : ''}${lensName(x.lens)}${d.signals.includes(x.id) ? '**' : ''} — ${x.claim}`), '', '통합 판단 사이의 충돌:', '', ...hi.edges.filter((e) => e.type === 'tension').map((e) => `- ${lensName(hs.get(e.from).lens)} ↔ ${lensName(hs.get(e.to).lens)}: ${e.why}`), ''); }
       if (v3) L.push('### 2. 영역별 전략', '', ...st.pillars.map((p) => `- **${p.label} · ${p.name}** — ${p.guide}${p.facts.length ? ` [${p.facts.join(' ')}]` : ''}${p.thin ? ' (판단 근거 얇음)' : ''}`), '');
       else L.push('### 2. 축과 단계', '', ...st.axes.map((a) => `- **${a.id} ${a.name}** — ${a.rule}${a.facts.length ? ` [${a.facts.join(' ')}]` : ''}`), '');
       L.push(`### 3. ${v3 ? '전술 — 영역 × 단계' : '파트별 × 단계별 할 일'}`, '', ...st.phases.map((p) => `- **${p.when}** — ${p.line}`), '',
@@ -164,18 +166,18 @@ export function strategyHtml(project) {
 <title>${esc(project.title)} — 전략 한 장</title>
 <style>
 @page { size: A4 landscape; margin: 10mm; }
-* { box-sizing: border-box; } body { margin: 0; padding: 24px 28px; font-family: 'Pretendard', -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; color: #15181C; font-size: 12px; line-height: 1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+* { box-sizing: border-box; } body { margin: 0; padding: 24px 28px; font-family: 'Pretendard', -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; color: #15181C; font-size: 12px; font-weight: 300; line-height: 1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact; } b, strong, th, h2, h3 { font-weight: 500; } h1 { font-weight: 200; letter-spacing: -.01em; }
 .top { display: flex; justify-content: space-between; align-items: baseline; font-size: 10.5px; color: #6B7280; border-bottom: 1px solid #15181C; padding-bottom: 6px; }
 h1 { font-size: 34px; line-height: 1.15; margin: 14px 0 4px; letter-spacing: -.01em; } h1 mark { background: #FFD200; padding: 0 6px; }
-.line { font-size: 18px; font-weight: 700; margin: 0; } .principle { margin: 6px 0 0; color: #3F4650; font-size: 13px; }
-h2 { font-size: 10.5px; letter-spacing: .1em; color: #6B7280; margin: 0 0 6px; font-weight: 700; }
+.line { font-size: 18px; font-weight: 500; margin: 0; } .principle { margin: 6px 0 0; color: #3F4650; font-size: 13px; }
+h2 { font-size: 10.5px; letter-spacing: .1em; color: #6B7280; margin: 0 0 6px; font-weight: 500; }
 .grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 22px; margin-top: 16px; }
 .pillar { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 10px; padding: 7px 0; border-top: 1px solid #D6DAE0; break-inside: avoid; }
-.pillar .part { font-weight: 700; color: #6B7280; font-size: 11px; padding-top: 2px; } .pillar h3 { margin: 0; font-size: 14px; } .pillar p { margin: 1px 0 0; color: #3F4650; }
+.pillar .part { font-weight: 500; color: #6B7280; font-size: 11px; padding-top: 2px; } .pillar h3 { margin: 0; font-size: 14px; } .pillar p { margin: 1px 0 0; color: #3F4650; }
 .pillar ul { margin: 3px 0 0; padding: 0; list-style: none; } .pillar li::before { content: '→ '; color: #9AA1AB; }
 .ev { font-family: ui-monospace, Consolas, monospace; font-size: 9.5px; color: #8A919B; } .ins { font-size: 10.5px; color: #3F4650; } .ins::before { content: '◆ '; color: #E0B400; }
 .phases { display: grid; gap: 0; border: 1px solid #15181C; margin-bottom: 14px; } .phases div { padding: 7px 9px; border-left: 1px solid #D6DAE0; } .phases div:first-child { border-left: 0; }
-.phases b { font-size: 10.5px; display: block; } .phases p { margin: 2px 0 0; font-weight: 600; } .phases small { color: #8A919B; font-size: 9.5px; }
+.phases b { font-size: 10.5px; display: block; } .phases p { margin: 2px 0 0; font-weight: 500; } .phases small { color: #8A919B; font-size: 9.5px; }
 table { width: 100%; border-collapse: collapse; margin-bottom: 12px; } td { padding: 5px 0; border-top: 1px solid #D6DAE0; vertical-align: top; } td.from { color: #6B7280; width: 42%; } td.arrow { width: 18px; color: #9AA1AB; }
 .cov { display: flex; gap: 18px; font-size: 11px; color: #3F4650; margin-top: 10px; } .cov b { font-size: 15px; color: #15181C; }
 .gaps { margin: 0; padding-left: 16px; color: #3F4650; }
@@ -213,7 +215,7 @@ function courseHtml(project) {
   const rivalRow = (id) => {
     if (id === 'BASE') return st.base ? `<tr class="base"><td class="tag">기본</td><td>${esc(st.base.line || st.base.name)}</td><td class="why">노드 없이 낸 방향</td></tr>` : '';
     const r = st.rivals.find((x) => x.id === id); const it = st.judge.items.find((x) => x.id === id) || {};
-    return `<tr class="${id === d.id ? 'won' : ''}"><td class="tag">${id === d.id ? '채택' : it.level && it.level !== '방향' ? esc(it.level) : it.own === '범용' ? '범용' : '후보'}</td><td><b>${esc(r.name)}</b> ${esc(r.line)}</td><td class="why">${esc(id === d.id ? st.judge.why : it.weak || '')}</td></tr>`;
+    return `<tr class="${id === d.id ? 'won' : ''}"><td class="tag">${id === d.id ? (st.v >= 6 ? '기준안' : '채택') : it.level && it.level !== '방향' ? esc(it.level) : it.own === '범용' ? '범용' : st.v >= 6 ? '제안' : '후보'}</td><td><b>${esc(r.name)}</b> ${esc(r.line)}</td><td class="why">${r.proposal ? `해석 ${r.proposal.readings} · 근거 ${r.proposal.evidence}<br>` : ''}${esc(id === d.id ? st.judge.why : it.weak || '')}</td></tr>`;
   };
   const cell = (p, ph) => `<td>${cellItems(st, p, ph).map((x) => `<p class="tac${x.insight ? ' won' : ''}">${x.axis ? `<i class="ax">${axisNo(x.axis)}</i>` : ''}${esc(x.move)}${x.parts?.length ? ` <small>${esc(x.parts.map((c) => categoryById(c)?.name).filter(Boolean).join(' · '))}</small>` : ''}</p>`).join('')}</td>`;
   const off = st.insights.filter((x) => x.fit !== '맞음');
@@ -222,24 +224,24 @@ function courseHtml(project) {
 <title>${esc(project.title)} — 전략 한 장</title>
 <style>
 @page { size: A4 landscape; margin: 9mm; }
-* { box-sizing: border-box; } body { margin: 0; padding: 22px 26px; font-family: 'Pretendard', -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; color: #15181C; font-size: 11.5px; line-height: 1.45; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+* { box-sizing: border-box; } body { margin: 0; padding: 22px 26px; font-family: 'Pretendard', -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; color: #15181C; font-size: 11.5px; font-weight: 300; line-height: 1.45; -webkit-print-color-adjust: exact; print-color-adjust: exact; } b, strong, th, h2, h3 { font-weight: 500; } h1 { font-weight: 200; letter-spacing: -.01em; }
 .top { display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; color: #6B7280; border-bottom: 1px solid #15181C; padding-bottom: 5px; }
 .layer { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 14px; padding: 12px 0; border-bottom: 1px solid #15181C; break-inside: avoid; }
-.layer > .no { font-size: 10px; letter-spacing: .04em; color: #6B7280; font-weight: 700; } .layer > .no b { display: block; font-size: 22px; color: #15181C; letter-spacing: 0; line-height: 1; margin-bottom: 3px; }
+.layer > .no { font-size: 10px; letter-spacing: .04em; color: #6B7280; font-weight: 500; } .layer > .no b { display: block; font-size: 22px; color: #15181C; letter-spacing: 0; line-height: 1; margin-bottom: 3px; }
 h1 { font-size: 30px; line-height: 1.15; margin: 0 0 4px; letter-spacing: -.01em; } h1 mark { background: #FFD200; padding: 0 6px; }
-.line { font-size: 16px; font-weight: 700; margin: 0; } .standard { margin: 5px 0 0; color: #3F4650; font-size: 12.5px; }
+.line { font-size: 16px; font-weight: 500; margin: 0; } .standard { margin: 5px 0 0; color: #3F4650; font-size: 12.5px; }
 .l1 { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 22px; }
-.covers { margin: 9px 0 0; } .covers td:first-child { width: 30%; color: #6B7280; font-weight: 700; font-size: 10.5px; } .covers td { font-weight: 600; }
-.shift { display: grid; grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr); gap: 6px; align-items: start; margin-top: 9px; } .shift span { color: #6B7280; } .shift b { font-weight: 700; } .shift i { color: #9AA1AB; font-style: normal; }
-.kv { margin: 5px 0 0; color: #3F4650; } .kv b { color: #6B7280; font-weight: 700; font-size: 10px; margin-right: 6px; }
-h2 { font-size: 10px; letter-spacing: .1em; color: #6B7280; margin: 0 0 5px; font-weight: 700; }
+.covers { margin: 9px 0 0; } .covers td:first-child { width: 30%; color: #6B7280; font-weight: 500; font-size: 10.5px; } .covers td { font-weight: 500; }
+.shift { display: grid; grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr); gap: 6px; align-items: start; margin-top: 9px; } .shift span { color: #6B7280; } .shift b { font-weight: 500; } .shift i { color: #9AA1AB; font-style: normal; }
+.kv { margin: 5px 0 0; color: #3F4650; } .kv b { color: #6B7280; font-weight: 500; font-size: 10px; margin-right: 6px; }
+h2 { font-size: 10px; letter-spacing: .1em; color: #6B7280; margin: 0 0 5px; font-weight: 500; }
 table { width: 100%; border-collapse: collapse; } td, th { padding: 4px 6px 4px 0; border-top: 1px solid #D6DAE0; vertical-align: top; text-align: left; }
-.rivals td.tag { width: 46px; font-size: 9.5px; font-weight: 700; color: #6B7280; } .rivals tr.won td.tag { color: #15181C; } .rivals tr.won td { background: #FFF6BF; } .rivals td.why { width: 38%; color: #6B7280; font-size: 10.5px; } .rivals tr.base td { color: #8A919B; }
-.axes { display: grid; gap: 14px; } .axis { border-top: 2px solid #15181C; padding-top: 5px; } .axis small { display: block; font-size: 10px; font-weight: 700; color: #6B7280; } .axis h3 { margin: 0; font-size: 14px; } .axis p { margin: 2px 0 0; color: #3F4650; }
-.ax { display: inline-block; width: 14px; height: 14px; line-height: 14px; text-align: center; border-radius: 50%; background: #15181C; color: #fff; font-size: 9px; font-style: normal; font-weight: 700; margin-right: 5px; vertical-align: 1px; }
+.rivals td.tag { width: 46px; font-size: 9.5px; font-weight: 500; color: #6B7280; } .rivals tr.won td.tag { color: #15181C; } .rivals tr.won td { background: #FFF6BF; } .rivals td.why { width: 38%; color: #6B7280; font-size: 10.5px; } .rivals tr.base td { color: #8A919B; }
+.axes { display: grid; gap: 14px; } .axis { border-top: 2px solid #15181C; padding-top: 5px; } .axis small { display: block; font-size: 10px; font-weight: 500; color: #6B7280; } .axis h3 { margin: 0; font-size: 14px; } .axis p { margin: 2px 0 0; color: #3F4650; }
+.ax { display: inline-block; width: 14px; height: 14px; line-height: 14px; text-align: center; border-radius: 50%; background: #15181C; color: #fff; font-size: 9px; font-style: normal; font-weight: 500; margin-right: 5px; vertical-align: 1px; }
 .matrix th { font-size: 10.5px; border-top: 0; border-bottom: 1px solid #15181C; padding-bottom: 5px; } .matrix th small { display: block; font-weight: 400; color: #6B7280; font-size: 10px; }
 .matrix td { padding: 6px 8px 6px 0; } .matrix td.part { width: 17%; } .matrix td.part b { display: block; font-size: 12.5px; } .matrix td.part span { color: #6B7280; font-size: 10.5px; }
-.tac { margin: 0 0 3px; } .tac small { color: #8A919B; font-size: 9.5px; white-space: nowrap; } .tac.won { font-weight: 700; } .tac.won::before { content: '◆ '; color: #E0B400; }
+.tac { margin: 0 0 3px; } .tac small { color: #8A919B; font-size: 9.5px; white-space: nowrap; } .tac.won { font-weight: 500; } .tac.won::before { content: '◆ '; color: #E0B400; }
 .ev { font-family: ui-monospace, Consolas, monospace; font-size: 9px; color: #8A919B; }
 .tail { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; padding-top: 10px; } td.from { color: #6B7280; width: 44%; } td.arrow { width: 16px; color: #9AA1AB; } .gaps { margin: 0; padding-left: 15px; color: #3F4650; }
 .cov { display: flex; gap: 16px; font-size: 10.5px; color: #3F4650; margin-top: 8px; } .cov b { font-size: 13px; color: #15181C; }
@@ -250,12 +252,12 @@ table { width: 100%; border-collapse: collapse; } td, th { padding: 4px 6px 4px 
 <div class="top"><span>${esc(project.title)}</span><span>THE FROM BRAIN · ${esc((run.at || '').slice(0, 10))} · AI의 판단은 예비 판정입니다</span></div>
 <section class="layer"><div class="no"><b>1</b>방향</div><div class="l1">
 <div><h1><mark>${esc(d.name)}</mark></h1><p class="line">${esc(d.line)}</p><p class="standard">${esc(d.standard)}</p>
-${d.lenses?.length ? `<p class="kv"><b>만든 노드</b>${esc(d.lenses.map(lensName).join(' · '))}</p>` : ''}${d.spine ? `<p class="kv"><b>푼 충돌</b>${esc(`${lensName(d.spine.a)} ↔ ${lensName(d.spine.b)}${d.how ? ` — ${d.how}` : ''}`)}</p>` : ''}${d.swap ? `<p class="kv"><b>고유한 이유</b>${esc(d.swap)}</p>` : ''}
+${d.lenses?.length ? `<p class="kv"><b>만든 노드</b>${esc(d.lenses.map(lensName).join(' · '))}</p>` : ''}${d.spine ? `<p class="kv"><b>푼 충돌</b>${esc(`${lensName(d.spine.a)} ↔ ${lensName(d.spine.b)}${d.how ? ` — ${d.how}` : ''}`)}</p>` : d.proposal && d.how ? `<p class="kv"><b>맞물린 해석</b>${esc(d.how)}</p>` : ''}${d.swap ? `<p class="kv"><b>고유한 이유</b>${esc(d.swap)}</p>` : ''}
 ${d.covers?.length ? `<table class="covers">${d.covers.map((c) => `<tr><td>${esc(area(c.area))}</td><td>${esc(c.line)}</td></tr>`).join('')}</table>` : ''}
 ${d.from || d.to ? `<div class="shift"><span>${esc(d.from)}</span><i>→</i><b>${esc(d.to)}</b></div>` : ''}
 ${d.keeps ? `<p class="kv"><b>키우는 것</b>${esc(d.keeps)}</p>` : ''}${d.drops.length ? `<p class="kv"><b>하지 않는 것</b>${esc(d.drops.join(' · '))}</p>` : ''}
-<div class="cov"><span><b>${cv.facts.used}</b>/${cv.facts.total} 팩트</span><span><b>${cv.signals.used}</b>/${cv.signals.total} 판단</span><span><b>${cv.nodes.used}</b>/${cv.nodes.total} 노드</span>${cv.high ? `<span>과제 전체를 본 노드 판단 <b>${cv.high.used}</b>/${cv.high.total} · 충돌 ${cv.high.tensions}</span>` : ''}${cv.tactics ? `<span>전술에 쓰인 노드 <b>${cv.tactics.lenses}</b>/${cv.tactics.lensTotal}</span>` : ''}</div></div>
-<div>${st.rivals?.length ? `<h2>겨룬 방향 ${st.rivals.length}개와 기본 방향</h2><table class="rivals">${st.judge.order.map(rivalRow).join('')}</table>` : ''}
+<div class="cov"><span><b>${cv.facts.used}</b>/${cv.facts.total} 팩트</span><span><b>${cv.signals.used}</b>/${cv.signals.total} 판단</span><span><b>${cv.nodes.used}</b>/${cv.nodes.total} 노드</span>${st.net ? `<span>조각 <b>${st.net.atoms}</b>개 수렴 · 지지 ${st.net.support} · 모순 ${st.net.contradict}</span>` : cv.high ? `<span>과제 전체를 본 노드 판단 <b>${cv.high.used}</b>/${cv.high.total} · 충돌 ${cv.high.tensions}</span>` : ''}${cv.tactics ? `<span>전술에 쓰인 노드 <b>${cv.tactics.lenses}</b>/${cv.tactics.lensTotal}</span>` : ''}</div></div>
+<div>${st.rivals?.length ? `<h2>${st.v >= 6 ? `제안 ${st.rivals.length}개와 기본 방향` : `겨룬 방향 ${st.rivals.length}개와 기본 방향`}</h2><table class="rivals">${st.judge.order.map(rivalRow).join('')}</table>` : ''}
 ${st.check.ok ? '' : `<p class="warn">확인할 문제 — ${esc(st.check.problems.join(' / '))}</p>`}</div>
 </div></section>
 ${v3 ? `<section class="layer"><div class="no"><b>2</b>영역별 전략</div><div class="axes" style="grid-template-columns: repeat(${Math.max(1, st.pillars.length)}, minmax(0, 1fr))">
