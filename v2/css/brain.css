@@ -35,6 +35,7 @@
   /* 무게 — 씬 중심. 큰 글자일수록 가늘게 쓰고, 강조는 굵기가 아니라 크기 · 색 · 자리로 한다. 작은 라벨만 읽히도록 중간 무게를 쓴다 */
   --w-thin: 200; --w-light: 300; --w-text: 350; --w-label: 450; --w-strong: 500;
   --panel: calc(var(--u) * 58);
+  --rail: calc(var(--u) * 28);
 }
 
 * { box-sizing: border-box; }
@@ -77,7 +78,7 @@ ul, ol { list-style: none; }
 .btn.go:hover { background: #ffdc33; border-color: #ffdc33; }
 
 /* ---------- 본문 ---------- */
-.stage { display: grid; grid-template-columns: minmax(0, 1fr) var(--panel); min-height: 0; }
+.stage { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr) var(--panel); min-height: 0; }
 .universe { position: relative; min-height: 0; min-width: 0; overflow: hidden; }
 .universe canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
 .hud { position: absolute; font-size: var(--t-cap); line-height: 16px; pointer-events: none; }
@@ -403,7 +404,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 
 /* 전략 한 장 — 우측 패널 왼쪽에 펼치는 판. 읽는 문서가 아니라 보는 판이라 글자를 크게, 줄을 적게 쓴다 */
 :root { --deck: calc(var(--u) * 66); }
-.stage.with-deck { grid-template-columns: minmax(0, 1fr) var(--deck) var(--panel); }
+.stage.with-deck { grid-template-columns: minmax(0, 1fr) var(--deck) var(--panel); } .stage.with-deck .rail { display: none; }
 .deck { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; min-width: 0; border-left: 1px solid var(--line); background: var(--surface); }
 .deck-head { display: flex; align-items: center; justify-content: space-between; gap: var(--u); padding: calc(var(--u) * 1.5) calc(var(--u) * 2.5); border-bottom: 1px solid var(--line); }
 .eyebrow { font-family: var(--mono); font-size: 11px; font-weight: var(--w-label); letter-spacing: .12em; color: var(--mute); }
@@ -519,3 +520,22 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .high .more { margin-top: var(--u); } .high .more > summary { font-size: 11px; font-weight: 400; color: var(--mute); padding: calc(var(--u) * .5) 0; }
 .rival .std { color: var(--mute); font-size: var(--t-cap); line-height: 18px; margin-top: 2px; } .rival .link { display: inline-block; margin-top: calc(var(--u) * .5); font-size: 11px; }
 .high summary { flex-wrap: wrap; } .high summary span { white-space: nowrap; }
+
+/* 왼쪽 프로젝트 목록 */
+.rail { display: grid; grid-template-rows: auto minmax(0, 1fr); border-right: 1px solid var(--line); background: var(--surface); min-height: 0; min-width: 0; }
+.stage.rail-off { grid-template-columns: minmax(0, 1fr) var(--panel); } .stage.rail-off .rail { display: none; }
+.rail-head { display: flex; align-items: center; justify-content: space-between; gap: var(--u); padding: calc(var(--u) * 1.5) calc(var(--u) * 1.5); border-bottom: 1px solid var(--line); }
+.rail-list { overflow-y: auto; list-style: none; }
+.rail-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; border-bottom: 1px solid var(--line); border-left: 2px solid transparent; }
+.rail-list li.on { border-left-color: var(--yellow); background: var(--surface-2); }
+.rail-item { display: block; width: 100%; text-align: left; background: none; border: 0; padding: calc(var(--u) * 1.25) calc(var(--u) * 1.5); cursor: pointer; min-width: 0; }
+.rail-item strong { display: block; font-size: var(--t-cap); line-height: 18px; font-weight: var(--w-text); color: var(--text-2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.rail-list li.on .rail-item strong { color: var(--text); font-weight: var(--w-strong); }
+.rail-item small { display: block; font-size: 10px; line-height: 14px; color: var(--mute); margin-top: 2px; }
+.rail-del { background: none; border: 0; padding: calc(var(--u) * 1.25) var(--u); font-size: 10px; color: var(--mute); cursor: pointer; opacity: 0; }
+.rail-list li:hover .rail-del, .rail-del:focus, .rail-del.ask { opacity: 1; } .rail-del.ask { color: var(--red-soft); }
+.files li .chip { white-space: nowrap; }
+.stage.with-deck.rail-off { grid-template-columns: minmax(0, 1fr) var(--deck) var(--panel); }
+@media (max-width: 1100px) { .rail { display: none; } }
+@media (min-width: 901px) and (max-width: 1100px) { .stage:not(.with-deck) { grid-template-columns: minmax(0, 1fr) var(--panel); } }
+@media (max-width: 900px) { .stage, .stage.rail-off, .stage.with-deck, .stage.with-deck.rail-off { grid-template-columns: minmax(0, 1fr); } }

@@ -51,11 +51,12 @@ export function createAnthropic(config = {}, { getKey = () => '', getCode = () =
     label: c.mode === 'proxy' ? 'Claude API (서버 키)' : 'Claude API (내 키)',
     models: c.models,
     modelFor,
-    async json({ tier = 'lead', system, user, signal }) {
+    files: true,   // 올린 자료(PDF · 이미지)를 그대로 읽을 수 있다
+    async json({ tier = 'lead', system, user, blocks, signal }) {
       const model = modelFor(tier);
       let max = c.maxTokens;
       for (let i = 0; i < 2; i++) {
-        const r = await post({ model, max_tokens: max, system, messages: [{ role: 'user', content: user }] }, signal);
+        const r = await post({ model, max_tokens: max, system, messages: [{ role: 'user', content: blocks?.length ? [...blocks, { type: 'text', text: user }] : user }] }, signal);
         // 답이 길어 잘렸으면 한 번만 늘려서 다시 받는다. 잘린 JSON을 고쳐 쓰지 않는다
         if (r.stop_reason === 'max_tokens' && i === 0) { max *= 2; continue; }
         if (r.stop_reason === 'max_tokens') throw new Error('Claude API: 답이 길이 제한을 넘어 잘렸습니다. 같은 설정으로 다시 실행하면 같은 자리에서 멈춥니다. 이슈 수를 줄이거나 관리자에게 알려 주세요.');

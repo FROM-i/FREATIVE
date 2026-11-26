@@ -19,8 +19,12 @@ export async function forward({ method, code, token, payload, fetchImpl }) {
   if (!body || typeof body !== 'object' || !Array.isArray(body.messages)) return fail(400, '허용하지 않는 요청');
   const allowed = new Set((process.env.BRAIN_CLAUDE_MODELS || 'claude-opus-5-5,claude-sonnet-5-5').split(',').map((x) => x.trim()));
   if (!allowed.has(body.model)) return fail(400, `허용하지 않는 모델: ${body.model}`);
-  // 받는 항목만 넘긴다 — 도구나 다른 선택 항목은 프록시로 쓸 수 없다
-  const safe = { model: body.model, max_tokens: Math.min(32000, Math.max(1, Number(body.max_tokens) || 8000)), system: typeof body.system === 'string' ? body.system : '', messages: body.messages.filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string') };
+  // 받는 항목만 넘긴다 — 도구나 다른 선택 항목은 프록시로 쓸 수 없다. 글과, 올린 자료(PDF · 이미지 · 글)만 받는다
+  const MEDIA = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'text/plain']);
+  const block = (b) => (b?.type === 'text' && typeof b.text === 'string' ? { type: 'text', text: b.text }
+    : (b?.type === 'document' || b?.type === 'image') && b.source?.type === 'base64' && MEDIA.has(b.source.media_type) && typeof b.source.data === 'string' ? { type: b.type, source: { type: 'base64', media_type: b.source.media_type, data: b.source.data }, ...(b.type === 'document' && typeof b.title === 'string' ? { title: b.title.slice(0, 200) } : {}) } : null);
+  const content = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map(block).filter(Boolean) : '');
+  const safe = { model: body.model, max_tokens: Math.min(32000, Math.max(1, Number(body.max_tokens) || 8000)), system: typeof body.system === 'string' ? body.system : '', messages: body.messages.filter((m) => m && (m.role === 'user' || m.role === 'assistant')).map((m) => ({ role: m.role, content: content(m.content) })).filter((m) => m.content && m.content.length) };
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'anthropic-version': VERSION, 'Content-Type': 'application/json' }, body: JSON.stringify(safe) });
   return { status: r.status, body: await r.text() };
 }

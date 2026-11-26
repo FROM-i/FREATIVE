@@ -640,9 +640,9 @@ test('분류 — 여러 개 고를 수 있고, 고른 분류마다 특화 인풋
   assert.deepEqual(p.categories, ['marketing', 'ops']); assert.equal(p.category, 'marketing');
   const user = verdictPrompt(p, [], []).user;
   assert.ok(user.includes('마케팅 · 운영') && user.includes('마케팅_인풋') && user.includes('운영_인풋') && user.includes('상시 운영, 월간 점검'));
-  // 고른 분류마다 필수 칸을 본다
+  // 분류별 상세 인풋은 필수가 아니다 — 비어 있어도 문제로 잡지 않는다. 예전 프로젝트에 적힌 값은 그대로 미션에 들어간다
   const miss = validateProject(p).problems.map((x) => `${x.where} ${x.what}`).join(' | ');
-  assert.ok(miss.includes('운영 인풋') && miss.includes('응대 · 품질 기준') && !miss.includes('마케팅 인풋'));
+  assert.ok(!miss.includes('운영 인풋') && !miss.includes('마케팅 인풋'));
 });
 
 test('Claude API 공급자 — 급에 따라 모델을 고르고, 문서의 호출 형식으로 보낸다', async () => {
@@ -1124,4 +1124,98 @@ test('동시 정합 — 조각을 한꺼번에 수렴시킨다: 근거가 받친
   assert.equal(proposals(net, rel, r.act, { count: 1 }).length, 1);
   // 잘게 나누는 정도를 사람이 바꿀 수 있다 — 아주 크게 주면 해석 하나가 제안 하나다
   assert.ok(proposals(net, rel, r.act, { count: 9, grain: 5 }).every((x) => x.readings.length === 1));
+});
+
+test('자료 읽기 — 여러 자료를 전부 읽어 과제 구조로 정리하고, 사람이 쓴 과제 정의는 덮어쓰지 않는다', async () => {
+  const zlib = await import('node:zlib');
+  const { officeText, readFile, chunks, analyzeMaterials, applyIntake, shapeStructure, readPrompt, structurePrompt } = await import('../js/engine/intake.js');
+  const { factProblem } = await import('../knowledge/facts.js');
+  const zip = (files) => { const enc = new TextEncoder(); const parts = []; const central = []; let off = 0;
+    for (const [name, body] of Object.entries(files)) { const nm = enc.encode(name); const raw = enc.encode(body); const data = zlib.deflateRawSync(raw);
+      const lh = Buffer.alloc(30); lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(8, 8); lh.writeUInt32LE(data.length, 18); lh.writeUInt32LE(raw.length, 22); lh.writeUInt16LE(nm.length, 26); parts.push(lh, nm, data);
+      const ch = Buffer.alloc(46); ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(8, 10); ch.writeUInt32LE(data.length, 20); ch.writeUInt32LE(raw.length, 24); ch.writeUInt16LE(nm.length, 28); ch.writeUInt32LE(off, 42); central.push(ch, nm); off += 30 + nm.length + data.length; }
+    const cd = Buffer.concat(central); const end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(Object.keys(files).length, 10); end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(off, 16);
+    return new Uint8Array(Buffer.concat([...parts, cd, end])); };
+  // 오피스 문서는 브라우저 안에서 글로 푼다 — 라이브러리 없이
+  const docx = zip({ 'word/document.xml': '<w:p><w:r><w:t>연간 운영 과업 &amp; 범위</w:t></w:r></w:p><w:p><w:r><w:t>프로모션 연 50건</w:t></w:r></w:p>' });
+  assert.equal(await officeText(docx, 'docx'), '연간 운영 과업 & 범위\n프로모션 연 50건');
+  assert.equal(await officeText(zip({ 'ppt/slides/slide2.xml': '<a:p><a:t>둘째</a:t></a:p>', 'ppt/slides/slide1.xml': '<a:p><a:t>첫째</a:t></a:p>' }), 'pptx'), '## 슬라이드 1\n첫째\n\n## 슬라이드 2\n둘째');
+  assert.equal(await officeText(zip({ 'xl/sharedStrings.xml': '<sst><si><t>항목</t></si></sst>', 'xl/worksheets/sheet1.xml': '<row><c t="s"><v>0</v></c><c><v>12</v></c></row>' }), 'xlsx'), '## 시트 1\n항목 | 12');
+  const F = (name, body) => ({ name, size: body.length, type: '', arrayBuffer: async () => (body instanceof Uint8Array ? body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) : new TextEncoder().encode(body).buffer), text: async () => String(body) });
+  const files = await Promise.all([F('RFP.docx', docx), F('메모.txt', '보안 점검은 분기 1회\n장애 대응 4시간 이내'), F('구형.hwp', 'x'), F('큰.pdf', new Uint8Array(10)), F('작은.pdf', new Uint8Array(3))].map((f) => readFile(f, { limit: 5 })));
+  assert.deepEqual(files.map((f) => f.kind), ['text', 'text', 'skip', 'skip', 'pdf']);
+  assert.ok(/HWPX나 PDF/.test(files[2].note) && /서버 한도/.test(files[3].note) && files[4].block.type === 'document' && files[4].block.source.media_type === 'application/pdf');
+  // 긴 글은 나눠서 전부 읽는다
+  assert.ok(chunks('가\n'.repeat(100), 50).join('').replace(/\s/g, '').length === 100 && chunks('가\n'.repeat(100), 50).every((c) => c.length <= 50) && chunks('짧은 글').length === 1);
+  assert.match(readPrompt({ name: 'a', kind: 'text', chunk: '본문' }, 2, 3).system, /빠짐없이/); assert.match(readPrompt({ name: 'a', kind: 'text', chunk: '본문' }, 2, 3).user, /2\/3 부분/);
+  // PDF와 이미지는 그대로 읽을 수 있는 공급자에서만 받는다
+  const p = newProject({ title: '시험', brief: { what: '사람이 쓴 목표' }, issues: [{ root: true }] });
+  await assert.rejects(analyzeMaterials(p, files, createMock()), /Claude API 공급자에서만/);
+  const kinds = []; const mock = createMock();
+  const got = await analyzeMaterials(p, files.slice(0, 4), { json: async (a) => { kinds.push(`${a.task.kind}:${a.tier}`); return mock.json(a); } });
+  assert.deepEqual(kinds, ['intakeRead:support', 'intakeRead:support', 'intake:lead'], '자료마다 읽고, 마지막에 한 번 정리한다');
+  assert.ok(got.reads.length === 2 && got.skipped.length === 2 && got.issues.filter((i) => i.root).length === 1 && got.facts.every((f) => f.by === 'doc' && f.sourceType === 'internal' && /RFP\.docx|메모\.txt/.test(f.source) && !factProblem(f)));
+  assert.match(structurePrompt(p, [{ id: 'M1', name: 'a', items: [] }]).user, /사람이 쓴 과제 정의 — 그대로 둔다/);
+  // 넣기 — 빈 칸만 채우고, 사람이 쓴 목표는 그대로 둔다. 초안은 따로 남긴다. 두 번 넣어도 겹치지 않는다
+  const added = applyIntake(p, got);
+  assert.deepEqual([p.brief.what, added.areas, added.issues, p.issues.filter((i) => i.root).length, p.materials.length, !!p.intake.draft.what], ['사람이 쓴 목표', 2, 2, 1, 2, true]);
+  assert.ok(p.facts.length === added.facts && added.facts > 0 && p.brief.target);
+  assert.deepEqual(Object.values(applyIntake(p, got)), [0, 0, 0, 0, 0]);
+  // 없는 근거 · 없는 분류 · 없는 종류는 걷는다
+  const s = shapeStructure({ categories: ['design', 'nope'], issues: [{ title: '가' }, { title: '나', root: true, test: '질문' }], facts: [{ kind: 'x', text: '사실', from: 'M1-1' }, { kind: 'stat', text: '근거 없는 사실', from: 'M9-9' }] }, [{ name: 'a.txt', items: [{ id: 'M1-1', text: 't', quote: 'q', where: '1쪽' }] }]);
+  assert.deepEqual([s.categories, s.issues.map((i) => i.root), s.facts.map((f) => `${f.kind}|${f.source}|${f.quote}`)], [['design'], [false, true], ['notice|a.txt · 1쪽|q']]);
+  // 프로젝트를 다시 읽어도 자료 목록과 초안이 남는다
+  assert.equal(newProject(JSON.parse(JSON.stringify(p))).materials.length, 2);
+});
+
+test('딥리서치 에이전트 — 콘솔의 에이전트를 ID로 부르고, 받은 답에서 출처 조건에 맞는 팩트만 넣는다', async () => {
+  const { forward, digest, DEFAULT_ENV, DEFAULT_AGENTS } = await import('../api/research.js');
+  const { researchPrompt, factsFromReport, createResearch } = await import('../js/providers/research.js');
+  const calls = []; const key = process.env.ANTHROPIC_API_KEY; process.env.ANTHROPIC_API_KEY = 'test-key';
+  const events = [{ type: 'user.message', processed_at: '1' }, { type: 'session.status_running', processed_at: '2' }, { type: 'agent.tool_use', processed_at: '3' }, { type: 'agent.message', content: [{ type: 'text', text: '## 통계\n\n- 사실' }], processed_at: '4' }, { type: 'session.status_idle', stop_reason: { type: 'end_turn' }, processed_at: '5' }];
+  const fake = async (url, init = {}) => { calls.push({ url, method: init.method || 'GET', headers: init.headers, body: init.body ? JSON.parse(init.body) : null });
+    const ok = (j) => ({ ok: true, status: 200, text: async () => JSON.stringify(j) });
+    if (/\/agents\//.test(url)) return ok({ id: url.split('/').pop(), name: '딥리서치', model: { id: 'claude-opus-5-5' } });
+    if (/\/sessions$/.test(url)) return ok({ id: 'sesn_0123456789' });
+    if (/\/events\?/.test(url)) return ok({ data: [...events].reverse() });
+    return ok({ data: [] }); };
+  try {
+    const run = async (payload) => { const r = await forward({ method: 'POST', payload, fetchImpl: fake }); return { status: r.status, ...JSON.parse(r.body) }; };
+    // 쓸 수 있는 에이전트 — 이름은 콘솔에서 지은 것을 읽어 온다
+    const list = await run({ action: 'agents' });
+    assert.deepEqual([list.env, list.agents.map((a) => a.id), list.agents[0].name, list.agents[0].model], [DEFAULT_ENV, DEFAULT_AGENTS, '딥리서치', 'claude-opus-5-5']);
+    assert.ok(calls[0].headers['anthropic-beta'] === 'managed-agents-2026-04-01' && calls[0].headers.Authorization === 'Bearer test-key');
+    // 시작 — 허용한 에이전트만, 지시문과 함께 세션을 연다
+    assert.equal((await run({ action: 'start', agent: 'agent_other', prompt: '조사' })).status, 400);
+    const started = await run({ action: 'start', agent: DEFAULT_AGENTS[0], prompt: '조사한다', title: '제목' });
+    const sent = calls.find((c) => /\/sessions$/.test(c.url)).body;
+    assert.deepEqual([started.session, sent.agent, sent.environment_id, sent.initial_events[0].type, sent.initial_events[0].content[0].text], ['sesn_0123456789', DEFAULT_AGENTS[0], DEFAULT_ENV, 'user.message', '조사한다']);
+    // 진행 — 이벤트를 시간 순으로 읽어 상태로 줄인다
+    const polled = await run({ action: 'poll', session: 'sesn_0123456789' });
+    assert.deepEqual([polled.status, polled.tools, polled.text], ['idle', 1, '## 통계\n\n- 사실']);
+    assert.equal((await run({ action: 'poll', session: '../x' })).status, 400);
+    assert.deepEqual([digest(events.slice(0, 3)).status, digest([...events.slice(0, 4), { type: 'session.status_idle', stop_reason: { type: 'requires_action' } }]).status, digest([{ type: 'session.error', error: { message: 'x', retry_status: 'terminal' } }]).status], ['running', 'error', 'error']);
+    // 화면 쪽 — 서버 오류는 그 말 그대로 올린다
+    const api = createResearch({ fetchImpl: async () => ({ ok: false, status: 503, text: async () => JSON.stringify({ error: { message: '서버에 ANTHROPIC_API_KEY가 없다' } }) }) });
+    await assert.rejects(api.agents(), /ANTHROPIC_API_KEY/);
+  } finally { if (key === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = key; }
+  // 지시문 — 과제의 정의와 배경만 준다. 받는 출처 네 가지와 답의 형식을 정한다
+  const p = newProject({ title: '과제', brief: { what: '목표 문장', points: '핵심' }, issues: [{ title: '이슈 하나' }], areas: [{ name: '영역 가' }] });
+  const pr = researchPrompt(p);
+  for (const t of ['목표: 목표 문장', '핵심 포인트: 핵심', '업무 영역: 영역 가', '이슈: 이슈 하나', '받는 출처 — 이 네 가지만', '확인: AI 조사 · 확인 전', '## 통계']) assert.ok(pr.includes(t), t);
+  // 답에서 팩트를 꺼낸다 — 출처 유형 · 주소 · 날짜가 없으면 받지 않는다. 확인 전으로 들어간다
+  const rep = '조사를 마쳤다.\n\n## 통계\n\n- 앱 이용자 100만 명\n  - 출처: 공식 통계 — 통계청\n  - 날짜: 2026-01-01\n  - 주소: https://kostat.go.kr/x\n  - 확인: AI 조사 · 확인 전\n- 블로그에서 본 것\n  - 출처: 블로그\n- 주소 없는 것\n  - 출처: 보도자료 — 회사\n  - 날짜: 2026-02-01\n';
+  const got = factsFromReport(rep, p);
+  assert.deepEqual([got.found, got.facts.map((f) => `${f.id} ${f.kind} ${f.by} ${f.checked}`), got.rejected.map((r) => r.why)], [3, ['F1 stat ai false'], ['출처 유형이 받는 네 가지(공식 통계 · 공시 · 브랜드 공식 자료 · 보도자료)가 아니다', '원문 주소가 없다']]);
+  assert.equal(factsFromReport('형식 없는 답', p).found, 0);
+});
+
+test('서버 프록시 — 올린 자료(PDF · 이미지 · 글)만 받고, 도구나 다른 항목은 넘기지 않는다', async () => {
+  const { forward } = await import('../api/claude.js');
+  const key = process.env.ANTHROPIC_API_KEY; process.env.ANTHROPIC_API_KEY = 'test-key'; const real = globalThis.fetch; let sent = null;
+  globalThis.fetch = async (url, init) => { sent = JSON.parse(init.body); return { status: 200, text: async () => '{}' }; };
+  try {
+    await forward({ method: 'POST', payload: { body: { model: 'claude-opus-5-5', tools: [{ type: 'web_search' }], messages: [{ role: 'user', content: [{ type: 'document', title: 'a.pdf', source: { type: 'base64', media_type: 'application/pdf', data: 'AAAA' } }, { type: 'document', source: { type: 'url', url: 'http://x' } }, { type: 'tool_result', content: 'x' }, { type: 'text', text: '읽는다' }] }, { role: 'user', content: '글' }, { role: 'system', content: 'x' }] } } });
+  } finally { globalThis.fetch = real; if (key === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = key; }
+  assert.deepEqual([sent.tools, sent.messages.length, sent.messages[0].content.map((b) => b.type), sent.messages[0].content[0].title, sent.messages[1].content], [undefined, 2, ['document', 'text'], 'a.pdf', '글']);
 });
