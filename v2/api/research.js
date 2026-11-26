@@ -9,8 +9,9 @@ import { guard, bearer } from './_guard.js';
 const API = 'https://api.anthropic.com/v1';
 const VERSION = '2026-10-21';   // api/claude.js와 같은 값
 const BETA = 'managed-agents-2026-04-01';
-export const DEFAULT_ENV = 'env_01NkSgMqnM4YxFRxLwcGFVBs';
-export const DEFAULT_AGENTS = ['agent_01T11he87F6rHEYZrX5aLeyT', 'agent_01KRCvFheyW247ex5eYJGD58'];
+// 에이전트와 환경은 서버 키(ANTHROPIC_API_KEY)와 같은 워크스페이스에 있어야 한다 — 다르면 "Agent not found"가 난다
+export const DEFAULT_ENV = 'env_016Lb3UWhSBFQ9hjpDwEk1zu';
+export const DEFAULT_AGENTS = ['agent_01M1zNfNfkQqoEf327cTG6Rz'];
 
 const conf = () => ({
   env: (process.env.BRAIN_AGENT_ENV || DEFAULT_ENV).trim(),
@@ -60,7 +61,7 @@ export async function forward({ method, code, token, payload, fetchImpl = (...a)
     if (!prompt) return fail(400, '조사 지시문이 비어 있다');
     if (prompt.length > 40000) return fail(400, '조사 지시문이 너무 길다');
     const r = await call('/sessions', { method: 'POST', body: JSON.stringify({ agent, environment_id: c.env, title: String(payload.title || 'THE FROM BRAIN 조사').slice(0, 120), initial_events: [{ type: 'user.message', content: [{ type: 'text', text: prompt }] }] }) });
-    if (!r.ok) return fail(r.status, `세션을 열지 못했다 — ${r.message}`);
+    if (!r.ok) return fail(r.status, `세션을 열지 못했다 — ${r.message}${r.status === 404 ? ' (서버 키와 같은 워크스페이스의 에이전트 · 환경인지 확인한다)' : ''}`);
     return out(200, { session: r.json.id, agent });
   }
   if (action === 'poll' || action === 'stop') {
