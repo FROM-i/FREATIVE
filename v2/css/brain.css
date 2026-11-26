@@ -497,7 +497,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .axes .pillar { cursor: pointer; } .axes .pillar .part, .matrix .pillar .part { line-height: 18px; }
 .evs .cnt.warn { color: var(--red-soft); }
 .tactic { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 2px calc(var(--u) * .75); margin-right: calc(var(--u) * 1.5); }
-.tactic small { font-size: 11px; color: var(--mute); }
+.tactic small { font-size: 11px; color: var(--mute); } .tactic small.src { opacity: .75; }
 .tactic .ev.n { font-size: var(--t-sub); line-height: 20px; color: var(--yellow); text-align: left; }
 .cells .move { align-items: baseline; }
 @media (max-width: 1280px) { :root { --deck: calc(var(--u) * 52); } .pairs { grid-template-columns: minmax(0, 1fr); } }
