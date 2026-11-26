@@ -9,13 +9,13 @@ import { common, missionBlock, toJson as j } from './prompts.js';
 import { validFacts } from './facts.js';
 import { categoriesOf, categoryById } from './tags.js';
 
-export const COURSE_CAPS = { name: 16, line: 44, standard: 64, from: 30, to: 30, keeps: 34, drop: 26, answer: 60, axis: 14, rule: 42, when: 12, phase: 36, guide: 42, move: 28, pain: 30, fix: 32, why: 90, note: 48, area: 14, areaNote: 40, cover: 36, claim: 120, swap: 56, casee: 40 };
+export const COURSE_CAPS = { name: 16, line: 44, standard: 64, from: 30, to: 30, keeps: 34, drop: 26, answer: 60, axis: 14, rule: 42, when: 12, phase: 36, guide: 42, move: 28, pain: 30, fix: 32, why: 90, note: 48, area: 14, areaNote: 40, cover: 36, claim: 120, swap: 56, casee: 40, object: 8 };
 
 /** 방향 문장에 들어가면 전술이라는 표시가 되는 말 — 화면 · 기능 · 표현 장치의 이름 */
 export const DEVICE_WORDS = ['화면', '버튼', '배너', '팝업', '탭', '칸', '카드', '쿠폰', '푸시', '아이콘', '위젯', '페이지', '슬롯', '알림창'];
 
 const cut = (s, n) => (String(s || '').length > n ? `${String(s).slice(0, n)}…` : String(s || ''));
-const areaList = (areas) => areas.map((a) => `- ${a.id}: ${a.name}${a.note ? ` — ${a.note}` : ''}`).join('\n');
+const areaList = (areas) => areas.map((a) => `- ${a.id}: ${a.name}${a.note ? ` — ${a.note}` : ''}${a.objects?.length ? ` · 이 영역만의 대상: ${a.objects.join(', ')}` : ''}`).join('\n');
 const levelBlock = (areas) => `## 영역 — 이 과제가 맡는 일의 범위
 ${areaList(areas)}
 
@@ -24,6 +24,7 @@ ${areaList(areas)}
 - **영역 전략**: 한 영역 안의 방침이다. 한 영역의 대상(그 영역에서만 다루는 것 — 예: 프로모션 영역의 혜택 · 쿠폰 · 이벤트)을 주어로 삼은 문장은 아무리 넓게 써도 그 영역의 전략이다.
 - **전술**: 특정 화면 · 기능 · 표현 장치 · 한 번의 실행이다. 영역 전략 아래의 여러 할 일 중 하나다.
 - 가르는 법: ① 문장의 주어가 한 영역에만 있는 대상인가 → 영역 전략. ② 장치 이름(${DEVICE_WORDS.slice(0, 8).join(' · ')} 등)을 지우면 문장이 서지 않는가 → 전술. ③ 영역 하나를 빼도 문장이 그대로인가 → 그 영역에 걸리지 않는 것이다.
+- **대상 낱말 검사**: 위 "이 영역만의 대상"에 적힌 낱말이 방향 문장(이름 · 한 줄 · 기준)에 한 영역 것만 들어 있으면 그 영역의 전략으로 본다. 영역마다 달라지는 것을 쓸 때도 다른 영역의 대상 낱말을 빌려 쓰지 않는다. 기계가 낱말을 대조한다.
 - 파트(직무)와 기간에 걸친다는 것만으로는 방향이 아니다. 모든 파트가 만지는 대상이어도 한 영역의 대상이면 영역 전략이다. 영역이 하나뿐인 과제에서는 이 시험 대신 ②와 "이슈 하나의 답인가"로 가른다.
 - **이슈 하나의 답은 방향이 아니다.** 이슈는 과제 안의 문제들이다. 방향은 브리프의 무엇을 · 목적 · 성공 기준 · 대상 · 제약을 함께 보고 세운다.
 - 누구에게나 맞는 말("고객 중심", "데이터 기반", "안정적 운영", "통합 관리")은 기준이 아니다. 기준은 **무엇을 하지 않는지**가 보인다.`;
@@ -36,6 +37,30 @@ function signalGroups(run, lensName) {
 }
 const tacticList = (run) => (run.insights || []).map((i) => ({ id: i.id, 제목: i.title, 판정: i.from?.verdict || '' }));
 const partsOf = (project) => categoriesOf(project).map(categoryById).filter((c) => c.id !== 'integrated');
+
+const OBJECT_RULE = `- \`objects\`: **그 영역에서만 다루는 대상**을 가리키는 낱말 3~6개. 브리프와 팩트북에 실제로 나오는 명사로 쓴다(예: 프로모션 영역이면 혜택 · 쿠폰 · 캠페인 · 이벤트 · 응모). 낱말 하나는 ${COURSE_CAPS.object}자 이내.
+  - 다른 영역에서도 쓰는 말, 과제 전체에 쓰이는 말(운영, 고객, 타겟, 화면, 일정, 기획, 요청)은 넣지 않는다.
+  - 이 낱말로 "방향이 한 영역의 대상에 붙었는가"를 기계가 대조한다. 영역이 하나뿐이면 비운다.`;
+
+/** 영역의 대상 낱말 — 사람이 영역만 적고 낱말은 적지 않았을 때 뽑는다 */
+export function courseObjectsPrompt(project, areas) {
+  return {
+    system: `${common(project)}
+
+## 너의 역할 — 영역마다의 대상 낱말
+아래 영역마다, 그 영역에서만 다루는 대상을 가리키는 낱말을 뽑는다.
+${OBJECT_RULE}
+
+## 영역
+${areas.map((a) => `- ${a.id}: ${a.name}${a.note ? ` — ${a.note}` : ''}`).join('\n')}
+
+## 출력 (JSON만)
+{"areas":[{"id":"${areas[0].id}","objects":[""]}]}`,
+    user: `${missionBlock(project, null, { high: true })}
+
+영역마다의 대상 낱말을 JSON으로 낸다.`,
+  };
+}
 
 /** 업무 영역 — 미션에 적혀 있지 않으면 미션에서 뽑는다. 사람이 고쳐 쓸 수 있다. */
 export function courseScopePrompt(project) {
@@ -51,9 +76,10 @@ export function courseScopePrompt(project) {
 - 이슈를 그대로 옮기지 않는다. 이슈는 문제이고 영역은 일의 범위다.
 - 나눌 것이 없는 과제(결과물 하나)는 1개만 낸다. 억지로 쪼개지 않는다.
 - \`name\` ${C.area}자 이내, \`note\`(그 영역에 드는 일) ${C.areaNote}자 이내.
+${OBJECT_RULE}
 
 ## 출력 (JSON만)
-{"areas":[{"name":"","note":""}]}`,
+{"areas":[{"name":"","note":"","objects":[""]}]}`,
     user: `${missionBlock(project, null, { high: true })}
 
 과제의 영역을 JSON으로 낸다.`,
@@ -91,7 +117,7 @@ const FAM = { identity: '아이덴티티 — 더프롬의 기준', airplane: '�
 const famName = (f) => FAM[f] || f;
 
 /** 노드가 방향 높이에서 본다 — 통합 판단 하나와 영역마다 판단 하나. 이슈 높이에서 낸 판단은 배경으로만 받는다. */
-export function courseLensPrompt(project, lens, areas, own = []) {
+export function courseLensPrompt(project, lens, areas, own = [], redo = null) {
   const C = COURSE_CAPS;
   const ism = lens.family === 'airplane';
   const source = ism
@@ -116,12 +142,15 @@ ${areaList(areas)}
 
 ## 생각하는 순서 — 건너뛰지 않는다
 1. 원문을 읽는다. 이 기준이 왜 있는지, 무엇을 막으려는 것인지를 먼저 이해한다.
-2. **통념(against).** 이런 과제를 업계가 통상 어떻게 푸는가. 네 기준으로 보면 그 방식의 무엇이 틀렸거나 비어 있는가. 한 문장.
-3. **통합(ALL).** 네 기준으로 보면 이 과제 전체를 묶는 기준은 무엇이어야 하는가. 브리프의 목적과 성공 기준에 닿아야 한다. 판단 하나.
+2. **네 기준에서만 보이는 것(only).** 다른 노드는 보지 못하고 네 기준이라서 보이는 것 한 문장. 판단은 여기서 출발한다. 이것을 쓸 수 없으면 아직 네 기준으로 본 것이 아니다.
+3. **통념(against).** 이런 과제를 업계가 통상 어떻게 푸는가. 네 기준으로 보면 그 방식의 무엇이 틀렸거나 비어 있는가. 한 문장.
+4. **통합(ALL).** 네 기준으로 보면 이 과제 전체를 묶는 기준은 무엇이어야 하는가. 브리프의 목적과 성공 기준에 닿아야 한다. 판단 하나.
    - 한 영역의 대상(그 영역에서만 다루는 것)을 다른 영역에 옮겨 붙이지 않는다. 영역 하나를 빼도 문장이 그대로면 통합 판단이 아니다. 이슈 하나의 답을 넓게 쓴 것도 통합 판단이 아니다.
    - 누구에게나 맞는 말을 쓰지 않는다. 네 기준이 아니면 나오지 않는 판단이어야 한다 — 다른 노드의 이름으로 바꿔 써도 성립하면 버린다.
-4. **영역별.** 영역마다, 네 기준이 그 영역에 요구하는 방침을 판단 하나로 낸다. 그 영역의 과업 전체(미션과 팩트북에 적힌 요구)를 본다. 낼 것이 없는 영역은 건너뛴다.
-5. **통제 범위.** 우리가 정할 수 없는 구간(미션 · 팩트북에 남이 관리한다고 적힌 것)은 판단의 대상이 아니라 조건으로 둔다.
+   - **브리프 · 판정 질문 · 이슈의 문장을 되받아 쓰지 않는다.** 과제가 쓴 말("N개 파트와 몇 월", "한 해를 관통" 같은 표현)을 옮겨 적으면 모든 노드의 판단이 같아진다. 과제는 재료이고 판단은 네 말이다.
+   - 통합 판단에 한 영역만의 대상 낱말을 주어로 쓰지 않는다. 영역마다의 대상은 영역 판단에서 쓴다.
+5. **영역별.** 영역마다, 네 기준이 그 영역에 요구하는 방침을 판단 하나로 낸다. 그 영역의 과업 전체(미션과 팩트북에 적힌 요구)를 본다. 낼 것이 없는 영역은 건너뛴다.
+6. **통제 범위.** 우리가 정할 수 없는 구간(미션 · 팩트북에 남이 관리한다고 적힌 것)은 판단의 대상이 아니라 조건으로 둔다.
 
 ## 규칙
 - 판단은 "그래서 무엇을 기준으로 삼거나, 지키거나, 바꾸는가"까지 쓴다. 관찰만 쓰지 않는다. \`claim\` ${C.claim}자 이내.
@@ -130,9 +159,10 @@ ${areaList(areas)}
 ${lens.family === 'tunnel' ? '- 너는 터널의 레이어다. 팩트북에서 출발한다. 판단이 기대는 팩트의 id를 `facts`에 적는다.' : '- 판단이 팩트북의 사실에 기대면 그 id를 `facts`에 적는다. 주어진 id만 쓴다.'}
 
 ## 출력 (JSON만)
-{"against":"네 기준으로 본 통념의 틀린 점","signals":[{"scope":"ALL","claim":"판단 한 문장","basis":"원문의 어느 대목에서 나왔나 한 문장","stance":"keep|change|limit|open","facts":["F1"]}]}`,
+{"only":"네 기준에서만 보이는 것","against":"네 기준으로 본 통념의 틀린 점","signals":[{"scope":"ALL","claim":"판단 한 문장","basis":"원문의 어느 대목에서 나왔나 한 문장","stance":"keep|change|limit|open","facts":["F1"]}]}`,
     user: `${missionBlock(project, lens.id, { high: true })}
 ${own.length ? `\n## 네가 이슈 높이에서 낸 판단 — 배경이다. 넓게 고쳐 써서 올리지 않는다\n${own.map((x) => `- ${cut(x.claim, 120)}`).join('\n')}\n` : ''}
+${redo ? `\n## 다시 낸다 — 앞서 낸 통합 판단은 쓰지 못한다\n앞서 낸 것: ${redo.mine}\n${redo.why}\n${redo.others.length ? `\n다른 노드가 이미 낸 통합 판단 — 같은 말을 되풀이하지 않는다. 이 판단들이 보지 못한 것을 네 기준으로 낸다:\n${redo.others.map((x) => `- ${x}`).join('\n')}\n` : ''}` : ''}
 노드 "${lens.name}"의 방향 높이 판단을 JSON으로 낸다.`,
   };
 }
@@ -280,6 +310,7 @@ ${areaList(areas)}
 
 ## 2층 — 영역별 전략
 - 영역마다 **전략 하나**를 쓴다(\`name\`, \`line\`). 방향이 그 영역에서 어떤 방침이 되는가다.
+- 영역 전략의 이름과 한 줄에 **장치 이름**(화면 · 칸 · 쿠폰 · 버튼 등)을 쓰지 않는다. 그것은 전술이다. 다른 영역의 대상 낱말에 기대지도 않는다 — 그 영역의 과업에서 나온 말로 쓴다.
 - **방향 문장에 영역 이름만 바꿔 붙이지 않는다.** 영역 전략은 그 영역의 과업 전체(미션과 팩트북에 적힌 요구)를 덮어야 한다. 아래 "영역별 판단"은 노드가 그 영역을 따로 본 것이다. 거기서 출발한다.
 - 미션의 성공 기준 · 평가 항목마다 어느 영역 전략이 답하는지 스스로 확인한다. 답하지 못한 항목은 \`gaps\`에 적는다.
 - 영역 전략은 전술 하나가 아니다. 그 아래에 서로 다른 전술이 여러 개 달릴 수 있어야 한다. 이긴 인사이트 하나를 이름만 바꿔 영역 전략으로 올리지 않는다.

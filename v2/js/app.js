@@ -33,7 +33,7 @@ const clip = (s, n) => (String(s || '').length > n ? `${String(s).slice(0, n)}�
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const TYPE = { cause: '원인', condition: '조건', reinforce: '강화', tension: '충돌' };
 const STANCE = { keep: '지킬 관성', change: '바꿀 해석', limit: '넘지 않을 경계', open: '비어 있는 자리' };
-const STAGE = { weave: '그래프 전체를 읽고 통합안 쓰는 중', strategy: '전략 한 장으로 올리는 중', courseScope: '과제의 영역 뽑는 중', courseLens: '노드가 과제 전체를 보는 중', courseLink: '통합 판단을 잇는 중', courseBase: '기본 방향 받는 중', course: '방향 후보 쓰는 중', courseJudge: '방향끼리 겨루는 중', layers: '영역별 전략 · 전술로 내리는 중', plan: '기획 틀로 정리하는 중', creative: '디자인 틀로 정리하는 중', baseline: '기본안 받는 중', reframe: '문제 다시 정의하는 중', cross: '충돌하는 안 교배 중', screen: '기본안과 대조 중', duel: '점수 없이 1:1로 겨루는 중', forge: '이긴 안 공격 · 보완 중', verdict: '더프롬 판정 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
+const STAGE = { weave: '그래프 전체를 읽고 통합안 쓰는 중', strategy: '전략 한 장으로 올리는 중', courseScope: '과제의 영역 뽑는 중', courseRedo: '겹친 노드 판단을 다시 받는 중', courseLens: '노드가 과제 전체를 보는 중', courseLink: '통합 판단을 잇는 중', courseBase: '기본 방향 받는 중', course: '방향 후보 쓰는 중', courseJudge: '방향끼리 겨루는 중', layers: '영역별 전략 · 전술로 내리는 중', plan: '기획 틀로 정리하는 중', creative: '디자인 틀로 정리하는 중', baseline: '기본안 받는 중', reframe: '문제 다시 정의하는 중', cross: '충돌하는 안 교배 중', screen: '기본안과 대조 중', duel: '점수 없이 1:1로 겨루는 중', forge: '이긴 안 공격 · 보완 중', verdict: '더프롬 판정 중', route: '사조 고르는 중', link: '연결 판단 중', propagate: '판단 묶는 중', direct: '디렉션 정리 중' };
 
 /** DOM 만들기 — 글자는 언제나 텍스트 노드로 들어간다 */
 function h(tag, attrs, ...kids) {
@@ -251,7 +251,9 @@ function openDeck(on) {
   if (S.deck) traceStrategy(); else { view.tint(null); view.trace(null); view.select(null); }
 }
 /** 모델이 뽑은 영역을 미션에 옮겨 둔다 — 사람이 고쳐 쓸 수 있게. 사람이 적은 것이 있으면 건드리지 않는다 */
-function adoptAreas(p) { const st = p.run?.strategy; if (st?.areasAuto && !areasOf(p)) p.areas = st.areas.map((a) => ({ name: a.name, note: a.note, auto: true })); }
+function adoptAreas(p) { const st = p.run?.strategy; if (st?.areasAuto && !areasOf(p)) p.areas = st.areas.map((a) => ({ name: a.name, note: a.note, objects: a.objects || [], auto: true }));
+  // 사람이 영역만 적고 대상 낱말을 비워 뒀으면, 뽑은 낱말을 옮겨 둔다 — 다음에 다시 뽑지 않고 사람이 고칠 수 있게
+  else if (st?.areas?.length && Array.isArray(p.areas)) { const named = p.areas.filter((a) => (a.name || '').trim()); named.forEach((a, i) => { if (!(Array.isArray(a.objects) ? a.objects.length : (a.objects || '').trim()) && st.areas[i]?.name === a.name.trim() && st.areas[i].objects?.length) a.objects = st.areas[i].objects; }); } }
 async function makeStrategy(fresh = false) {
   fresh = fresh === true;   // 버튼의 클릭 이벤트가 인자로 들어오는 것을 막는다
   if (S.running || S.strategizing) return;
@@ -322,9 +324,9 @@ function highBoard(run, st) {
   const tens = c.edges.filter((e) => e.type === 'tension');
   const mine = st.direction.spine?.edge;
   return h('details', { class: 'high', open: !!S.highOpen, ontoggle: (e) => { S.highOpen = e.target.open; } },
-    h('summary', null, h('span', null, `과제 전체를 본 노드 판단 ${all.length}건 · 충돌 ${tens.length}개`), h('small', null, st.reusedHigh ? '앞서 받은 판단을 썼다' : '이번에 받았다')),
+    h('summary', null, h('span', null, `과제 전체를 본 노드 판단 ${all.length}건 · 충돌 ${tens.length}개`), h('small', null, `${st.reusedHigh ? '앞서 받은 판단을 썼다' : '이번에 받았다'}${c.redo?.asked ? ` · 겹쳐서 다시 받은 노드 ${c.redo.asked}개 중 ${c.redo.changed}개가 바뀜` : ''}`)),
     h('ul', { class: 'highs' }, all.map((x) => h('li', { class: used.has(x.id) ? 'used' : '', onmouseenter: () => { view.tint(new Map([[x.lens, '#FFD200']])); view.trace([x.lens]); }, onmouseleave: () => traceStrategy() },
-      h('b', null, lensName(x.lens)), h('span', null, x.claim)))),
+      h('b', null, lensName(x.lens)), h('span', null, x.claim, x.redone ? h('small', null, ' · 다시 받음') : null)))),
     tens.length ? h('ul', { class: 'tens' }, tens.map((e) => h('li', { class: e.id === mine ? 'used' : '' }, h('b', null, `${lensName(sig.get(e.from).lens)} ↔ ${lensName(sig.get(e.to).lens)}`), h('span', null, e.why)))) : null,
     h('p', { class: 'small' }, '노란 줄은 채택된 방향이 기댄 판단과 푼 충돌이다. ', h('button', { class: 'link', type: 'button', disabled: !!S.strategizing || !!S.running, onclick: () => makeStrategy(true) }, '노드 판단부터 다시 받기')));
 }
@@ -692,16 +694,17 @@ function missionTab() {
     p.areas = Array.isArray(p.areas) ? p.areas : [];
     const touch = (a) => { delete a.auto; persist(); };
     out.push(h('section', { class: 'sec' }, h('h2', null, '과제의 영역', h('small', null, p.areas.length ? `${p.areas.length}개${p.areas.some((a) => a.auto) ? ' · 브리프에서 뽑음' : ''}` : '비워 두면 브리프에서 뽑는다')),
-      h('p', { class: 'small' }, '이 과제가 맡는 일의 범위다. 방향은 이 영역 전부에 걸려야 하고, 한 영역에만 걸리는 것은 그 영역의 전략으로 내려간다. 직무(기획 · 디자인 · 개발)나 시기로 나누지 않는다. 결과물이 하나인 과제는 하나만 적는다.'),
+      h('p', { class: 'small' }, '이 과제가 맡는 일의 범위다. 방향은 이 영역 전부에 걸려야 하고, 한 영역에만 걸리는 것은 그 영역의 전략으로 내려간다. 직무(기획 · 디자인 · 개발)나 시기로 나누지 않는다. 결과물이 하나인 과제는 하나만 적는다. 셋째 칸은 그 영역에서만 다루는 대상 낱말이다(예: 혜택, 쿠폰, 캠페인) — 방향 문장에 한 영역의 낱말만 들어 있으면 다시 쓰게 한다.'),
       p.areas.map((a, i) => h('div', { class: 'arearow' }, h('span', { class: 'chip fill' }, `S${i + 1}`),
         h('input', { type: 'text', id: `area-name-${i}`, value: a.name || '', placeholder: '영역 이름', oninput: (e) => { a.name = e.target.value; touch(a); } }),
         h('input', { type: 'text', id: `area-note-${i}`, value: a.note || '', placeholder: '이 영역에 드는 일', oninput: (e) => { a.note = e.target.value; touch(a); } }),
+        h('input', { type: 'text', id: `area-objects-${i}`, value: Array.isArray(a.objects) ? a.objects.join(', ') : (a.objects || ''), placeholder: '이 영역만의 대상 낱말 (쉼표)', title: '이 영역에서만 다루는 대상. 방향이 한 영역의 대상에 붙었는지를 이 낱말로 대조한다. 비워 두면 뽑는다', oninput: (e) => { a.objects = e.target.value; touch(a); } }),
         h('button', { class: 'btn sm x', type: 'button', onclick: () => { p.areas.splice(i, 1); persist(); rerender(); } }, '빼기'))),
       h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', id: 'btn-area-add', disabled: p.areas.length >= 5, onclick: () => { p.areas.push({ name: '', note: '' }); persist(); S.keepScroll = true; rerender(); } }, '영역 더하기'))));
   }
   out.push(h('section', { class: 'sec' }, h('h2', null, '분석 설정'),
     h('div', { class: 'grid3' }, num('ismCount', '분석할 사조 수', 2, 6), num('insightCount', '통합 인사이트 수', 1, 5), num('signalsPerLens', '노드·이슈당 판단', 1, 3)),
-    h('p', { class: 'small' }, `호출 수 = 기본안 1 + 사조 고르기 1 + 노드 ${10 + (p.settings.ismCount ?? DEFAULTS.ismCount)} + 연결 1 + 인사이트 ${p.settings.insightCount ?? DEFAULTS.insightCount} + 경쟁 약 25 + 더프롬 판정 1 + 디렉션 1 + 기획 틀 1 + 디자인 틀 2`),
+    h('p', { class: 'small' }, `호출 수 = 기본안 1 + 사조 고르기 1 + 방향 약 ${10 + (p.settings.ismCount ?? DEFAULTS.ismCount) + 6}(노드마다 1 + 영역 · 연결 · 기본 방향 · 후보 · 판정, 겹친 노드는 한 번 더) + 노드 ${10 + (p.settings.ismCount ?? DEFAULTS.ismCount)} + 연결 1 + 인사이트 ${p.settings.insightCount ?? DEFAULTS.insightCount} + 경쟁 약 25 + 더프롬 판정 1 + 디렉션 1 + 내려 쓰기 1~2 + 기획 틀 1 + 디자인 틀 2`),
     ));
   out.push(casesBoard());
 

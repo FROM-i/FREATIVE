@@ -10,7 +10,7 @@
 //   descend() 방향 아래로 내려 쓴다
 //     ⑥ 영역별 전략(영역 높이의 판단에서) → 전술 여러 개(이슈 높이의 판단과 인사이트에서). 전술마다 나온 노드를 남긴다
 //   chart()   이미 있는 분석 위에서 head와 descend만 돈다. 이슈 높이의 분석은 다시 돌리지 않는다.
-import { courseScopePrompt, courseBasePrompt, courseLensPrompt, courseLinkPrompt, coursePrompt, courseJudgePrompt, layersPrompt, COURSE_CAPS, DEVICE_WORDS } from '../../knowledge/prompts-course.js';
+import { courseScopePrompt, courseObjectsPrompt, courseBasePrompt, courseLensPrompt, courseLinkPrompt, coursePrompt, courseJudgePrompt, layersPrompt, COURSE_CAPS, DEVICE_WORDS } from '../../knowledge/prompts-course.js';
 import { validFacts } from '../../knowledge/facts.js';
 import { categoriesOf, categoryById } from '../../knowledge/tags.js';
 import { lensName, activeLenses, signalPrefix } from '../graph/model.js';
@@ -22,15 +22,29 @@ const arr = (v) => (Array.isArray(v) ? v : []);
 
 const partCats = (project) => categoriesOf(project).filter((c) => c !== 'integrated');
 
+/** 낱말 목록을 다듬는다 — 쉼표로 적은 글도 받는다. 두 글자 이상, 6개까지 */
+const words = (v) => uniq((Array.isArray(v) ? v : String(v || '').split(/[,，、·\/\n]/)).map((w) => text(w).replace(/\s+/g, ' ')).filter((w) => w.length >= 2 && w.length <= COURSE_CAPS.object + 4)).slice(0, 6);
+/** 두 영역 이상에 적힌 낱말은 어느 영역의 대상도 아니다 — 걷는다 */
+const ownWords = (areas) => { const n = new Map(); for (const a of areas) for (const w of a.objects || []) n.set(w, (n.get(w) || 0) + 1); return areas.map((a) => ({ ...a, objects: (a.objects || []).filter((w) => n.get(w) === 1) })); };
+
 /** 영역 — 사람이 미션에 적은 것. 이름이 있는 줄만 받고 id를 S1, S2…로 맞춘다. 하나여도 받는다(결과물이 하나인 과제). */
 export function areasOf(project) {
-  const list = arr(project?.areas).map((a) => ({ name: cap(a?.name, COURSE_CAPS.area + 6), note: cap(a?.note, COURSE_CAPS.areaNote + 10) })).filter((a) => a.name).slice(0, 5);
-  return list.length ? list.map((a, i) => ({ id: `S${i + 1}`, ...a })) : null;
+  const list = arr(project?.areas).map((a) => ({ name: cap(a?.name, COURSE_CAPS.area + 6), note: cap(a?.note, COURSE_CAPS.areaNote + 10), objects: words(a?.objects) })).filter((a) => a.name).slice(0, 5);
+  return list.length ? ownWords(list.map((a, i) => ({ id: `S${i + 1}`, ...a }))) : null;
 }
 export function shapeAreas(raw) {
   const C = COURSE_CAPS;
-  return arr(raw?.areas).map((a) => ({ name: cap(a?.name, C.area), note: cap(a?.note, C.areaNote) })).filter((a) => a.name).slice(0, 4).map((a, i) => ({ id: `S${i + 1}`, ...a }));
+  return ownWords(arr(raw?.areas).map((a) => ({ name: cap(a?.name, C.area), note: cap(a?.note, C.areaNote), objects: words(a?.objects) })).filter((a) => a.name).slice(0, 4).map((a, i) => ({ id: `S${i + 1}`, ...a })));
 }
+/** 글에 어느 영역의 대상 낱말이 들어 있는가 — [{ area, name, words }] */
+export function objectHits(str, areas) {
+  const t = String(str || '');
+  return areas.map((a) => ({ area: a.id, name: a.name, words: (a.objects || []).filter((w) => t.includes(w)) })).filter((x) => x.words.length);
+}
+/** 한 영역의 대상에만 붙은 글인가 — 영역이 둘 이상이고, 대상 낱말이 한 영역 것만 들어 있을 때 */
+const pinned = (str, areas) => { if (areas.length < 2) return null; const hits = objectHits(str, areas); return hits.length === 1 ? hits[0] : null; };
+/** 다른 영역의 대상을 빌려 쓴 글인가 — 제 영역의 낱말은 없고 남의 영역 낱말만 있을 때 */
+const borrowed = (str, own, areas) => { if (areas.length < 2) return null; const hits = objectHits(str, areas); return hits.some((x) => x.area === own) ? null : hits[0] || null; };
 
 /** 모델이 영역을 id 대신 이름으로 적어도 받는다 */
 const areaId = (v, areas) => { const t = text(v); return (areas.find((a) => a.id === t.toUpperCase()) || areas.find((a) => a.name === t) || areas.find((a) => t && t.includes(a.name)))?.id || ''; };
@@ -75,7 +89,7 @@ export function shapeHigh(raw, lens, project, areas) {
     const scope = /^(all|통합|전체)$/i.test(text(x.scope)) ? 'ALL' : areaId(x.scope, areas); const claim = cap(x.claim, C.claim);
     if (!scopes.has(scope) || seen.has(scope) || !claim) continue;
     seen.add(scope);
-    out.push({ id: `C-${signalPrefix(lens.id)}-${scope}`, lens: lens.id, family: lens.family, scope, claim, basis: cap(x.basis, 90), stance: STANCES.includes(text(x.stance)) ? text(x.stance) : 'change', facts: uniq(arr(x.facts).map((f) => text(f).replace(/^\[|\]$/g, '')).filter((f) => facts.has(f))), against: scope === 'ALL' ? cap(raw?.against, 90) : '' });
+    out.push({ id: `C-${signalPrefix(lens.id)}-${scope}`, lens: lens.id, family: lens.family, scope, claim, ...(scope === 'ALL' && text(raw?.only) ? { only: cap(raw.only, 90) } : {}), basis: cap(x.basis, 90), stance: STANCES.includes(text(x.stance)) ? text(x.stance) : 'change', facts: uniq(arr(x.facts).map((f) => text(f).replace(/^\[|\]$/g, '')).filter((f) => facts.has(f))), against: scope === 'ALL' ? cap(raw?.against, 90) : '' });
   }
   return out;
 }
@@ -104,6 +118,22 @@ export function courseSpines(course, count = 3) {
   return out;
 }
 const areasKey = (areas) => areas.map((a) => a.name).join('|');
+const grams = (t) => { const x = String(t || '').replace(/[^가-힣a-zA-Z0-9]/g, ''); const g = new Set(); for (let i = 0; i < x.length - 1; i++) g.add(x.slice(i, i + 2)); return g; };
+/** 두 판단이 얼마나 같은 말인가 (0~1) — 두 글자 조각이 겹치는 비율. 실제 실행에서 거의 같은 문장은 0.3~0.5, 다른 문장은 0.2 아래였다 */
+export function overlap(a, b) { const A = grams(a); const B = grams(b); if (!A.size || !B.size) return 0; let n = 0; for (const x of A) if (B.has(x)) n++; return n / Math.min(A.size, B.size); }
+export const OVERLAP = 0.3;
+/** 통합 판단 가운데 다시 받아야 하는 것 — 앞선 노드와 같은 말이거나, 한 영역의 대상에만 붙은 것 */
+export function redoList(signals, areas) {
+  const all = signals.filter((x) => x.scope === 'ALL'); const kept = []; const out = [];
+  for (const x of all) {
+    const pin = pinned(x.claim, areas);
+    const twin = kept.map((k) => ({ k, v: overlap(x.claim, k.claim) })).sort((p, q) => q.v - p.v)[0];
+    if (pin) out.push({ signal: x, why: `한 영역(${pin.name})의 대상 "${pin.words.join(', ')}"에 붙어 있다. 과제 전체를 묶는 판단이 아니다. 그 낱말 없이, 영역 전부에 걸리는 기준으로 다시 낸다.` });
+    else if (twin && twin.v >= OVERLAP) out.push({ signal: x, why: `다른 노드(${lensName(twin.k.lens)})의 판단과 거의 같은 말이다. 노드 이름을 바꿔도 성립한다. 네 기준에서만 보이는 것으로 다시 낸다.` });
+    else kept.push(x);
+  }
+  return out;
+}
 
 /** ① ② 방향 높이에서 뉴럴링크를 한 번 더 돈다 — 노드마다 통합 판단과 영역 판단, 그리고 통합 판단끼리의 연결 */
 export async function survey({ project, run, call, emit = () => {}, areas }) {
@@ -120,12 +150,35 @@ export async function survey({ project, run, call, emit = () => {}, areas }) {
     } catch (e) { if (/취소/.test(e.message)) throw e; failed.push({ lens: lens.id, error: e.message }); }
   });
   const order = new Map(lenses.map((l, i) => [l.id, i]));
-  signals.sort((a, b) => order.get(a.lens) - order.get(b.lens) || (a.scope === 'ALL' ? -1 : b.scope === 'ALL' ? 1 : a.scope.localeCompare(b.scope)));
+  const sort = () => signals.sort((a, b) => order.get(a.lens) - order.get(b.lens) || (a.scope === 'ALL' ? -1 : b.scope === 'ALL' ? 1 : a.scope.localeCompare(b.scope)));
+  sort();
+  // 같은 말을 한 노드와 한 영역의 대상에 붙은 노드는 한 번 다시 받는다 — 다른 노드가 낸 판단을 보여 주고 제 기준에서만 보이는 것을 내게 한다
+  const redo = redoList(signals, areas); let changed = 0;
+  if (redo.length) {
+    emit('stage', { stage: 'courseRedo' });
+    const firstAll = signals.filter((x) => x.scope === 'ALL');
+    await pool(redo, project.settings?.concurrency || 4, async ({ signal: old, why }) => {
+      const lens = lenses.find((l) => l.id === old.lens);
+      try {
+        const own = run.signals.filter((s) => s.lens === lens.id && !s.muted);
+        const others = firstAll.filter((x) => x.lens !== lens.id).map((x) => `${lensName(x.lens)} — ${x.claim}`);
+        const raw = await call({ role: 'sub', ...courseLensPrompt(project, lens, areas, own, { mine: old.claim, why, others }), task: { kind: 'courseLens', project, lens, areas, redo: true } });
+        const got = shapeHigh(raw, lens, project, areas); const next = got.find((x) => x.scope === 'ALL');
+        if (!next) return;
+        // 다시 낸 것이 여전히 한 영역에 붙었거나 앞서 낸 것과 같은 말이면 앞의 것을 그대로 둔다
+        if (pinned(next.claim, areas) || overlap(next.claim, old.claim) >= 0.6) return;
+        for (let i = signals.length - 1; i >= 0; i--) if (signals[i].lens === lens.id) signals.splice(i, 1);
+        signals.push(...got.map((x) => (x.scope === 'ALL' ? { ...x, redone: true } : x))); changed++;
+      } catch (e) { if (/취소/.test(e.message)) throw e; }
+    });
+    sort();
+  }
+  const still = redoList(signals, areas);
   const all = signals.filter((s) => s.scope === 'ALL');
   if (all.length < 3) throw new Error(`방향 높이에서 통합 판단을 낸 노드가 ${all.length}개뿐이다${failed[0] ? ` — ${failed[0].error}` : ''}`);
   emit('stage', { stage: 'courseLink' });
   const edges = shapeHighEdges(await call({ role: 'sub', ...courseLinkPrompt(project, all, lensName), task: { kind: 'courseLink', project, signals: all } }), signals);
-  run.course = { key: areasKey(areas), at: new Date().toISOString(), signals, edges, failed };
+  run.course = { key: areasKey(areas), at: new Date().toISOString(), signals, edges, failed, redo: { asked: redo.length, changed, still: still.length } };
   return run.course;
 }
 
@@ -158,6 +211,11 @@ export function shapeRivals(raw, project, run, areas, spines = []) {
     if (miss.length) r.flags.push(`달라지는 것을 쓰지 않은 영역: ${miss.map((a) => a.name).join(', ')}`);
     const hit = DEVICE_WORDS.filter((w) => `${r.name} ${r.line}`.includes(w));
     if (hit.length) r.flags.push(`장치 이름이 들어 있다: ${hit.join(', ')}`);
+    // 대상 낱말 검사 — 방향 문장이 한 영역의 대상에 붙었는가, 영역 줄이 남의 대상을 빌렸는가
+    const pin = pinned(`${r.name} ${r.line} ${r.standard}`, areas);
+    if (pin) r.flags.push(`한 영역의 대상이 방향의 주어다: ${pin.name}의 "${pin.words.join(', ')}"`);
+    const lent = covers.map((c) => ({ c, b: borrowed(c.line, c.area, areas) })).filter((x) => x.b);
+    if (lent.length) r.flags.push(`빌린 대상: ${lent.map((x) => `${areas.find((a) => a.id === x.c.area).name} 줄에 ${x.b.name}의 "${x.b.words.join(', ')}"`).join(' / ')}`);
     if (r.breadth.identity < need.identity) r.flags.push(`아이덴티티 판단을 ${r.breadth.identity}개 노드에서만 받았다`);
     if (!r.swap) r.flags.push('경쟁사가 그대로 쓸 수 없는 이유를 쓰지 않았다');
     if (!r.drops.length) r.flags.push('하지 않는 것을 쓰지 않았다');
@@ -177,7 +235,9 @@ export function shapeRivals(raw, project, run, areas, spines = []) {
   const thin = pick(/^노드|^팩트|^터널/);
   if (thin.length) problems.push(`근거가 좁은 후보: ${list(thin, /^노드|^팩트|^터널/)}. 후보마다 노드 ${need.nodes}개 이상의 판단과 팩트 ${need.facts}개 이상을 쓴다`);
   const device = pick(/^장치/);
-  if (device.length) problems.push(`방향 문장에 장치 이름을 쓴 후보: ${device.map((r) => r.id).join(', ')}. 장치를 지우고 운영의 기준으로 다시 쓴다`);
+  if (device.length) problems.push(`방향 문장에 장치 이름을 쓴 후보: ${device.map((r) => r.id).join(', ')}. 장치를 지우고 기준으로 다시 쓴다`);
+  const stuck = pick(/^한 영역의 대상|^빌린 대상/);
+  if (stuck.length) problems.push(`한 영역의 대상에 붙은 후보: ${list(stuck, /^한 영역의 대상|^빌린 대상/)}. 그 낱말은 그 영역의 전략에서 쓴다. 방향은 그 낱말 없이, 영역 전부에 통하는 단위와 기준으로 다시 쓴다. 다른 영역 줄은 그 영역의 과업에서 나온 말로 쓴다`);
   return { rivals, problems };
 }
 
@@ -240,7 +300,11 @@ export function shapeLayers(raw, project, run, direction, areas, extra = {}) {
   };
   // 얼마나 넓게 썼는가 — 방향과 영역 전략이 기댄 것을 모두 센다. 이슈 높이의 판단과 방향 높이의 판단을 따로 센다
   const usedByInsights = new Set((run.insights || []).flatMap((i) => i.check?.used || []));
-  const cited = uniq([...direction.signals, ...pillars.flatMap((p) => p.signals)]).filter((id) => sig.has(id));
+  // 전술이 어느 노드의 판단에서 나왔는가 — 서브 노드가 제 몫을 했는지 본다. 인사이트로 놓인 전술은 그 인사이트가 쓴 판단을 출처로 친다
+  const insUsed = new Map((run.insights || []).map((i) => [i.id, (i.check?.used || []).filter((id) => sig.has(id))]));
+  const tacs = pillars.flatMap((p) => p.tactics);
+  for (const t of tacs) { if (!t.from.length && t.insight) t.from = (insUsed.get(t.insight) || []).slice(0, 3); t.lenses = uniq(t.from.map((id) => sig.get(id).lens)); }
+  const cited = uniq([...direction.signals, ...pillars.flatMap((p) => p.signals), ...tacs.flatMap((t) => t.from)]).filter((id) => sig.has(id));
   const sigUsed = cited.filter((id) => base.has(id));
   const high = run.course?.signals || [];
   const factUsed = uniq([...direction.facts, ...pillars.flatMap((p) => p.facts), ...st.fixes.flatMap((x) => x.facts), ...st.boosts.flatMap((x) => x.facts)]);
@@ -253,10 +317,7 @@ export function shapeLayers(raw, project, run, direction, areas, extra = {}) {
     nodes: { used: lensesUsed.length, total: lensesAll.length, fresh: lensesUsed.filter((l) => !lensesByInsights.includes(l)).length, byInsights: lensesByInsights.length },
     high: { used: cited.filter((id) => !base.has(id)).length, total: high.length, tensions: (run.course?.edges || []).filter((e) => e.type === 'tension').length },
   };
-  // 전술이 어느 노드의 판단에서 나왔는가 — 서브 노드가 제 몫을 했는지 본다. 인사이트로 놓인 전술은 그 인사이트가 쓴 판단을 출처로 친다
-  const insUsed = new Map((run.insights || []).map((i) => [i.id, (i.check?.used || []).filter((id) => sig.has(id))]));
-  const all = pillars.flatMap((p) => p.tactics);
-  for (const t of all) { if (!t.from.length && t.insight) t.from = (insUsed.get(t.insight) || []).slice(0, 3); t.lenses = uniq(t.from.map((id) => sig.get(id).lens)); }
+  const all = tacs;
   const tacLenses = uniq(all.flatMap((t) => t.lenses));
   st.coverage.tactics = { total: all.length, sourced: all.filter((t) => t.from.length).length, lenses: tacLenses.length, lensTotal: uniq([...base.values()].map((x) => x.lens)).length };
   const problems = [];
@@ -268,6 +329,10 @@ export function shapeLayers(raw, project, run, direction, areas, extra = {}) {
   const holes = pillars.map((p) => ({ p, miss: phases.filter((ph) => !p.tactics.some((t) => t.phase === ph.id)) })).filter((x) => x.miss.length);
   if (phases.length && holes.length) problems.push(`전술이 빈 단계: ${holes.map((x) => `${x.p.label}(${x.miss.map((ph) => ph.when).join(', ')})`).join(' / ')}`);
   if (cats.length > 1) { const seen = new Set(pillars.flatMap((p) => p.tactics.flatMap((t) => t.parts))); const miss = cats.filter((c) => !seen.has(c)); if (miss.length) problems.push(`전술을 맡지 않은 파트: ${miss.map((c) => categoryById(c).name).join(', ')}`); }
+  const dev = pillars.map((p) => ({ p, w: DEVICE_WORDS.filter((w) => `${p.name} ${p.guide}`.includes(w) && !(areas.find((a) => a.id === p.part)?.objects || []).includes(w)) })).filter((x) => x.w.length);
+  if (dev.length) problems.push(`영역 전략에 장치 이름을 썼다: ${dev.map((x) => `${x.p.label}(${x.w.join(', ')})`).join(' / ')}. 장치는 전술이다. 전략은 그 위의 방침으로 쓴다`);
+  const lentS = pillars.map((p) => ({ p, b: borrowed(`${p.name} ${p.guide}`, p.part, areas) })).filter((x) => x.b);
+  if (lentS.length) problems.push(`다른 영역의 대상에 기댄 영역 전략: ${lentS.map((x) => `${x.p.label} ← ${x.b.name}의 "${x.b.words.join(', ')}"`).join(' / ')}. 그 영역의 과업에서 나온 말로 쓴다`);
   const clone = pillars.filter((p) => p.guide && direction.line && p.guide.replace(/\s/g, '') === direction.line.replace(/\s/g, ''));
   if (clone.length) problems.push(`방향 문장을 그대로 옮긴 영역 전략: ${clone.map((p) => p.label).join(', ')}`);
   const weak = pillars.filter((p) => p.thin && (run.course?.signals || []).some((x) => x.scope === p.part));
@@ -308,11 +373,22 @@ export async function head({ project, run, call, emit = () => {}, fresh = false 
     emit('stage', { stage: 'courseScope' });
     areas = shapeAreas(await call({ role: 'sub', ...courseScopePrompt(project), task: { kind: 'courseScope', project } }));
     auto = true;
-    if (!areas.length) areas = [{ id: 'S1', name: '과제 전체', note: '' }];   // 나눌 것이 없는 과제
+    if (!areas.length) areas = [{ id: 'S1', name: '과제 전체', note: '', objects: [] }];   // 나눌 것이 없는 과제
+  }
+  // 영역은 있는데 대상 낱말이 없으면 뽑는다 — 방향이 한 영역의 대상에 붙었는지를 낱말로 대조하려면 있어야 한다. 앞서 뽑은 것이 있으면 이어 쓴다
+  if (areas.length > 1 && areas.some((a) => !a.objects?.length)) {
+    const before = !fresh && run.heading?.areas?.length === areas.length && run.heading.areas.every((a, i) => a.name === areas[i].name && a.objects?.length) ? run.heading.areas : null;
+    if (before) areas = areas.map((a, i) => ({ ...a, objects: a.objects?.length ? a.objects : before[i].objects }));
+    else {
+      emit('stage', { stage: 'courseScope' });
+      const raw = await call({ role: 'sub', ...courseObjectsPrompt(project, areas), task: { kind: 'courseObjects', project, areas } });
+      areas = ownWords(areas.map((a) => ({ ...a, objects: a.objects?.length ? a.objects : words(arr(raw?.areas).find((x) => areaId(x.id ?? x.area ?? x.name, areas) === a.id)?.objects) })));
+    }
   }
 
   // ① ② 방향 높이의 노드 판단과 연결 — 영역이 그대로면 있는 것을 쓴다
-  const reused = !fresh && run.course?.key === areasKey(areas) && run.course.signals?.some((x) => x.scope === 'ALL');
+  // 겹침을 걸러 내기 전에 받은 판단(redo 기록이 없는 것)은 다시 받는다
+  const reused = !fresh && run.course?.key === areasKey(areas) && !!run.course.redo && run.course.signals?.some((x) => x.scope === 'ALL');
   if (!reused) await survey({ project, run, call, emit, areas });
   const high = run.course.signals;
   const need = courseNeed(project, run);
@@ -346,7 +422,8 @@ export async function head({ project, run, call, emit = () => {}, fresh = false 
   if (item?.control === '일부 불가') warn.push('기준의 판정 대상에 우리가 통제할 수 없는 구간이 들어 있다');
   if (base && !judge.beatsBase) warn.push('판정이 기본 방향을 더 낫게 봤다');
   if (item?.vsBase === '같음') warn.push('기본 방향과 기준이 같다고 판정받았다');
-  for (const f of won.flags.filter((x) => /^장치|^달라지는 것|^아이덴티티/.test(x))) warn.push(f);
+  for (const f of won.flags.filter((x) => /^장치|^달라지는 것|^아이덴티티|^한 영역의 대상|^빌린 대상/.test(x))) warn.push(f);
+  if (run.course.redo?.still) warn.push(`과제 전체를 본 노드 판단 가운데 ${run.course.redo.still}건은 다시 받고도 다른 노드와 같은 말이거나 한 영역의 대상에 붙어 있다`);
   if (!spines.length) warn.push('통합 판단 사이에서 충돌을 찾지 못했다 — 방향이 충돌을 푼 것이 아니다');
   run.heading = { areas, auto, base, rivals, judge, direction, warn, reused, calls: (run.calls || 0) - calls0 };
   emit('heading');

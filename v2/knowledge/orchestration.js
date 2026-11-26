@@ -27,6 +27,7 @@ export const KIND_TIER = {
   courseScope: 'lead', // 업무 영역 — 방향인지 가르는 시험대. 틀리면 층이 전부 틀린다
   courseLens: 'lead', // 방향 높이의 노드 판단 (터널 노드만 support — 아래 tierOf)
   courseLink: 'lead', // 통합 판단끼리의 충돌 — 방향 후보의 출발점이 된다
+  courseObjects: 'lead', // 영역마다의 대상 낱말 — 방향이 한 영역에 붙었는지를 낱말로 대조한다
   courseBase: 'lead', // 기본 방향 — 견주는 기준은 가장 좋은 모델로 낸다
   course: 'lead',     // 운영 방향 후보 — 전략 과제의 맨 위 층
   courseJudge: 'lead', // 방향 판정 — 여기서 고른 방향 아래로 전부 내려 쓴다

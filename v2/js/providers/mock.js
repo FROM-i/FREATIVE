@@ -173,10 +173,12 @@ const creative = ({ run, chapters }) => { const n = run.insights[0].id; const b 
 // 같은 해법 묶기 — 목업 후보는 제목으로 만든 묶음 이름이 같으면 한 묶음, 그 밖에는 하나씩
 const distinct = ({ candidates }) => { const m = new Map(); for (const c of candidates) { const k = String(c.title).startsWith('[목업]') ? `[목업] 해법 ${Math.floor(hash(`fam${c.title}`) * 5) + 1}` : c.id; m.set(k, [...(m.get(k) || []), c.id]); } return { groups: [...m].map(([name, ids]) => ({ name: name.startsWith('[목업]') ? name : candidates.find((c) => c.id === ids[0]).title, ids, why: ids.length > 1 ? '[목업] 같은 해법' : '' })) }; };
 // 방향 — 과제의 영역, 과제 전체를 본 노드 판단, 연결, 기본 방향, 방향 후보, 판정, 영역별 전략과 전술
-const courseScope = () => ({ areas: [{ name: '[목업] 영역 1', note: '[목업] 이 영역에 드는 일' }, { name: '[목업] 영역 2', note: '[목업] 이 영역에 드는 일' }, { name: '[목업] 영역 3', note: '[목업] 이 영역에 드는 일' }] });
+const courseScope = () => ({ areas: [1, 2, 3].map((n) => ({ name: `[목업] 영역 ${n}`, note: '[목업] 이 영역에 드는 일', objects: [`대상${n}가`, `대상${n}나`] })) });
+const courseObjects = ({ areas }) => ({ areas: areas.map((a, i) => ({ id: a.id, objects: [`대상${i + 1}가`, `대상${i + 1}나`] })) });
 const courseBase = () => ({ name: '[목업] 기본 방향', line: '[목업] 누구나 낼 운영 방향', standard: '[목업] 통상의 기준' });
 // 방향 높이의 노드 판단 — 통합 1개와 영역마다 1개. 연결은 이웃한 통합 판단끼리 충돌과 강화를 번갈아 낸다
-const courseLens = ({ lens, areas, project }) => ({ against: '[목업] 통념의 틀린 점', signals: [{ scope: 'ALL', claim: `[목업] ${lens.name}로 본 통합 판단`, basis: '[목업] 원문의 대목', stance: 'change', facts: (project.facts || []).slice(0, 1).map((f) => f.id) },
+// 통합 판단은 노드의 질문에서 가져온다 — 노드마다 다른 말이 되게
+const courseLens = ({ lens, areas, project }) => ({ only: '[목업] 이 기준에서만 보이는 것', against: '[목업] 통념의 틀린 점', signals: [{ scope: 'ALL', claim: `${lens.name}: ${String((lens.family === 'airplane' ? lens.card : lens.ask) || lens.id).replace(/[#*>\-|]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 70)}`, basis: '[목업] 원문의 대목', stance: 'change', facts: (project.facts || []).slice(0, 1).map((f) => f.id) },
   ...areas.map((a, i) => ({ scope: a.id, claim: `[목업] ${lens.name}로 본 ${a.name}의 방침`, basis: '[목업]', stance: 'keep', facts: (project.facts || []).slice(i % 2, (i % 2) + 1).map((f) => f.id) }))] });
 const courseLink = ({ signals }) => ({ edges: signals.slice(1).map((x, i) => ({ from: signals[i].id, to: x.id, type: i % 2 ? 'reinforce' : 'tension', why: '[목업] 둘을 그대로 함께 따를 수 없다' })) });
 function course({ need, areas, high, spines }) {
@@ -212,7 +214,7 @@ function layers({ project, run, areas, need, high = [] }) {
     gaps: ['[목업] 확인할 것'],
   };
 }
-const HANDLERS = { courseScope, courseLens, courseLink, courseBase, course, courseJudge, layers, weave, plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, distinct, stance, hold, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
+const HANDLERS = { courseScope, courseObjects, courseLens, courseLink, courseBase, course, courseJudge, layers, weave, plan, pull, creative, baseline, verdict, direct, reframe, cross, screen, duel, distinct, stance, hold, attack, revise, issues: ({ project }) => issues(project), route, activate, link, integrate };
 
 export function createMock({ delay = 0 } = {}) {
   return {
