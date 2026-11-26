@@ -28,7 +28,12 @@ const RULES = `너는 디자인 에이전시 THE FROM(더프롬)의 사고 엔�
 - **제목 · 컨셉 · 방향은 "수단 + 효과"로 쓴다.** 무엇을 해서 무엇을 얻는지가 한눈에 보여야 한다.
   - ✗ "제도의 이름을 바꿔 말 건넨다" → ✓ "친근한 안내 문구로 재방문 습관 유도"
   - ✗ "끝이 보이는 한 꼭지" → ✓ "분량을 먼저 보여 줘 읽기 부담 완화"
-- **낯선 말을 만들지 않는다.** 은유, 조어, 시적인 표현으로 뜻을 눌러 담지 않는다. 실무에서 쓰는 말(문구 · 화면 · 동선 · 재방문 · 전환 · 부담)로 푼다.
+- **과제의 맥락에 맞는 말로 쓴다.** 마케팅 · 비즈니스 · 운영 과제는 그 분야의 실무 용어로 쓴다(타겟, 고객 여정, 접점, 전환, 리텐션, 재구매, 퍼널, 포지셔닝, KPI, 프로세스, 거버넌스, SLA 등). 이미 통하는 용어를 일상어로 풀어 바꾸지 않는다 — 풀어 쓰면 뜻이 달라지고 맥락이 비틀린다.
+  - ✗ "손님의 길", "받아 쓰는 길" → ✓ "타겟 여정", "고객 여정"
+  - ✗ "손님" → ✓ "고객" · "타겟" · "사용자"
+  - ✗ "다시 오게 한다" → ✓ "재방문 · 리텐션을 높인다"
+  - 브리프나 팩트북이 일상어로 적혀 있어도 결과물은 그 분야에서 통하는 용어로 옮겨 쓴다. 클라이언트와 평가자가 쓰는 말이 기준이다.
+- **낯선 말을 만들지 않는다.** 은유, 조어, 시적인 표현으로 뜻을 눌러 담지 않는다. 용어를 쉬운 말로 바꿔 지어낸 표현도 낯선 말이다.
 - **설명에 설명을 덧붙이지 않는다.** 같은 뜻을 다른 말로 한 번 더 쓰지 않는다. "즉", "다시 말해", "~라는 뜻이다"로 이어 붙이지 않는다.
 - **짧은 단정문을 줄줄이 늘어놓지 않는다.** "A다. B다. C다."처럼 뜻 조각을 나열하지 말고, 원인과 결과를 한 문장 안에서 잇는다.
 - **대구와 반전으로 멋을 내지 않는다.** "A가 아니라 B다", "~은 X로, ~은 Y에서" 같은 틀을 쓰지 않는다. 하려는 말을 바로 쓴다.
@@ -44,13 +49,15 @@ export const COMMON = RULES;
 const common = (project) => `${viewpointBlock(project?.view?.precedents, project?.settings?.weights)}\n\n${RULES}`;
 
 /** 과제의 방향 — 정해진 뒤의 모든 단계가 같은 방향을 받는다. 아래 단계는 방향을 다시 정하지 않고 그 아래의 전술을 낸다 */
-const headingBlock = (p) => { const d = p?.heading; if (!d?.line) return ''; return `## 과제의 방향 — 이미 정해졌다
+const headingBlock = (p, probe = false) => { const d = p?.heading; if (!d?.line) return ''; return `## 과제의 방향 — 이미 정해졌다
 ${j({ 방향: d.name, 한_줄: d.line, 기준: d.standard, ...(d.covers?.length ? { 영역마다: Object.fromEntries(d.covers.map((c) => [c.name || c.area, c.line])) } : {}), ...(d.drops?.length ? { 하지_않는_것: d.drops } : {}) })}
-지금 하는 일은 이 방향 **아래**의 일이다. 방향을 다시 정하거나 넓게 고쳐 쓰지 않는다. 이 방향을 실제로 서게 하는 판단 · 안 · 할 일을 낸다. 방향과 어긋나는 것은 내지 않고, 어긋날 수밖에 없으면 그 이유를 적는다.
+${probe
+    ? `방향을 다시 정하지 않는다. 그렇다고 방향을 받아 적지도 않는다. 네 기준으로 이 이슈를 그대로 본다. 방향이 이 이슈에서 서려면 무엇이 있어야 하는지, 어디서 무너지는지, 방향이 놓친 것이 무엇인지가 네 판단에 드러나야 한다. 방향과 부딪히는 판단을 숨기지 않는다 — 그 충돌이 전술을 가른다. 판단의 수와 폭을 방향에 맞춰 줄이지 않는다.`
+    : `지금 하는 일은 이 방향 **아래**의 일이다. 방향을 다시 정하거나 넓게 고쳐 쓰지 않는다. 이 방향을 실제로 서게 하는 판단 · 안 · 할 일을 낸다. 방향과 어긋나는 것은 내지 않고, 어긋날 수밖에 없으면 그 이유를 적는다.`}
 
 `; };
 const tagNames = (ids) => (ids || []).map((id) => tagById(id)?.name).filter(Boolean);
-function missionBlock(p, lensId = null, { high = false } = {}) {
+function missionBlock(p, lensId = null, { high = false, probe = false } = {}) {
   const { facts } = validFacts(p);
   const cats = categoriesOf(p).map(categoryById);
   const common = Object.fromEntries(COMMON_INPUT.map((f) => [f.label, p.brief[f.id]]).filter(([, v]) => v));
@@ -60,7 +67,7 @@ function missionBlock(p, lensId = null, { high = false } = {}) {
 ${j({ 프로젝트: p.title, ...(cats.length ? { 분류: cats.map((c) => c.name).join(' · ') } : {}), ...common, ...seeds })}
 
 ${high ? `## 이슈 — 과제 안의 문제들. 참고다. 방향은 이 가운데 하나에 붙지 않는다
-${j(p.issues.map((i) => ({ 종류: i.root ? '근본 이슈' : '이슈', 이슈: i.title, 판정_질문: i.test || undefined })))}` : `${headingBlock(p)}## 이슈 — 모든 판단을 대입할 자리
+${j(p.issues.map((i) => ({ 종류: i.root ? '근본 이슈' : '이슈', 이슈: i.title, 판정_질문: i.test || undefined })))}` : `${headingBlock(p, probe)}## 이슈 — 모든 판단을 대입할 자리
 ${j(p.issues.map((i) => ({ id: i.id, 종류: i.root ? '근본 이슈' : '이슈', 이슈: i.title, 설명: i.detail, 판정_질문: i.test, ...(tagNames(i.tags).length ? { 태그: tagNames(i.tags) } : {}) })))}`}${facts.length ? `
 
 ## 팩트북 — 실제 자료 ${facts.length}건 (출처 있음)
@@ -165,7 +172,7 @@ ${lens.family === 'tunnel' ? '- 너는 터널의 레이어다. 팩트북이 있�
 ## 출력 JSON
 { "signals": [ { "issue": "이슈 id", "ladder": ["현상 한 문장", "왜 한 문장", "왜 한 문장", "본질 한 문장"], "claim": "판단 한 문장", "basis": "원문의 어느 대목에서 나왔나 한 문장", "stance": "keep|change|limit|open", "effect": "누구의 무엇이 달라지나", "strength": 0.0, "source": "팩트|브리프|일반 관찰|추론|확인 필요", "facts": ["팩트 id"], "need": "필요한 자료 (없으면 빈 문자열)"${extra} } ]${arena ? ', "proposal": { "frame": "R0", "title": "제목 — 수단 + 효과", "concept": "완성안 한두 문장", "visual": "실제로 보이는 모습", "gain": "누가 언제 무엇을 얻나" }' : ''} }
 \`ladder\`는 3~5줄. \`strength\`는 이 신호가 이슈의 답을 얼마나 좁히는지(0~1)다.`,
-    user: `${missionBlock(project, lens.id)}${arena ? `\n\n## 문제 정의 — 완성안이 답할 질문을 고른다\n${j([{ id: 'R0', 정의: '브리프의 정의 (근본 이슈 그대로)' }, ...project.frames.map((f) => ({ id: f.id, 정의: f.frame, 브리프와_다른_점: f.why }))])}\n\n## 기본안 — 당연히 갖출 것. 이 해법을 다시 내지 않는다\n${j((project.baseline?.concepts || []).map((c) => ({ id: c.id, 컨셉: c.concept })))}` : ''}\n\n노드 "${lens.name}"의 신호를 JSON으로 출력하라.`,
+    user: `${missionBlock(project, lens.id, { probe: true })}${arena ? `\n\n## 문제 정의 — 완성안이 답할 질문을 고른다\n${j([{ id: 'R0', 정의: '브리프의 정의 (근본 이슈 그대로)' }, ...project.frames.map((f) => ({ id: f.id, 정의: f.frame, 브리프와_다른_점: f.why }))])}\n\n## 기본안 — 당연히 갖출 것. 이 해법을 다시 내지 않는다\n${j((project.baseline?.concepts || []).map((c) => ({ id: c.id, 컨셉: c.concept })))}` : ''}\n\n노드 "${lens.name}"의 신호를 JSON으로 출력하라.`,
   };
 }
 

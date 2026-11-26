@@ -478,7 +478,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 .cells li { display: grid; grid-template-columns: calc(var(--u) * 8) minmax(0, 1fr); gap: var(--u); font-size: var(--t-sub); line-height: 20px; }
 .cells .when { font-family: var(--mono); font-size: 11px; color: var(--mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cells .move { display: flex; flex-wrap: wrap; gap: 2px calc(var(--u) * .75); align-items: center; }
-.arearow { display: grid; grid-template-columns: auto minmax(0, 2fr) minmax(0, 3fr) auto; gap: var(--u); align-items: center; margin-top: var(--u); }
+.arearow { display: grid; grid-template-columns: auto minmax(0, 2fr) minmax(0, 2fr) minmax(0, 3fr) auto; gap: var(--u); align-items: center; margin-top: var(--u); }
 .arearow input { width: 100%; min-width: 0; }
 .deck .axes .pillar, .deck .matrix .pillar { grid-template-columns: calc(var(--u) * 11) minmax(0, 1fr); }
 .made { margin-top: calc(var(--u) * 2); display: flex; flex-wrap: wrap; gap: calc(var(--u) * .75); align-items: center; }
