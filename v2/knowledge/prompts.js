@@ -135,7 +135,7 @@ export function activatePrompt(project, lens, max) {
   const ism = lens.family === 'airplane';
   const arena = Array.isArray(project.frames);   // 경쟁 구조 — 노드가 완성안도 함께 낸다
   const source = ism
-    ? `## 이 사조의 깊이\n${depthBlock(lens.id)}\n\n## 이 사조의 카드 원문\n${lens.card}\n\n카드의 "가져올 것 · 두고 올 것"은 지난 적용 메모다. 규칙으로 쓰지 않는다. 이번 과제에서는 다르게 읽을 수 있다.\n\n## 방법론 원문 (참고)\n${lens.rules}`
+    ? `${lens.domain === 'strategy' ? '## 이 사조는 전략 사조다\n조형이 아니라 과제의 방향 · 우선순위 · 하지 않을 것에 적용한다. 학파의 분석 틀이나 약어를 이름으로 가져오지 않는다. 표현 층은 쓰지 않는다.\n\n' : ''}## 이 사조의 깊이\n${depthBlock(lens.id)}\n\n## 이 사조의 카드 원문\n${lens.card}\n\n카드의 "가져올 것 · 두고 올 것"은 지난 적용 메모다. 규칙으로 쓰지 않는다. 이번 과제에서는 다르게 읽을 수 있다.\n\n## 방법론 원문 (참고)\n${lens.rules}`
     : `## 이 노드의 원문 (더프롬 방법론 CORE)\n${lens.text}\n\n판정 기준: ${lens.criteria}`;
   const think = ism ? `## 생각하는 순서 — 건너뛰지 않는다
 1. **시대(origin).** 이 사조는 어떤 시대 조건에서 무엇을 견디지 못해 나왔는가. 위의 시대 조건과 네가 아는 선언 · 논쟁 · 실패를 써서, 그 답이 왜 그때 필요했는지 이해한다. 모르는 것을 지어내지 않는다.

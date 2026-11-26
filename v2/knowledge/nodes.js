@@ -3,6 +3,7 @@
 // 노드는 한 줄 정의로 생각하지 않는다 — 방법론 원문(text · card)을 읽고 생각한다. 원문은 scripts/sync-knowledge.mjs 가 가져온다.
 // 출처: FREATIVE 1.x knowledge/brain.json(렌즈) · 방법론 CORE(core.md) · 05_layer(터널 레이어).
 import { ISMS, OPPOSITIONS } from './isms.js';
+import { SCHOOLS, SCHOOL_OPPOSITIONS } from './schools.js';
 import { CORE } from './core.js';
 
 export const FAMILIES = {
@@ -75,11 +76,20 @@ export const TUNNEL = [
   },
 ];
 
-export const AIRPLANE = ISMS.map((i) => ({
-  ...i, source: 'catalog-ism.md', rules: CORE.airplane,
+const DESIGN_ISMS = ISMS.map((i) => ({
+  ...i, domain: 'design', source: 'catalog-ism.md', rules: CORE.airplane,
   criteria: '사조의 겉모습(형태 · 색 · 서체)이 아니라 원리를 가져왔는가. 가져오지 않을 것을 적었는가.',
   ask: '이 사조가 당대에 겨눈 것과 같은 구조가 이 이슈 안 어디에 있는가. 그 자리에 이 사조의 원리를 넣으면 기존의 것(관습·정해진 전술)을 어떻게 다루게 되는가 — 지킨다 · 다시 읽는다 · 옮긴다 · 잇는다 · 덜어낸다.',
 }));
+// 전략 사조 — 조형이 아니라 과제의 방향 · 우선순위 · 하지 않을 것에 적용한다 (knowledge/schools.js)
+const STRATEGY_ISMS = SCHOOLS.map((i) => ({
+  ...i, source: 'schools.js', rules: CORE.airplane,
+  criteria: '학파의 도구 이름(분석 틀 · 표 · 약어)이 아니라 원리를 가져왔는가. 이 과제에서 하지 않을 것이 보이는가.',
+  ask: '이 학파가 당대에 반박한 통념과 같은 구조가 이 이슈 안 어디에 있는가. 그 자리에 이 학파의 원리를 넣으면 과제의 방향 · 우선순위 · 하지 않을 것을 어떻게 다르게 정하게 되는가.',
+}));
+export const AIRPLANE = [...DESIGN_ISMS, ...STRATEGY_ISMS];
+export const isStrategyIsm = (id) => STRATEGY_ISMS.some((x) => x.id === id);
+export { SCHOOL_OPPOSITIONS };
 
 export { OPPOSITIONS };
 
@@ -96,6 +106,7 @@ export const lensById = (id) => LENSES.find((n) => n.id === id) || GATES.find((n
 
 /** 기본 설정 — 한 번의 사고에 쓰는 양 */
 export const DEFAULTS = {
+  schoolCount: 2,       // 전략 사조 수 (0이면 쓰지 않는다)
   ismCount: 4,          // Airplane에서 발화시킬 사조 수 (대립 쌍 1개 포함)
   signalsPerLens: 1,    // 노드 하나가 이슈 하나에 내는 신호의 최대 수 — 얕은 둘보다 깊은 하나
   insightCount: 3,      // 통합 인사이트 수 N

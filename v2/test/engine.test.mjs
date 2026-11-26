@@ -14,9 +14,11 @@ import { activatePrompt, linkPrompt, integratePrompt } from '../knowledge/prompt
 const sample = () => { const p = newProject(SAMPLE); p.settings.weave = false; p.settings.rematch = true; return p; };
 
 test('기본 노드 — 모든 기준 노드에 기준과 질문이 있고, 사조에는 두고 올 것이 있다', () => {
-  assert.equal(AIRPLANE.length, 16);
+  // 사조는 디자인 사조 16개와 전략 사조 8개다. 전략 사조는 초안이라 가져올 것 · 두고 올 것이 아직 없다
+  assert.deepEqual([AIRPLANE.length, AIRPLANE.filter((a) => a.domain === 'strategy').length, AIRPLANE.filter((a) => a.domain === 'design').length], [24, 8, 16]);
   for (const l of LENSES) assert.ok(l.criteria && l.ask, l.id);
-  for (const a of AIRPLANE) assert.ok(a.principles.length && a.take.length && a.leave.length, a.id);
+  for (const a of AIRPLANE) assert.ok(a.principles.length && a.summary && a.card.includes(a.id) && (a.domain === 'strategy' || (a.take.length && a.leave.length)), a.id);
+  assert.equal(new Set(AIRPLANE.map((a) => a.id)).size, 24);
   const ids = new Set(AIRPLANE.map((a) => a.id));
   for (const o of OPPOSITIONS) assert.ok(ids.has(o.a) && ids.has(o.b), o.issue);
 });
@@ -300,7 +302,7 @@ test('사조 — 가져올 것/두고 올 것 대신 시대 · 갈래 · 모순 
   const { ISM_DEPTH, LAYERS, depthBlock } = await import('../knowledge/ism-depth.js');
   const { activatePrompt } = await import('../knowledge/prompts.js');
   const { AIRPLANE } = await import('../knowledge/nodes.js');
-  assert.equal(Object.keys(ISM_DEPTH).length, 16);
+  assert.equal(Object.keys(ISM_DEPTH).length, 24);   // 디자인 16 + 전략 8
   for (const a of AIRPLANE) { const d = ISM_DEPTH[a.id]; assert.ok(d && d.era && d.question && d.paradox && d.strands.length >= 2, a.id); }
   const p = sample();
   const pr = activatePrompt(p, AIRPLANE.find((a) => a.id === 'ISM-SWISS'), 1);
@@ -453,9 +455,22 @@ test('사조 선정 — 사람이 고르지 않는다. 모두 대 보고, 걸리
   // 예시가 아닌 프로젝트 — 목업이 모든 사조를 대 본 결과를 낸다
   const p = newProject({ title: '다른 과제', category: 'design', brief: { what: 'w', purpose: 'p', target: 't' }, seed: { design: { scope: 's', moment: 'm' } }, issues: [{ id: 'I1', root: true, title: '무엇이 바뀌나', test: '바뀌는가?', tags: ['ds-ui'] }] });
   const run = await think(p, createMock());
-  assert.equal(run.probes.length, 16);
+  assert.equal(run.probes.length, 24);
   assert.ok(run.picks.length >= 2 && run.picks.every((x) => x.why));
-  assert.ok(run.picks.filter((x) => x.wild).length <= 1);
+  // 디자인 사조와 전략 사조는 따로 센다 — 한 번의 호출로 모두 대 보고, 갈래마다 고른다. 전략 사조는 기본 2개까지
+  const { isStrategyIsm, SCHOOL_OPPOSITIONS } = await import('../knowledge/nodes.js');
+  const st = run.picks.filter((x) => isStrategyIsm(x.id)); const ds = run.picks.filter((x) => !isStrategyIsm(x.id));
+  assert.ok(st.length >= 1 && st.length <= 2 && ds.length >= 2 && ds.filter((x) => x.wild).length <= 1 && st.filter((x) => x.wild).length <= 1, run.picks.map((x) => x.id).join(' '));
+  for (const o of SCHOOL_OPPOSITIONS) assert.ok(isStrategyIsm(o.a) && isStrategyIsm(o.b) && o.aSays && o.bSays, o.issue);
+  // 전략 사조 수를 0으로 두면 고르지 않고, 대 보지도 않는다
+  const p0 = newProject({ ...JSON.parse(JSON.stringify(p)), run: null }); p0.settings.schoolCount = 0;
+  const run0 = await think(p0, createMock());
+  assert.ok(run0.probes.length === 16 && !run0.picks.some((x) => isStrategyIsm(x.id)));
+  // 전략 사조는 조형이 아니라 방향 · 우선순위 · 하지 않을 것에 쓴다고 일러 준다. 디자인 프레임은 디자인 사조만 읽는다
+  const { activatePrompt } = await import('../knowledge/prompts.js'); const { courseLensPrompt } = await import('../knowledge/prompts-course.js');
+  const kern = AIRPLANE.find((a) => a.id === 'ISM-ST-KERNEL'); const bau = AIRPLANE.find((a) => a.id === 'ISM-BAUHAUS');
+  assert.match(activatePrompt(p, kern, 1).system, /이 사조는 전략 사조다/); assert.match(activatePrompt(p, kern, 1).system, /던진 질문: 전략과 전략처럼 보이는 것은/);
+  assert.ok(!activatePrompt(p, bau, 1).system.includes('전략 사조다') && courseLensPrompt(p, kern, [{ id: 'S1', name: '과제 전체', objects: [] }]).system.includes('클라이언트의 사업에서 이 과제가 무엇인지를 본다'));
 });
 
 test('프레임 — 이긴 안을 기획 틀과 디자인 틀로 정리한다. 근거 없는 칸은 비우고, 노하우북은 조형 문제가 부른 장만 쓴다', async () => {

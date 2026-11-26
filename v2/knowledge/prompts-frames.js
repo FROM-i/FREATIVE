@@ -2,6 +2,7 @@
 // 틀은 안을 만드는 도구가 아니라 정리하고 검증하는 칸이다. 새로 추론하지 않고, 이미 나온 재료로 칸을 채우고 근거 id를 남긴다.
 //   기획 틀   JTBD → 경쟁 구도 → 포지셔닝 → KSF → Key Claim → Concept Theme
 //   디자인 틀 FoR → PoP → PoD(RTB) → Creative 방향. 노하우북은 여기서 필요한 장만 끌어온다.
+import { isStrategyIsm } from './nodes.js';
 import { common, missionBlock, toJson as j } from './prompts.js';
 import { criteriaBlock } from './criteria.js';
 import { KNOWHOW } from './knowhow.js';
@@ -90,7 +91,7 @@ ${j(KNOWHOW.map((k) => ({ id: k.id, 장: k.name, 다루는_것: k.note || k.pref
 /** 디자인 틀 — FoR · PoP · PoD · Creative 방향. 사조의 읽기와 노하우북의 조작이 여기서 만난다 */
 export function creativePrompt(project, run, plan, pulled, chapters) {
   const sig = new Map(run.signals.map((s) => [s.id, s]));
-  const readings = [...new Set(run.insights.flatMap((n) => n.check.used))].map((id) => sig.get(id)).filter((s) => s && s.family === 'airplane');
+  const readings = [...new Set(run.insights.flatMap((n) => n.check.used))].map((id) => sig.get(id)).filter((s) => s && s.family === 'airplane' && !isStrategyIsm(s.lens));   // 디자인 프레임은 디자인 사조만 읽는다
   return {
     system: `${common(project)}
 

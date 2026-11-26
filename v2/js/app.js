@@ -856,7 +856,7 @@ function missionTab() {
   {
     const off = (p.settings.muted || []).length; const isms = p.settings.ismCount ?? DEFAULTS.ismCount;
     out.push(h('section', { class: 'sec' }, step(6, '기본 노드', '모든 프로젝트 공통'),
-      h('p', { class: 'note' }, `아이덴티티 ${IDENTITY.length}개 · 터널 ${LENSES.filter((l) => l.family === 'tunnel').length}개는 항상 참여한다. 사조는 ${LENSES.filter((l) => l.family === 'airplane').length}개 중 과제에 맞는 ${isms}개를 자동 선정한다.${off ? ` 끈 노드 ${off}개.` : ''}`),
+      h('p', { class: 'note' }, `아이덴티티 ${IDENTITY.length}개 · 터널 ${LENSES.filter((l) => l.family === 'tunnel').length}개는 항상 참여한다. 디자인 사조는 ${LENSES.filter((l) => l.family === 'airplane' && l.domain !== 'strategy').length}개 중 ${isms}개, 전략 사조는 ${LENSES.filter((l) => l.domain === 'strategy').length}개 중 ${p.settings.schoolCount ?? DEFAULTS.schoolCount}개를 과제에 맞춰 자동 선정한다.${off ? ` 끈 노드 ${off}개.` : ''}`),
       h('div', { class: 'row' }, h('button', { class: 'btn sm', type: 'button', onclick: () => { S.tab = 'node'; renderPanel(); } }, '노드 탭에서 보기'))));
   }
 
@@ -869,8 +869,8 @@ function missionTab() {
     Array.from({ length: max - min + 1 }, (_, n) => h('option', { value: min + n, selected: (p.settings[key] ?? DEFAULTS[key]) === min + n }, min + n))));
   const set = [];
   set.push(h('section', { class: 'sec' }, h('h2', null, '분석 설정'),
-    h('div', { class: 'grid3' }, num('ismCount', '분석할 사조 수', 2, 6), num('insightCount', '통합 인사이트 수', 1, 5), num('signalsPerLens', '노드·이슈당 판단', 1, 3)),
-    h('p', { class: 'small' }, `전체 분석 1회에 약 ${2 * (10 + (p.settings.ismCount ?? DEFAULTS.ismCount)) + (p.settings.insightCount ?? DEFAULTS.insightCount) + 41}회 호출한다.`)
+    h('div', { class: 'grid3' }, num('ismCount', '디자인 사조 수', 2, 6), num('schoolCount', '전략 사조 수', 0, 4), num('insightCount', '통합 인사이트 수', 1, 5), num('signalsPerLens', '노드·이슈당 판단', 1, 3)),
+    h('p', { class: 'small' }, `전체 분석 1회에 약 ${2 * (10 + (p.settings.ismCount ?? DEFAULTS.ismCount) + (p.settings.schoolCount ?? DEFAULTS.schoolCount)) + (p.settings.insightCount ?? DEFAULTS.insightCount) + 41}회 호출한다.`)
     ));
   set.push(casesBoard());
 
@@ -1215,7 +1215,7 @@ function nodeTab() {
         : h('div', { class: 'row' }, h('button', { class: 'btn sm', type: 'button', onclick: () => flip('muted') }, muted ? '다음 분석부터 다시 켠다' : '다음 분석부터 끈다'),
           ism ? h('button', { class: 'btn sm', type: 'button', onclick: () => flip('pinned') }, pinned ? '고정 풀기' : '다음 분석에 반드시 분석') : null)),
     ism ? h('section', { class: 'sec' },
-      ISM_PLAIN[l.id] ? [h('h2', null, '원리', h('small', null, '초안 · 사내 검수 전')), h('ol', { class: 'plain' }, ISM_PLAIN[l.id].principles.map((x) => h('li', null, x)))] : null,
+      ISM_PLAIN[l.id] || l.principles?.length ? [h('h2', null, l.domain === 'strategy' ? '전략 사조 · 원리' : '원리', h('small', null, '초안 · 사내 검수 전')), h('ol', { class: 'plain' }, (ISM_PLAIN[l.id]?.principles || l.principles).map((x) => h('li', null, x)))] : null,
       h('div', { class: 'folds' },
         ISM_DEPTH[l.id] ? fold(`${l.id}:depth`, '배경', '시대 조건 · 갈래 · 모순', h('dl', { class: 'kv' },
           h('dt', null, '시대 조건'), h('dd', null, ISM_DEPTH[l.id].era),
